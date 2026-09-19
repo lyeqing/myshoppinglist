@@ -1,0 +1,6 @@
+@import "tailwindcss";
+@theme inline { --font-sans: "Geist", "Segoe UI", Arial, sans-serif; }
+body { margin: 0; background: var(--color-slate-50); color: var(--color-slate-900); font-family: var(--font-sans); }
+button:not(:disabled), summary { cursor: pointer; }
+:focus-visible { outline: 3px solid var(--color-sky-500); outline-offset: 4px; }
+::selection { background: var(--color-sky-100); }
