@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { api, ApiError } from "@/lib/api-client";
 import { isActive, placeholder, type Accepted, type ImportPage, type Job, type Session } from "@/lib/api-types";
 import ImportCard, { Spinner } from "./import-card";
@@ -28,7 +29,7 @@ export default function ShoppingListApp() {
   const generation = useRef(0);
 
   const endSession = useCallback((text: string) => {
-    generation.current++; setSession(null); setJobs({}); setErrors({}); setCursor(null); setNotice(text); setLoadError("");
+    generation.current++; setSession(null); setJobs({}); setErrors({}); setCursor(null); setNotice(text); setLoadError(""); setFormError(""); setUrl(""); setQuantity("1");
   }, []);
   const handleError = useCallback((error: unknown, display: (text: string) => void) => {
     if (aborted(error)) return;
@@ -128,7 +129,7 @@ export default function ShoppingListApp() {
     try { const job = await api<Job>(`/product-import-jobs/${id}`, { signal: lifetime.current?.signal });
       if (version !== generation.current) return;
       setJobs(previous => ({ ...previous, [id]: job })); setErrors(previous => { const next = { ...previous }; delete next[id]; return next; });
-    } catch (error) { handleError(error, text => setErrors(previous => ({ ...previous, [id]: text }))); }
+    } catch (error) { if (version === generation.current) handleError(error, text => setErrors(previous => ({ ...previous, [id]: text }))); }
   }
   const ordered = Object.values(jobs).sort((a, b) => b.jobId - a.jobId);
   const working = ordered.filter(isActive).length;
@@ -136,7 +137,7 @@ export default function ShoppingListApp() {
     <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-white focus:p-3">Skip to content</a>
     <header className="border-b border-slate-200 bg-white">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-5 sm:px-8">
-        <a href="/" className="flex items-center gap-3 font-semibold tracking-tight"><span className="flex size-10 items-center justify-center rounded-xl bg-sky-700 text-white" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M4 8h16l-2 12H6L4 8ZM8 8l4-6 4 6M9 11v5m6-5v5" /></svg></span><span>MyShoppingList<span className="ml-2 hidden text-xs font-normal text-slate-400 sm:inline">EARLY ACCESS</span></span></a>
+        <Link href="/" className="flex items-center gap-3 font-semibold tracking-tight"><span className="flex size-10 items-center justify-center rounded-xl bg-sky-700 text-white" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M4 8h16l-2 12H6L4 8ZM8 8l4-6 4 6M9 11v5m6-5v5" /></svg></span><span>MyShoppingList<span className="ml-2 hidden text-xs font-normal text-slate-400 sm:inline">EARLY ACCESS</span></span></Link>
         {session ? <button onClick={logout} disabled={busy} className="text-sm font-medium text-slate-500 hover:text-slate-900">Sign out</button> : <span className="text-xs text-slate-500">Made for everyday shopping</span>}
       </div>
     </header>
@@ -154,16 +155,16 @@ export default function ShoppingListApp() {
           <aside className="space-y-5 lg:sticky lg:top-6">
             <form onSubmit={submit} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
               <h2 className="text-lg font-semibold">Add to your list</h2><p className="mt-1 text-sm leading-6 text-slate-500">One product link at a time. Multiple imports can run together.</p>
-              <label htmlFor="product-url" className="mb-2 mt-6 block text-sm font-medium">Coles product URL</label><input id="product-url" type="url" required maxLength={2048} placeholder="https://www.coles.com.au/product/…" value={url} onChange={e => setUrl(e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm placeholder:text-slate-400" aria-describedby="url-help" />
+              <label htmlFor="product-url" className="mb-2 mt-6 block text-sm font-medium">Coles product URL</label><input id="product-url" type="url" required disabled={submitting} maxLength={2048} placeholder="https://www.coles.com.au/product/…" value={url} onChange={e => setUrl(e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm placeholder:text-slate-400 disabled:opacity-60" aria-describedby="url-help" />
               <p id="url-help" className="mt-2 text-xs leading-5 text-slate-400">Use the full product page link, not a search page.</p>
-              <label htmlFor="quantity" className="mb-2 mt-5 block text-sm font-medium">Quantity</label><input id="quantity" type="number" required min={1} max={2147483647} step={1} inputMode="numeric" value={quantity} onChange={e => setQuantity(e.target.value)} className="w-24 rounded-xl border border-slate-300 px-3 py-2.5 text-sm" />
+              <label htmlFor="quantity" className="mb-2 mt-5 block text-sm font-medium">Quantity</label><input id="quantity" type="number" required disabled={submitting} min={1} max={2147483647} step={1} inputMode="numeric" value={quantity} onChange={e => setQuantity(e.target.value)} className="w-24 rounded-xl border border-slate-300 px-3 py-2.5 text-sm disabled:opacity-60" />
               {formError && <p role="alert" className="mt-4 text-sm leading-6 text-amber-800">{formError}</p>}
               <button disabled={submitting || !session.shoppingListId} className={`${primary} mt-6 w-full`}>{submitting ? <><Spinner /> Adding link…</> : <><span aria-hidden="true">+</span> Add product</>}</button>
               {!session.shoppingListId && <p className="mt-3 text-sm text-amber-800">This trial’s shopping list is no longer available.</p>}
             </form>
             <div className="rounded-2xl border border-slate-200 p-5"><h3 className="text-sm font-semibold">A note on prices</h3><p className="mt-2 text-sm leading-6 text-slate-500">These are observed page prices. Your store’s price and availability may differ. We’ll always show what we could verify.</p></div>
           </aside>
-          <section aria-labelledby="list-title"><div className="mb-5 flex flex-wrap items-center justify-between gap-2"><div><h2 id="list-title" className="text-xl font-semibold tracking-tight">Your shopping list</h2><p className="mt-1 text-sm text-slate-500">{ordered.length} loaded import{ordered.length === 1 ? "" : "s"}{working ? ` · ${working} in progress` : ""}</p></div>{working > 0 && <span className="rounded-full bg-sky-100 px-3 py-1.5 text-xs font-semibold text-sky-800">Updating every 2 seconds</span>}</div>
+          <section aria-labelledby="list-title"><div className="mb-5 flex flex-wrap items-center justify-between gap-2"><div><h2 id="list-title" className="text-xl font-semibold tracking-tight">Your shopping list</h2><p className="mt-1 text-sm text-slate-500">{ordered.length} loaded import{ordered.length === 1 ? "" : "s"}{working ? ` · ${working} in progress` : ""}</p></div>{working > 0 && <span className="rounded-full bg-sky-100 px-3 py-1.5 text-xs font-semibold text-sky-800">{activeIds ? "Updating every 2 seconds" : "Updates paused"}</span>}</div>
             {loadError && <p role="alert" className="mb-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">{loadError} <button className="font-semibold underline" onClick={() => void loadPage(session.shoppingListId!, cursor, lifetime.current!.signal)}>Retry loading</button></p>}
             <div className="space-y-5">{ordered.map(job => <ImportCard key={job.jobId} job={job} error={errors[job.jobId]} onRetry={() => void retry(job.jobId)} />)}</div>
             {loading && <p role="status" className="mt-5 flex items-center gap-2 text-sm text-slate-500"><Spinner /> Loading saved imports…</p>}

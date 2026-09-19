@@ -72,11 +72,15 @@ async function start(page: Page) {
 }
 async function add(page: Page, code = "test") {
   await page.getByLabel("Coles product URL").fill(`https://www.coles.com.au/product/${code}`);
+  const submitted = page.waitForResponse(response => response.url().endsWith("/products/url") && response.request().method() === "POST");
   await page.getByRole("button", { name: "Add product", exact: true }).click();
+  await submitted;
+  await expect(page.getByRole("button", { name: "Add product", exact: true })).toBeEnabled();
 }
 
 test("start, import, price context, terminal polling stop and refresh recovery", async ({ page }, info) => {
   await page.goto("/"); await expect(page.getByRole("heading", { name: "Your list. A clearer price." })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Start my shopping list" })).toBeVisible();
   await page.screenshot({ path: `test-results/${info.project.name}-welcome.png`, fullPage: true });
   await page.getByRole("button", { name: "Start my shopping list" }).click();
   await expect(page.getByText("Your trial is active")).toBeVisible();
@@ -103,8 +107,8 @@ test("validation, rate limits and paused updates retain useful state", async ({ 
   frozen = true; await start(page);
   await page.getByLabel("Coles product URL").fill("https://example.com/product");
   await page.getByRole("button", { name: "Add product", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText("valid Coles");
-  failNextSubmit = true; await add(page); await expect(page.getByRole("alert")).toContainText("60 seconds");
+  await expect(page.getByRole("alert").filter({ hasText: "valid Coles" })).toBeVisible();
+  failNextSubmit = true; await add(page); await expect(page.getByRole("alert").filter({ hasText: "60 seconds" })).toBeVisible();
   await add(page); offline = true;
   await expect(page.getByRole("button", { name: "Retry updates" })).toBeVisible({ timeout: 7000 });
   offline = false; frozen = false; await page.getByRole("button", { name: "Retry updates" }).click();
@@ -115,6 +119,17 @@ test("navigation aborts ongoing polling", async ({ page }) => {
   await expect(page.getByRole("article")).toHaveCount(1);
   await page.goto("about:blank"); const count = calls;
   await page.waitForTimeout(2300); expect(calls).toBe(count);
+});
+test("older saved imports are available through cursor pagination", async ({ page }) => {
+  await start(page); await add(page);
+  await expect(page.getByRole("article")).toHaveCount(1);
+  const original = jobs.get(1)!;
+  for (let id = 1; id <= 21; id++) { jobs.set(id, completed({ ...original, jobId: id })); counts.set(id, 10); }
+  await page.reload();
+  await expect(page.getByRole("article")).toHaveCount(20);
+  await page.getByRole("button", { name: "Load older imports" }).click();
+  await expect(page.getByRole("article")).toHaveCount(21);
+  await expect(page.getByRole("button", { name: "Load older imports" })).toHaveCount(0);
 });
 test("gateway rejects unknown routes and cross-origin posts without contacting upstream", async ({ request }) => {
   const before = calls;
