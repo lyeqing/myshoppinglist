@@ -1,6 +1,6 @@
 # MyShoppingList frontend
 
-Next.js 16.3.1, React 19.2.8, TypeScript, and Tailwind CSS 4. Stage 5A provides the first trial shopping page: start a three-hour trial, submit Coles product links, view import progress and observed prices, restore imports after refresh, and sign out.
+Next.js 16.3.1, React 19.2.8, TypeScript, and Tailwind CSS 4. Stage 5A provides the first trial shopping page: start a three-hour trial, submit Coles or Woolworths product links, view import progress and observed prices, restore imports after refresh, and sign out.
 
 ## Run locally
 
@@ -55,3 +55,7 @@ Remove-Item Env:PLAYWRIGHT_CHANNEL
 Playwright runs an isolated frontend on `127.0.0.1:3002` and a fake upstream on `127.0.0.1:5499`. Tests exercise the real gateway and UI without database or retailer requests. Coverage includes desktop/mobile layouts, HttpOnly sessions, submission/completion, refresh recovery, pagination, concurrent imports, expiry, validation, rate-limit feedback, polling retries, navigation cancellation, and gateway rejection. Screenshots and failure traces are saved in ignored output directories.
 
 `next dev` may generate `AGENTS.md` and `CLAUDE.md` with standard Next.js documentation guidance. `next-env.d.ts` and TypeScript build information are generated too.
+
+## Stage 5B – Woolworths source imports
+
+The product URL field accepts current Coles and Woolworths product-page links. Both use the same background progress, polling, refresh recovery, and source-price display. Woolworths links should be copied from the current retailer page; outdated slugs may return not found. Cross-retailer search and comparison are still future work. Browser tests cover Woolworths submission and source-link recovery on desktop and mobile.

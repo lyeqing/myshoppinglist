@@ -13,11 +13,12 @@ let frozen = false;
 let failNextSubmit = false;
 let calls = 0;
 let receivedCookie = "";
+let sources = new Map<number, string>();
 const sessionExpiry = () => new Date(Date.now() + 3 * 3600000).toISOString();
 const product = { id: 1, name: "Coca-Cola Classic Cans", brand: "Coca-Cola", variant: "Classic", packQuantity: 10, packSize: 375, packUnit: "mL", imageUrl: null };
-function completed(job: Job): Job { return { ...job, product, status: "Partial", progressStage: "Completed", shoppingListProductId: job.jobId, completedDate: new Date().toISOString(), retailers: [
-  { shopId: 1, shopName: "Coles", status: "Exact", matchType: "Exact", matchConfidence: 100, isFromCache: false, checkedDate: job.createdDate, errorCode: null, prices: [{ price: 23, normalPrice: null, unitPrice: null, currency: "AUD", shopLocationId: null, priceScope: "Unknown", sourceType: "StructuredData", sourceUrl: "https://www.coles.com.au/product/test", checkedDate: job.createdDate, inStock: true, specialType: null, specialDescription: null, specialStartDate: null, specialEndDate: null }] },
-  { shopId: 2, shopName: "Woolworths", status: "NotSupported", matchType: null, matchConfidence: null, isFromCache: false, checkedDate: null, errorCode: "comparison_not_implemented", prices: [] }
+function completed(job: Job): Job { const woolworths = sources.get(job.jobId)?.includes("woolworths.com.au"); return { ...job, product, status: "Partial", progressStage: "Completed", shoppingListProductId: job.jobId, completedDate: new Date().toISOString(), retailers: [
+  { shopId: woolworths ? 2 : 1, shopName: woolworths ? "Woolworths" : "Coles", status: "Exact", matchType: "Exact", matchConfidence: 100, isFromCache: false, checkedDate: job.createdDate, errorCode: null, prices: [{ price: 23, normalPrice: null, unitPrice: null, currency: "AUD", shopLocationId: null, priceScope: "Unknown", sourceType: "StructuredData", sourceUrl: sources.get(job.jobId) ?? "https://www.coles.com.au/product/test", checkedDate: job.createdDate, inStock: true, specialType: null, specialDescription: null, specialStartDate: null, specialEndDate: null }] },
+  { shopId: woolworths ? 1 : 2, shopName: woolworths ? "Coles" : "Woolworths", status: "NotSupported", matchType: null, matchConfidence: null, isFromCache: false, checkedDate: null, errorCode: "comparison_not_implemented", prices: [] }
 ] }; }
 test.beforeAll(async () => {
   server = createServer(async (request, response) => {
@@ -44,8 +45,8 @@ test.beforeAll(async () => {
       if (failNextSubmit) { failNextSubmit = false; response.setHeader("Retry-After", "60"); send(429, { title: "Too many requests" }); return; }
       let body = ""; for await (const chunk of request) body += chunk;
       const value = JSON.parse(body);
-      if (!value.url.startsWith("https://www.coles.com.au/product/")) { send(400, { title: "Enter a valid Coles product URL." }); return; }
-      const id = jobs.size + 1; const created = new Date().toISOString();
+      if (!value.url.startsWith("https://www.coles.com.au/product/") && !value.url.startsWith("https://www.woolworths.com.au/shop/productdetails/")) { send(400, { title: "Enter a valid Coles or Woolworths product URL." }); return; }
+      const id = jobs.size + 1; sources.set(id, value.url); const created = new Date().toISOString();
       jobs.set(id, { jobId: id, shoppingListId: current.shoppingListId!, quantity: value.quantity, status: "Queued", progressStage: "Queued", product: null, shoppingListProductId: null, createdDate: created, lastActivityDate: created, completedDate: null, nextAttemptDate: null, errorCode: null, retailers: [] });
       response.setHeader("Location", `/api/product-import-jobs/${id}`);
       send(202, { jobId: id, status: "Queued", quantity: value.quantity, reused: false, statusUrl: `/api/product-import-jobs/${id}` }); return;
@@ -64,14 +65,14 @@ test.beforeAll(async () => {
   });
   await new Promise<void>(resolve => server.listen(5499, "127.0.0.1", resolve));
 });
-test.beforeEach(() => { sessions = new Map(); jobs = new Map(); counts = new Map(); expire = false; offline = false; frozen = false; failNextSubmit = false; calls = 0; receivedCookie = ""; });
+test.beforeEach(() => { sessions = new Map(); jobs = new Map(); sources = new Map(); counts = new Map(); expire = false; offline = false; frozen = false; failNextSubmit = false; calls = 0; receivedCookie = ""; });
 test.afterAll(async () => { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); });
 async function start(page: Page) {
   await page.goto("/"); await page.getByRole("button", { name: "Start my shopping list" }).click();
   await expect(page.getByText("Your trial is active")).toBeVisible();
 }
 async function add(page: Page, code = "test") {
-  await page.getByLabel("Coles product URL").fill(`https://www.coles.com.au/product/${code}`);
+  await page.getByLabel("Product URL").fill(`https://www.coles.com.au/product/${code}`);
   const submitted = page.waitForResponse(response => response.url().endsWith("/products/url") && response.request().method() === "POST");
   await page.getByRole("button", { name: "Add product", exact: true }).click();
   await submitted;
@@ -105,7 +106,7 @@ test("multiple imports remain usable and all polling stops on expiry", async ({ 
 });
 test("validation, rate limits and paused updates retain useful state", async ({ page }) => {
   frozen = true; await start(page);
-  await page.getByLabel("Coles product URL").fill("https://example.com/product");
+  await page.getByLabel("Product URL").fill("https://example.com/product");
   await page.getByRole("button", { name: "Add product", exact: true }).click();
   await expect(page.getByRole("alert").filter({ hasText: "valid Coles" })).toBeVisible();
   failNextSubmit = true; await add(page); await expect(page.getByRole("alert").filter({ hasText: "60 seconds" })).toBeVisible();
@@ -141,4 +142,19 @@ test("gateway rejects unknown routes and cross-origin posts without contacting u
   await request.post("/api/auth/trial", { headers: { "X-MyShoppingList-Request": "1" } });
   await request.get("/api/auth/me", { headers: { Cookie: "handytool_session=secret; tracking=private" } });
   expect(receivedCookie).not.toContain("secret"); expect(receivedCookie).not.toContain("tracking");
+});
+
+
+test("Woolworths URL imports and retains its own source after refresh", async ({ page }) => {
+  await start(page);
+  const url = "https://www.woolworths.com.au/shop/productdetails/32731/coca-cola-classic-soft-drink-bottle";
+  await page.getByLabel("Product URL").fill(url);
+  await page.getByRole("button", { name: "Add product", exact: true }).click();
+  await expect(page.getByRole("heading", { name: product.name })).toBeVisible({ timeout: 10000 });
+  expect(sources.get(1)).toBe(url);
+  const article = page.getByRole("article");
+  await expect(article.getByText("Woolworths", { exact: true })).toBeVisible();
+  await expect(article.locator(`a[href="${url}"]`)).toBeVisible();
+  await page.reload();
+  await expect(article.locator(`a[href="${url}"]`)).toBeVisible();
 });
