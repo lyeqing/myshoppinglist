@@ -6,7 +6,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (!response.ok) {
     const problem = await response.json().catch(() => ({}));
     const wait = Number(response.headers.get("Retry-After")) || null;
-    const message = response.status === 401 ? "Your trial has ended. Start a new trial to continue." : response.status === 429 ? `Too many requests. Please try again${wait ? ` in ${wait} seconds` : " shortly"}.` : response.status >= 500 ? "The service is temporarily unavailable. Please try again." : problem.title ?? "This request could not be completed.";
+    const message = response.status === 401 ? (path === "/auth/login" ? "The email or password is incorrect." : path === "/auth/register" ? "Your session is unavailable. An expired trial cannot be saved." : "Your session has ended. Sign in again or start a new trial.") : response.status === 429 ? `Too many requests. Please try again${wait ? ` in ${wait} seconds` : " shortly"}.` : response.status >= 500 ? "The service is temporarily unavailable. Please try again." : problem.title ?? "This request could not be completed.";
     throw new ApiError(response.status, message, wait);
   }
   return response.status === 204 ? undefined as T : response.json();

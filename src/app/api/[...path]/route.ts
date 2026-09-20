@@ -5,9 +5,11 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
   const { path } = await context.params;
   const route = path.join("/");
   const get = request.method === "GET";
+  const account = route === "auth/register" || route === "auth/login";
+  const reset = route === "auth/reset-expired";
   const edit = request.method === "PUT" && /^shopping-lists\/[1-9]\d{0,18}\/items\/[1-9]\d{0,18}$/.test(route);
   const allowed = get ? /^(auth\/me|product-import-jobs\/[1-9]\d{0,18}|shopping-lists\/[1-9]\d{0,18}\/(imports|items))$/.test(route)
-    : edit || request.method === "POST" && /^(auth\/(trial|logout)|shopping-lists\/[1-9]\d{0,18}\/products\/url)$/.test(route);
+    : edit || request.method === "POST" && /^(auth\/(trial|logout|register|login|reset-expired)|shopping-lists\/[1-9]\d{0,18}\/products\/url)$/.test(route);
   if (!allowed) return reply(404, "This route is unavailable.");
   try {
     const upstream = new URL(process.env.MYSHOPPINGLIST_API_URL ?? "http://localhost:5392");
@@ -31,12 +33,12 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
     if (session && /^[a-f0-9]{64}$/.test(session)) headers.set("Cookie", `${cookieName}=${session}`);
     let body: string | undefined;
     if (!get) {
-      if ((edit || route.endsWith("/products/url")) && request.headers.get("Content-Type")?.split(";")[0] !== "application/json") return reply(415, "Send a JSON request.");
+      if ((account || edit || route.endsWith("/products/url")) && request.headers.get("Content-Type")?.split(";")[0] !== "application/json") return reply(415, "Send a JSON request.");
       const reader = request.body?.getReader();
       if (reader) {
         const decoder = new TextDecoder(); let size = 0; body = "";
         while (true) { const part = await reader.read(); if (part.done) break; size += part.value.length;
-          if (size > (edit ? 32768 : 4096)) { await reader.cancel(); return reply(413, "The request is too large."); }
+          if (size > (edit ? 32768 : account ? 16384 : 4096)) { await reader.cancel(); return reply(413, "The request is too large."); }
           body += decoder.decode(part.value, { stream: true });
         }
         body += decoder.decode();
@@ -44,6 +46,18 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
       headers.set("Content-Type", "application/json");
       // Browser origin was validated above; the internal request has the API's own origin.
       headers.set("Origin", upstream.origin);
+      if (account) {
+        try { const value = JSON.parse(body ?? ""); if (!value || typeof value !== "object" || Array.isArray(value)) return reply(400, "Send a JSON object."); }
+        catch { return reply(400, "Send valid JSON."); }
+      }
+    }
+    if (reset) {
+      const check = await fetch(new URL("/api/auth/me", upstream), { headers, redirect: "manual", cache: "no-store",
+        signal: AbortSignal.any([request.signal, AbortSignal.timeout(15000)]) });
+      if (check.ok) return reply(409, "Your session is still active. Keep your list or sign out first.");
+      if (check.status !== 401) return reply(502, "We could not check your session. Please try again.");
+      return new Response(null, { status: 204, headers: { "Cache-Control": "no-store",
+        "Set-Cookie": `${cookieName}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${publicOrigin.startsWith("https:") ? "; Secure" : ""}` } });
     }
     const result = await fetch(target, { method: request.method, headers, body, redirect: "manual", cache: "no-store",
       signal: AbortSignal.any([request.signal, AbortSignal.timeout(15000)]) });

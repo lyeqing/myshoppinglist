@@ -5,6 +5,7 @@ import { api, ApiError } from "@/lib/api-client";
 import { isActive, placeholder, type Accepted, type ImportPage, type Job, type Session } from "@/lib/api-types";
 import ImportCard, { Spinner } from "./import-card";
 import ShoppingListItems from "./shopping-list-items";
+import AccountForm from "./account-form";
 
 const primary = "inline-flex items-center justify-center gap-2 rounded-xl bg-sky-700 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-800 disabled:cursor-not-allowed disabled:opacity-50";
 const secondary = "rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50";
@@ -15,6 +16,10 @@ export default function ShoppingListApp() {
   const [session, setSession] = useState<Session | null>(null);
   const [booting, setBooting] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [accountMode, setAccountMode] = useState<"register" | "login" | null>(null);
+  const [authBusy, setAuthBusy] = useState(false);
+  const authPending = useRef(false);
+  const trialSession = useRef(false);
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [jobs, setJobs] = useState<Record<number, Job>>({});
@@ -30,6 +35,8 @@ export default function ShoppingListApp() {
   const generation = useRef(0);
 
   const endSession = useCallback((text: string) => {
+    if (authPending.current) return;
+    if (trialSession.current && text === "Your session has ended. Sign in again or start a new trial.") text = "Your trial has ended. Start a new trial to continue.";
     generation.current++; setSession(null); setJobs({}); setErrors({}); setCursor(null); setNotice(text); setLoadError(""); setFormError(""); setUrl(""); setQuantity("1");
   }, []);
   const handleError = useCallback((error: unknown, display: (text: string) => void) => {
@@ -63,7 +70,7 @@ export default function ShoppingListApp() {
     async function restore() {
       try { const current = await api<Session>("/auth/me", { signal: controller.signal });
         if (controller.signal.aborted) return;
-        setSession(current); if (current.shoppingListId) await loadPage(current.shoppingListId, null, controller.signal);
+        trialSession.current = current.account.isTrial; setSession(current); if (current.shoppingListId) await loadPage(current.shoppingListId, null, controller.signal);
       } catch (error) { if (!aborted(error) && !(error instanceof ApiError && error.status === 401)) setNotice(message(error)); }
       finally { if (!controller.signal.aborted) setBooting(false); }
     }
@@ -71,15 +78,20 @@ export default function ShoppingListApp() {
   }, [loadPage]);
 
   useEffect(() => {
-    if (!session) return;
-    const delay = Math.max(0, new Date(session.sessionExpiresDate).getTime() - Date.now());
-    const timer = setTimeout(() => endSession("Your trial has ended. Start a new trial to continue."), Math.min(delay, 2147483647));
+    if (!session || authBusy) return;
+    let timer: ReturnType<typeof setTimeout>;
+    function check() {
+      const delay = new Date(session!.sessionExpiresDate).getTime() - Date.now();
+      if (delay <= 0) endSession("Your session has ended. Sign in again or start a new trial.");
+      else timer = setTimeout(check, Math.min(delay, 2147483647));
+    }
+    check();
     return () => clearTimeout(timer);
-  }, [session, endSession]);
+  }, [session, authBusy, endSession]);
 
   const activeIds = Object.values(jobs).filter(job => isActive(job) && !errors[job.jobId]).map(job => job.jobId).sort((a, b) => a - b).join(",");
   useEffect(() => {
-    if (!session || !activeIds) return;
+    if (!session || !activeIds || authBusy) return;
     const controller = new AbortController(); const version = generation.current;
     let timer: ReturnType<typeof setTimeout>;
     const ids = activeIds.split(",").map(Number);
@@ -87,7 +99,7 @@ export default function ShoppingListApp() {
       const results = await Promise.allSettled(ids.map(id => api<Job>(`/product-import-jobs/${id}`, { signal: controller.signal })));
       if (controller.signal.aborted || version !== generation.current) return;
       if (results.some(result => result.status === "rejected" && result.reason instanceof ApiError && result.reason.status === 401)) {
-        endSession("Your trial has ended. Start a new trial to continue."); return;
+        endSession("Your session has ended. Sign in again or start a new trial."); return;
       }
       const updates: Record<number, Job> = {}; const failures: Record<number, string> = {};
       results.forEach((result, index) => { if (result.status === "fulfilled") updates[ids[index]] = result.value; else failures[ids[index]] = message(result.reason); });
@@ -96,19 +108,32 @@ export default function ShoppingListApp() {
     }
     timer = setTimeout(poll, 2000);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [activeIds, session, endSession]);
+  }, [activeIds, session, authBusy, endSession]);
+
+  function accountBusy(value: boolean) {
+    authPending.current = value; setAuthBusy(value);
+    if (value) { generation.current++; setLoading(false); }
+  }
+  function accountReady(current: Session) {
+    const sameList = current.account.id === session?.account.id && current.shoppingListId === session.shoppingListId;
+    generation.current++; trialSession.current = current.account.isTrial;
+    setSession(current); setAccountMode(null); setLoading(false);
+    setNotice(sameList ? "Your account is ready. Your list and edits are kept." : "You’re signed in.");
+    if (!sameList) { setJobs({}); setErrors({}); setCursor(null); setLoadError(""); setFormError(""); setUrl(""); setQuantity("1"); }
+    if (current.shoppingListId) void loadPage(current.shoppingListId, null, lifetime.current!.signal);
+  }
 
   async function startTrial() {
     setBusy(true); setNotice("");
     try { const current = await api<Session>("/auth/trial", { method: "POST", signal: lifetime.current?.signal });
       if (lifetime.current?.signal.aborted) return;
-      generation.current++; setSession(current); setJobs({}); setErrors({});
+      generation.current++; trialSession.current = current.account.isTrial; setSession(current); setJobs({}); setErrors({}); setAccountMode(null);
       if (current.shoppingListId) await loadPage(current.shoppingListId, null, lifetime.current!.signal);
     } catch (error) { handleError(error, setNotice); } finally { setBusy(false); }
   }
   async function logout() {
     setBusy(true);
-    try { await api<void>("/auth/logout", { method: "POST", signal: lifetime.current?.signal }); endSession("You’ve signed out of this trial."); }
+    try { await api<void>("/auth/logout", { method: "POST", signal: lifetime.current?.signal }); setAccountMode(null); endSession("You’ve signed out."); }
     catch (error) { handleError(error, setNotice); } finally { setBusy(false); }
   }
   async function submit(event: React.FormEvent) {
@@ -139,29 +164,34 @@ export default function ShoppingListApp() {
     <header className="border-b border-slate-200 bg-white">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-5 sm:px-8">
         <Link href="/" className="flex items-center gap-3 font-semibold tracking-tight"><span className="flex size-10 items-center justify-center rounded-xl bg-sky-700 text-white" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M4 8h16l-2 12H6L4 8ZM8 8l4-6 4 6M9 11v5m6-5v5" /></svg></span><span>MyShoppingList<span className="ml-2 hidden text-xs font-normal text-slate-400 sm:inline">EARLY ACCESS</span></span></Link>
-        {session ? <button onClick={logout} disabled={busy} className="text-sm font-medium text-slate-500 hover:text-slate-900">Sign out</button> : <span className="text-xs text-slate-500">Made for everyday shopping</span>}
+        {session ? <button onClick={logout} disabled={busy || authBusy} className="text-sm font-medium text-slate-500 hover:text-slate-900">Sign out</button> : <span className="text-xs text-slate-500">Made for everyday shopping</span>}
       </div>
     </header>
     <main id="main" className="mx-auto max-w-7xl px-5 pb-16 pt-10 sm:px-8 sm:pt-14">
       <div className="mb-9 flex flex-wrap items-end justify-between gap-5">
         <div><p className="mb-3 text-xs font-semibold tracking-widest text-sky-700">LESS GUESSWORK. BETTER SHOPPING.</p><h1 className="text-4xl font-semibold leading-tight tracking-tight sm:text-5xl">Your list. <span className="text-sky-700">A clearer price.</span></h1><p className="mt-4 max-w-xl text-base leading-7 text-slate-500">Save a product link. We’ll find the details and keep the observed price with your shopping list.</p></div>
-        {session && <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-900"><span className="font-semibold">Your trial is active</span><p className="mt-1 text-xs">Expires {new Date(session.sessionExpiresDate).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit" })} · No account needed</p></div>}
+        {session && <div className="max-w-full break-words rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-900"><span className="font-semibold">{session.account.isTrial ? "Your trial is active" : `Signed in as ${session.account.displayName}`}</span><p className="mt-1 text-xs">{session.account.isTrial ? `Expires ${new Date(session.sessionExpiresDate).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit" })} · No account needed` : "Your shopping list is saved to your account."}</p></div>}
       </div>
       {notice && <p role="status" className="mb-6 rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-900">{notice}</p>}
+      {!booting && (!session || session.account.isTrial) && <div className="mb-5 flex flex-wrap gap-3">
+        <button disabled={busy || authBusy || submitting} onClick={() => setAccountMode("register")} className={secondary}>{session ? "Keep my list" : "Create an account"}</button>
+        <button disabled={busy || authBusy || submitting} onClick={() => setAccountMode("login")} className={secondary}>Sign in</button>
+      </div>}
+      {accountMode && <AccountForm key={accountMode} mode={accountMode} trial={!!session?.account.isTrial} onBusy={accountBusy} onSuccess={accountReady} onClose={() => setAccountMode(null)} />}
       {booting ? <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-8 text-slate-500" role="status"><Spinner /> Restoring your shopping list…</div> : !session ?
         <section className="grid overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm md:grid-cols-2">
-          <div className="p-7 sm:p-10"><span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">FREE 3-HOUR TRIAL</span><h2 className="mt-6 text-3xl font-semibold tracking-tight">A small step before<br />your next shop.</h2><p className="mt-4 max-w-md leading-7 text-slate-500">Try a temporary shopping list. No email, password, or payment details. Your list expires after three hours.</p><button onClick={startTrial} disabled={busy} className={`${primary} mt-7`}>{busy && <Spinner />}{busy ? "Starting your trial…" : "Start my shopping list"}<span aria-hidden="true">→</span></button><p className="mt-4 text-xs text-slate-400">Coles and Woolworths product links supported today.</p></div>
+          <div className="p-7 sm:p-10"><span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">FREE 3-HOUR TRIAL</span><h2 className="mt-6 text-3xl font-semibold tracking-tight">A small step before<br />your next shop.</h2><p className="mt-4 max-w-md leading-7 text-slate-500">Try a temporary shopping list. No email, password, or payment details. Your list expires after three hours.</p><button onClick={startTrial} disabled={busy || authBusy} className={`${primary} mt-7`}>{busy && <Spinner />}{busy ? "Starting your trial…" : "Start my shopping list"}<span aria-hidden="true">→</span></button><p className="mt-4 text-xs text-slate-400">Coles and Woolworths product links supported today.</p></div>
           <div className="border-t border-slate-100 bg-sky-50/60 p-7 sm:p-10 md:border-l md:border-t-0"><p className="text-xs font-semibold tracking-widest text-slate-500">THREE SIMPLE STEPS</p><ol className="mt-7 space-y-7">{[["Paste a product link", "Copy the product page URL from Coles or Woolworths."], ["Keep adding to your list", "We’ll find the details in the background."], ["See what we found", "Check the price, source, and observation time."]].map(([title, detail], i) => <li key={title} className="flex gap-4"><span className="flex size-9 shrink-0 items-center justify-center rounded-full border border-sky-200 bg-white text-sm font-semibold text-sky-700">{i + 1}</span><div><h3 className="font-semibold">{title}</h3><p className="mt-1 text-sm leading-6 text-slate-500">{detail}</p></div></li>)}</ol></div>
         </section> : <div className="grid items-start gap-7 lg:grid-cols-[340px_1fr]">
           <aside className="space-y-5 lg:sticky lg:top-6">
             <form onSubmit={submit} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
               <h2 className="text-lg font-semibold">Add to your list</h2><p className="mt-1 text-sm leading-6 text-slate-500">One product link at a time. Multiple imports can run together.</p>
-              <label htmlFor="product-url" className="mb-2 mt-6 block text-sm font-medium">Product URL</label><input id="product-url" type="url" required disabled={submitting} maxLength={2048} placeholder="https://www.coles.com.au/product/…" value={url} onChange={e => setUrl(e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm placeholder:text-slate-400 disabled:opacity-60" aria-describedby="url-help" />
+              <label htmlFor="product-url" className="mb-2 mt-6 block text-sm font-medium">Product URL</label><input id="product-url" type="url" required disabled={submitting || authBusy} maxLength={2048} placeholder="https://www.coles.com.au/product/…" value={url} onChange={e => setUrl(e.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm placeholder:text-slate-400 disabled:opacity-60" aria-describedby="url-help" />
               <p id="url-help" className="mt-2 text-xs leading-5 text-slate-400">Use the full product page link, not a search page.</p>
-              <label htmlFor="quantity" className="mb-2 mt-5 block text-sm font-medium">Quantity</label><input id="quantity" type="number" required disabled={submitting} min={1} max={2147483647} step={1} inputMode="numeric" value={quantity} onChange={e => setQuantity(e.target.value)} className="w-24 rounded-xl border border-slate-300 px-3 py-2.5 text-sm disabled:opacity-60" />
+              <label htmlFor="quantity" className="mb-2 mt-5 block text-sm font-medium">Quantity</label><input id="quantity" type="number" required disabled={submitting || authBusy} min={1} max={2147483647} step={1} inputMode="numeric" value={quantity} onChange={e => setQuantity(e.target.value)} className="w-24 rounded-xl border border-slate-300 px-3 py-2.5 text-sm disabled:opacity-60" />
               {formError && <p role="alert" className="mt-4 text-sm leading-6 text-amber-800">{formError}</p>}
-              <button disabled={submitting || !session.shoppingListId} className={`${primary} mt-6 w-full`}>{submitting ? <><Spinner /> Adding link…</> : <><span aria-hidden="true">+</span> Add product</>}</button>
-              {!session.shoppingListId && <p className="mt-3 text-sm text-amber-800">This trial’s shopping list is no longer available.</p>}
+              <button disabled={submitting || authBusy || !session.shoppingListId} className={`${primary} mt-6 w-full`}>{submitting ? <><Spinner /> Adding link…</> : <><span aria-hidden="true">+</span> Add product</>}</button>
+              {!session.shoppingListId && <p className="mt-3 text-sm text-amber-800">This shopping list is no longer available.</p>}
             </form>
             <div className="rounded-2xl border border-slate-200 p-5"><h3 className="text-sm font-semibold">A note on prices</h3><p className="mt-2 text-sm leading-6 text-slate-500">These are observed page prices. Your store’s price and availability may differ. We’ll always show what we could verify.</p></div>
           </aside>

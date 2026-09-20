@@ -18,6 +18,8 @@ let sources = new Map<number, string>();
 let comparison: ((job: Job) => Job) | null = null;
 let listItems = new Map<number, ListItem>();
 let failEdit = false;
+let accounts = new Map<string, { password: string; session: Session }>();
+let failAuth = false;
 const sessionExpiry = () => new Date(Date.now() + 3 * 3600000).toISOString();
 const product = { id: 1, name: "Coca-Cola Classic Cans", brand: "Coca-Cola", variant: "Classic", packQuantity: 10, packSize: 375, packUnit: "mL", imageUrl: null };
 function completed(job: Job): Job { const woolworths = sources.get(job.jobId)?.includes("woolworths.com.au"); return { ...job, product, status: "Partial", progressStage: "Completed", shoppingListProductId: job.jobId, completedDate: new Date().toISOString(), retailers: [
@@ -35,6 +37,21 @@ test.beforeAll(async () => {
     receivedCookie = request.headers.cookie ?? "";
     const raw = /myshoppinglist_session=([a-f0-9]+)/.exec(receivedCookie)?.[1];
     const current = raw && !expire ? sessions.get(raw) : undefined;
+    if (path.pathname === "/api/auth/register" || path.pathname === "/api/auth/login") {
+      if (failAuth) { response.setHeader("Retry-After", "60"); send(429); return; }
+      let body = ""; for await (const part of request) body += part;
+      const value = JSON.parse(body); const email = value.email?.trim().toLowerCase();
+      const register = path.pathname.endsWith("register");
+      if (register && raw && !current) { send(401); return; }
+      if (register && accounts.has(email)) { send(409, { title: "Registration could not be completed with this email." }); return; }
+      if (!register && (!accounts.has(email) || accounts.get(email)!.password !== value.password)) { send(401); return; }
+      const id = current?.account.id ?? 100 + accounts.size;
+      const session: Session = register ? { account: { id, displayName: value.displayName, isTrial: false, expiresDate: null }, shoppingListId: current?.shoppingListId ?? id, sessionExpiresDate: new Date(Date.now()+30*86400000).toISOString() } : { ...accounts.get(email)!.session, sessionExpiresDate: new Date(Date.now()+30*86400000).toISOString() };
+      if (register) { accounts.set(email, { password: value.password, session }); for (const [token, old] of sessions) if (old.account.id === id) sessions.delete(token); }
+      const token = randomBytes(32).toString("hex"); sessions.set(token, session); expire = false;
+      response.setHeader("Set-Cookie", `myshoppinglist_session=${token}; Path=/; HttpOnly; SameSite=Lax`);
+      send(register ? 201 : 200, session); return;
+    }
     if (path.pathname === "/api/auth/trial") {
       if (current) { send(200, current); return; }
       const token = randomBytes(32).toString("hex"); const id = sessions.size + 1;
@@ -100,12 +117,110 @@ test.beforeAll(async () => {
   });
   await new Promise<void>(resolve => server.listen(5499, "127.0.0.1", resolve));
 });
-test.beforeEach(() => { sessions = new Map(); jobs = new Map(); sources = new Map(); counts = new Map(); expire = false; offline = false; frozen = false; failNextSubmit = false; calls = 0; receivedCookie = ""; comparison = null; listItems = new Map(); failEdit = false; });
+test.beforeEach(() => { accounts = new Map(); failAuth = false; sessions = new Map(); jobs = new Map(); sources = new Map(); counts = new Map(); expire = false; offline = false; frozen = false; failNextSubmit = false; calls = 0; receivedCookie = ""; comparison = null; listItems = new Map(); failEdit = false; });
 test.afterAll(async () => { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); });
 async function start(page: Page) {
   await page.goto("/"); await page.getByRole("button", { name: "Start my shopping list" }).click();
   await expect(page.getByText("Your trial is active")).toBeVisible();
 }
+const accountPassword = "A long unique passphrase 123";
+async function fillAccount(page: Page, register = true) {
+  if (register) await page.getByLabel("Display name").fill("Test shopper");
+  await page.getByLabel("Email", { exact: true }).fill("shopper@example.test");
+  await page.getByLabel("Password", { exact: true }).fill(accountPassword);
+}
+
+test("account registration, login failures, rate limits and refresh recovery", async ({ page }, info) => {
+  await page.goto("/"); await page.getByRole("button", { name: "Create an account", exact: true }).click();
+  await fillAccount(page);
+  await page.screenshot({ path: `test-results/${info.project.name}-registration.png`, fullPage: true });
+  failAuth = true; await page.getByRole("button", { name: "Create account", exact: true }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "60 seconds" })).toBeVisible();
+  failAuth = false; await page.getByRole("button", { name: "Create account", exact: true }).click();
+  await expect(page.getByText("Signed in as Test shopper")).toBeVisible();
+  expect(await page.evaluate(() => document.cookie)).not.toContain("myshoppinglist_session");
+  await page.reload(); await expect(page.getByText("Signed in as Test shopper")).toBeVisible();
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await page.getByRole("button", { name: "Sign in", exact: true }).click(); await fillAccount(page, false);
+  await page.getByLabel("Password", { exact: true }).fill("wrong");
+  await page.getByRole("button", { name: "Sign in to my account" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "The email or password is incorrect." })).toBeVisible();
+  await page.getByLabel("Password", { exact: true }).fill(accountPassword);
+  await page.getByRole("button", { name: "Sign in to my account" }).click();
+  await expect(page.getByText("Signed in as Test shopper")).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test("account trial conversion preserves saved edits and unsaved drafts", async ({ page }, info) => {
+  await start(page); await add(page);
+  await expect(page.getByLabel("Notes", { exact: true })).toBeVisible();
+  await page.getByLabel("Notes", { exact: true }).fill("Saved note");
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect.poll(() => [...listItems.values()][0]?.notes).toBe("Saved note");
+  await page.getByLabel("Notes", { exact: true }).fill("Unsaved draft");
+  const old = [...sessions.values()][0];
+  await page.getByRole("button", { name: "Keep my list", exact: true }).click(); await fillAccount(page);
+  await page.getByRole("button", { name: "Create account", exact: true }).click();
+  await expect(page.getByText("Signed in as Test shopper")).toBeVisible();
+  await expect(page.getByLabel("Notes", { exact: true })).toHaveValue("Unsaved draft");
+  expect(accounts.get("shopper@example.test")!.session.shoppingListId).toBe(old.shoppingListId);
+  await page.screenshot({ path: `test-results/${info.project.name}-registered-list.png`, fullPage: true });
+  await page.reload(); await expect(page.getByLabel("Notes", { exact: true })).toHaveValue("Saved note");
+});
+
+test("account login replaces trial view without merging trial items", async ({ page }) => {
+  await page.goto("/"); await page.getByRole("button", { name: "Create an account", exact: true }).click(); await fillAccount(page);
+  await page.getByRole("button", { name: "Create account", exact: true }).click(); await expect(page.getByText("Signed in as Test shopper")).toBeVisible();
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await start(page); await add(page); await expect(page.getByLabel("Notes", { exact: true })).toBeVisible();
+  const trialItem = [...listItems.values()][0];
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByText(/This trial list will not be merged/)).toBeVisible();
+  await fillAccount(page, false); await page.getByRole("button", { name: "Sign in to my account" }).click();
+  await expect(page.getByText("Signed in as Test shopper")).toBeVisible();
+  await expect(page.getByLabel("Notes", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("article")).toHaveCount(0);
+  expect(listItems.get(trialItem.id)!.shoppingListId).toBe(trialItem.shoppingListId);
+});
+
+test("account expired trial requires explicit reset before fresh registration", async ({ page }) => {
+  await start(page);
+  await page.getByRole("button", { name: "Keep my list", exact: true }).click(); await fillAccount(page);
+  expire = true;
+  await page.getByRole("button", { name: "Create account", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Clear expired session for a new account" })).toBeVisible();
+  expect(accounts.size).toBe(0);
+  await page.getByRole("button", { name: "Clear expired session for a new account" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "empty list" })).toBeVisible();
+  await page.getByRole("button", { name: "Create account", exact: true }).click();
+  await expect(page.getByText("Signed in as Test shopper")).toBeVisible();
+  expect(accounts.size).toBe(1);
+});
+
+test("account session survives timer maximum and expires at its actual deadline", async ({ page }) => {
+  await page.clock.install();
+  await page.goto("/"); await page.getByRole("button", { name: "Create an account", exact: true }).click(); await fillAccount(page);
+  await page.getByRole("button", { name: "Create account", exact: true }).click(); await expect(page.getByText("Signed in as Test shopper")).toBeVisible();
+  await page.clock.fastForward(2147483647);
+  await expect(page.getByText("Signed in as Test shopper")).toBeVisible();
+  await page.clock.fastForward(7*86400000);
+  await expect(page.getByText("Your session has ended. Sign in again or start a new trial.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sign out", exact: true })).toHaveCount(0);
+});
+
+test("account gateway enforces JSON, sizes, methods and safe expired reset", async ({ page }) => {
+  await start(page);
+  const results = await page.evaluate(async () => {
+    const send = async (path: string, method: string, body?: string, headers: Record<string,string> = {}) => (await fetch('/api/auth/'+path, { method, body, headers })).status;
+    const headers = { "Content-Type": "application/json", "X-MyShoppingList-Request": "1" };
+    return [await send('register','POST','{}'), await send('login','PUT','{}',headers),
+      await send('register','POST','{}', { 'X-MyShoppingList-Request': '1' }), await send('register','POST','{',headers),
+      await send('login','POST',JSON.stringify({password:'a'.repeat(17000)}),headers),
+      await send('reset-expired','POST',undefined,headers), await send('reset-expired','GET')];
+  });
+  expect(results).toEqual([403,404,415,400,413,409,404]);
+  await page.reload(); await expect(page.getByText("Your trial is active")).toBeVisible();
+});
 async function add(page: Page, code = "test") {
   await page.getByLabel("Product URL").fill(`https://www.coles.com.au/product/${code}`);
   const submitted = page.waitForResponse(response => response.url().endsWith("/products/url") && response.request().method() === "POST");
