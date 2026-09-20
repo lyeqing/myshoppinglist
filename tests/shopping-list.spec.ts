@@ -2,6 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { createServer, type Server } from "node:http";
 import { randomBytes } from "node:crypto";
 import type { Job, Session } from "../src/lib/api-types";
+import { bestKnownPrices, freshness } from "../src/lib/price-comparison";
 
 let server: Server;
 let sessions: Map<string, Session>;
@@ -14,6 +15,7 @@ let failNextSubmit = false;
 let calls = 0;
 let receivedCookie = "";
 let sources = new Map<number, string>();
+let comparison: ((job: Job) => Job) | null = null;
 const sessionExpiry = () => new Date(Date.now() + 3 * 3600000).toISOString();
 const product = { id: 1, name: "Coca-Cola Classic Cans", brand: "Coca-Cola", variant: "Classic", packQuantity: 10, packSize: 375, packUnit: "mL", imageUrl: null };
 function completed(job: Job): Job { const woolworths = sources.get(job.jobId)?.includes("woolworths.com.au"); return { ...job, product, status: "Partial", progressStage: "Completed", shoppingListProductId: job.jobId, completedDate: new Date().toISOString(), retailers: [
@@ -60,12 +62,12 @@ test.beforeAll(async () => {
     const id = Number(path.pathname.split("/").at(-1)); const job = jobs.get(id);
     if (!job || job.shoppingListId !== current.shoppingListId) { send(404); return; }
     const count = (counts.get(id) ?? 0) + 1; counts.set(id, count);
-    const next = frozen || count < 2 ? { ...job, status: "Processing" as const, progressStage: "ReadingSourceProduct" } : completed(job);
+    const next = frozen || count < 2 ? { ...job, status: "Processing" as const, progressStage: "ReadingSourceProduct" } : comparison ? comparison(completed(job)) : completed(job);
     jobs.set(id, next); send(200, next);
   });
   await new Promise<void>(resolve => server.listen(5499, "127.0.0.1", resolve));
 });
-test.beforeEach(() => { sessions = new Map(); jobs = new Map(); sources = new Map(); counts = new Map(); expire = false; offline = false; frozen = false; failNextSubmit = false; calls = 0; receivedCookie = ""; });
+test.beforeEach(() => { sessions = new Map(); jobs = new Map(); sources = new Map(); counts = new Map(); expire = false; offline = false; frozen = false; failNextSubmit = false; calls = 0; receivedCookie = ""; comparison = null; });
 test.afterAll(async () => { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); });
 async function start(page: Page) {
   await page.goto("/"); await page.getByRole("button", { name: "Start my shopping list" }).click();
@@ -157,4 +159,110 @@ test("Woolworths URL imports and retains its own source after refresh", async ({
   await expect(article.locator(`a[href="${url}"]`)).toBeVisible();
   await page.reload();
   await expect(article.locator(`a[href="${url}"]`)).toBeVisible();
+});
+
+function comparable(job: Job): Job {
+  const source = job.retailers[0];
+  const price = { ...source.prices[0], priceScope: "National" };
+  return { ...job, retailers: [
+    { ...source, prices: [price] },
+    { ...source, shopId: 2, shopName: "Woolworths", isFromCache: true,
+      prices: [{ ...price, price: 19, sourceUrl: "https://www.woolworths.com.au/shop/productdetails/test" }] }
+  ] };
+}
+
+test("verified comparison highlights the best price and retains cache context", async ({ page }, info) => {
+  comparison = comparable;
+  await start(page); await add(page);
+  await expect(page.getByText("Best known price · national", { exact: true })).toBeVisible();
+  await expect(page.getByText("at Woolworths", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Saved observation/)).toBeVisible();
+  await expect(page.getByText("Fresh", { exact: true })).toHaveCount(2);
+  await expect(page.getByText(/among 2 retailers/)).toBeVisible();
+  await page.screenshot({ path: `test-results/${info.project.name}-comparison.png`, fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.reload();
+  await expect(page.getByText("at Woolworths", { exact: true })).toBeVisible();
+});
+
+test("unknown stores, uncertain matches and failures do not receive recommendations", async ({ page }) => {
+  comparison = job => {
+    const result = comparable(job);
+    return { ...result, retailers: [
+      { ...result.retailers[0], prices: result.retailers[0].prices.map(p => ({ ...p, priceScope: "Unknown" })) },
+      { ...result.retailers[1], status: "Likely", matchType: "Likely", prices: [] },
+      { ...result.retailers[1], shopId: 3, shopName: "ALDI", status: "Unavailable", prices: [], errorCode: "access_restricted" }
+    ] };
+  };
+  await start(page); await add(page);
+  await expect(page.getByText("Store not verified", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Identity needs confirmation/)).toBeVisible();
+  await expect(page.getByText(/We couldn’t check a current price/)).toBeVisible();
+  await expect(page.getByText(/^Best known price ·/)).toHaveCount(0);
+});
+
+test("stale prices and expired promotions remain visible with warnings", async ({ page }) => {
+  comparison = job => {
+    const result = comparable(job);
+    result.retailers[0].prices[0].checkedDate = new Date(Date.now() - 25 * 3600000).toISOString();
+    result.retailers[1].prices[0].specialEndDate = new Date(Date.now() - 1000).toISOString();
+    return result;
+  };
+  await start(page); await add(page);
+  await expect(page.getByText("Price may be stale", { exact: true })).toBeVisible();
+  await expect(page.getByText("Promotion ended · price needs checking", { exact: true })).toBeVisible();
+  await expect(page.getByText(/^Best known price ·/)).toHaveCount(0);
+  await expect(page.getByText("AUD 19.00", { exact: true })).toBeVisible();
+});
+
+test("freshness updates after polling stops without another network request", async ({ page }) => {
+  const now = Date.now();
+  await page.clock.install({ time: new Date(now) });
+  comparison = job => {
+    const result = comparable(job);
+    for (const retailer of result.retailers) retailer.prices[0].checkedDate = new Date(now - 6 * 3600000 + 30000).toISOString();
+    return result;
+  };
+  await start(page); await add(page);
+  await expect(page.getByText("Best known price · national", { exact: true })).toBeVisible();
+  const polled = counts.get(1);
+  await page.clock.fastForward(61000);
+  await expect(page.getByText("Refresh recommended", { exact: true })).toHaveCount(2);
+  await expect(page.getByText(/^Best known price ·/)).toHaveCount(0);
+  expect(counts.get(1)).toBe(polled);
+});
+
+test("comparison rules preserve freshness boundaries, ties and separate price coverage", () => {
+  const now = Date.parse("2026-09-20T00:00:00Z");
+  const checked = (hours: number) => new Date(now - hours * 3600000).toISOString();
+  expect(freshness(checked(6), now)).toBe("Fresh");
+  expect(freshness(new Date(now - 6 * 3600000 - 1).toISOString(), now)).toBe("Refresh recommended");
+  expect(freshness(checked(24), now)).toBe("Refresh recommended");
+  expect(freshness(checked(25), now)).toBe("Price may be stale");
+  expect(freshness("invalid", now)).toBe("Check time unverified");
+  expect(freshness(checked(-1), now)).toBe("Check time unverified");
+  const base = completed({ jobId: 1, createdDate: checked(1) } as Job);
+  const retailers = comparable(base).retailers;
+  retailers[0].prices[0].price = 19;
+  expect(bestKnownPrices(retailers, now)[0].shopNames).toEqual(["Coles", "Woolworths"]);
+  const original = structuredClone(retailers[1]);
+  const changes = [
+    { priceScope: "Unknown" }, { priceScope: "Online" }, { priceScope: "StoreSpecific", shopLocationId: 1 },
+    { currency: "USD" }, { inStock: false }, { checkedDate: checked(7) }, { price: -1 },
+    { specialEndDate: checked(1) }, { specialStartDate: checked(-1) }, { specialEndDate: "invalid" },
+    { specialDescription: "Members only" }, { checkedDate: "invalid" }, { checkedDate: checked(-1) }
+  ];
+  for (const change of changes) {
+    retailers[1] = { ...original, prices: [{ ...original.prices[0], ...change }] };
+    expect(bestKnownPrices(retailers, now), JSON.stringify(change)).toEqual([]);
+  }
+  for (const status of ["Likely", "Possible", "Unavailable", "Pending", "CheckFailed"] as const) {
+    retailers[1] = { ...original, status };
+    expect(bestKnownPrices(retailers, now)).toEqual([]);
+  }
+  retailers[1] = { ...original, shopId: retailers[0].shopId };
+  expect(bestKnownPrices(retailers, now)).toEqual([]);
+  retailers[1] = original;
+  for (const retailer of retailers) retailer.prices.push({ ...retailer.prices[0], priceScope: "Online", price: 17 });
+  expect(bestKnownPrices(retailers, now).map(group => group.scope)).toEqual(["National", "Online"]);
 });
