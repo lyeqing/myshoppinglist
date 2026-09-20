@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { createServer, type Server } from "node:http";
 import { randomBytes } from "node:crypto";
-import type { Job, Session } from "../src/lib/api-types";
+import type { Job, Session, ListItem, ListItemUpdate } from "../src/lib/api-types";
 import { bestKnownPrices, freshness } from "../src/lib/price-comparison";
 
 let server: Server;
@@ -16,6 +16,8 @@ let calls = 0;
 let receivedCookie = "";
 let sources = new Map<number, string>();
 let comparison: ((job: Job) => Job) | null = null;
+let listItems = new Map<number, ListItem>();
+let failEdit = false;
 const sessionExpiry = () => new Date(Date.now() + 3 * 3600000).toISOString();
 const product = { id: 1, name: "Coca-Cola Classic Cans", brand: "Coca-Cola", variant: "Classic", packQuantity: 10, packSize: 375, packUnit: "mL", imageUrl: null };
 function completed(job: Job): Job { const woolworths = sources.get(job.jobId)?.includes("woolworths.com.au"); return { ...job, product, status: "Partial", progressStage: "Completed", shoppingListProductId: job.jobId, completedDate: new Date().toISOString(), retailers: [
@@ -29,7 +31,7 @@ test.beforeAll(async () => {
     const send = (status: number, value?: unknown) => { response.statusCode = status; response.end(value === undefined ? undefined : JSON.stringify(value)); };
     const path = new URL(request.url!, "http://127.0.0.1:5499");
     if (offline) { send(503, { title: "Private upstream failure details" }); return; }
-    if (request.method === "POST" && (request.headers.origin !== "http://127.0.0.1:5499" || request.headers["x-myshoppinglist-request"] !== "1")) { send(403); return; }
+    if (["POST", "PUT"].includes(request.method!) && (request.headers.origin !== "http://127.0.0.1:5499" || request.headers["x-myshoppinglist-request"] !== "1")) { send(403); return; }
     receivedCookie = request.headers.cookie ?? "";
     const raw = /myshoppinglist_session=([a-f0-9]+)/.exec(receivedCookie)?.[1];
     const current = raw && !expire ? sessions.get(raw) : undefined;
@@ -43,6 +45,31 @@ test.beforeAll(async () => {
     if (!current) { send(401, { title: "A valid session is required." }); return; }
     if (path.pathname === "/api/auth/me") { send(200, current); return; }
     if (path.pathname === "/api/auth/logout") { sessions.delete(raw!); response.setHeader("Set-Cookie", "myshoppinglist_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax"); send(204); return; }
+    const listRoute = /^\/api\/shopping-lists\/(\d+)\/items(?:\/(\d+))?$/.exec(path.pathname);
+    if (listRoute) {
+      if (Number(listRoute[1]) !== current.shoppingListId) { send(404); return; }
+      if (request.method === "GET" && !listRoute[2]) {
+        const before = Number(path.searchParams.get("beforeId")) || Infinity;
+        const all = [...listItems.values()].filter(i => i.shoppingListId === current.shoppingListId && i.id < before
+          && (path.searchParams.get("includeHidden") === "true" || !i.isHidden)
+          && (path.searchParams.get("includePurchased") !== "false" || !i.isPurchased)).sort((a,b) => b.id-a.id);
+        const items = all.slice(0,20); send(200, { items, nextBeforeId: all.length > 20 ? items.at(-1)!.id : null }); return;
+      }
+      if (request.method === "PUT" && listRoute[2]) {
+        if (failEdit) { send(503, { title: "Unavailable" }); return; }
+        const item = listItems.get(Number(listRoute[2]));
+        if (!item || item.shoppingListId !== current.shoppingListId) { send(404); return; }
+        let body = ""; for await (const part of request) body += part;
+        const edit = JSON.parse(body) as ListItemUpdate;
+        if (edit.expectedUpdatedDate !== item.updatedDate) { send(409, { title: "This item changed. Reload it before saving your edits." }); return; }
+        if (!Number.isInteger(edit.quantity) || edit.quantity < 1 || (edit.notes?.length ?? 0) > 4000) { send(400, { title: "Invalid edit" }); return; }
+        const saved = { ...item, quantity: edit.quantity, notes: edit.notes, isPurchased: edit.isPurchased, isHidden: edit.isHidden,
+          purchasedDate: edit.isPurchased ? item.purchasedDate ?? new Date().toISOString() : null,
+          updatedDate: new Date(Math.max(Date.now(), Date.parse(item.updatedDate)+1)).toISOString() };
+        listItems.set(item.id, saved); send(200, saved); return;
+      }
+      send(404); return;
+    }
     if (path.pathname.endsWith("/products/url")) {
       if (failNextSubmit) { failNextSubmit = false; response.setHeader("Retry-After", "60"); send(429, { title: "Too many requests" }); return; }
       let body = ""; for await (const chunk of request) body += chunk;
@@ -63,11 +90,17 @@ test.beforeAll(async () => {
     if (!job || job.shoppingListId !== current.shoppingListId) { send(404); return; }
     const count = (counts.get(id) ?? 0) + 1; counts.set(id, count);
     const next = frozen || count < 2 ? { ...job, status: "Processing" as const, progressStage: "ReadingSourceProduct" } : comparison ? comparison(completed(job)) : completed(job);
+    if (next.product) {
+      let item = [...listItems.values()].find(i => i.product.id === next.product!.id && i.shoppingListId === next.shoppingListId);
+      if (!item) { item = { id: listItems.size+1, shoppingListId: next.shoppingListId, product: next.product, quantity: next.quantity,
+        notes: null, isPurchased: false, isHidden: false, purchasedDate: null, preferredShopId: null, addedDate: next.createdDate, updatedDate: next.createdDate }; listItems.set(item.id,item); }
+      next.shoppingListProductId = item.id;
+    }
     jobs.set(id, next); send(200, next);
   });
   await new Promise<void>(resolve => server.listen(5499, "127.0.0.1", resolve));
 });
-test.beforeEach(() => { sessions = new Map(); jobs = new Map(); sources = new Map(); counts = new Map(); expire = false; offline = false; frozen = false; failNextSubmit = false; calls = 0; receivedCookie = ""; comparison = null; });
+test.beforeEach(() => { sessions = new Map(); jobs = new Map(); sources = new Map(); counts = new Map(); expire = false; offline = false; frozen = false; failNextSubmit = false; calls = 0; receivedCookie = ""; comparison = null; listItems = new Map(); failEdit = false; });
 test.afterAll(async () => { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); });
 async function start(page: Page) {
   await page.goto("/"); await page.getByRole("button", { name: "Start my shopping list" }).click();
@@ -170,6 +203,110 @@ function comparable(job: Job): Job {
       prices: [{ ...price, price: 19, sourceUrl: "https://www.woolworths.com.au/shop/productdetails/test" }] }
   ] };
 }
+
+test("list edits survive refresh, repeated imports and hide/restore controls", async ({ page }, info) => {
+  await start(page); await add(page);
+  const list = page.getByRole("region", { name: "Editable shopping list" });
+  const editor = list.getByRole("group", { name: `Edit ${product.name}` });
+  await expect(editor).toBeVisible({ timeout: 10000 });
+  await editor.getByLabel("Item quantity").fill("4");
+  await editor.getByLabel("Notes", { exact: true }).fill("Two for the pantry");
+  await editor.getByLabel("Purchased", { exact: true }).check();
+  await editor.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(editor.getByText("Changes saved.")).toBeVisible();
+  expect(listItems.get(1)!.purchasedDate).not.toBeNull();
+  await page.reload();
+  await expect(editor.getByLabel("Item quantity")).toHaveValue("4");
+  await expect(editor.getByLabel("Notes", { exact: true })).toHaveValue("Two for the pantry");
+  await list.getByLabel("Show purchased", { exact: true }).uncheck();
+  await expect(editor).toBeHidden();
+  await list.getByLabel("Show purchased", { exact: true }).check();
+  await editor.getByLabel("Purchased", { exact: true }).uncheck();
+  await editor.getByLabel("Hidden", { exact: true }).check();
+  await editor.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(editor).toBeHidden();
+  await list.getByLabel("Show hidden", { exact: true }).check();
+  await expect(editor).toBeVisible();
+  expect(listItems.get(1)!.purchasedDate).toBeNull();
+  await editor.getByLabel("Hidden", { exact: true }).uncheck();
+  await editor.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(editor.getByText("Changes saved.")).toBeVisible();
+  await add(page, "same-product");
+  await expect(page.getByRole("article")).toHaveCount(2);
+  await expect(page.getByRole("heading", { name: product.name })).toHaveCount(2);
+  await expect(list.getByRole("group", { name: /^Edit / })).toHaveCount(1);
+  await expect(editor.getByLabel("Item quantity")).toHaveValue("4");
+  await page.screenshot({ path: `test-results/${info.project.name}-editing.png`, fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test("failed saves and conflicts preserve drafts until explicit reload", async ({ page }) => {
+  await start(page); await add(page);
+  const editor = page.getByRole("group", { name: `Edit ${product.name}` });
+  await expect(editor).toBeVisible({ timeout: 10000 });
+  await editor.getByLabel("Notes", { exact: true }).fill("Unsaved draft");
+  failEdit = true;
+  await editor.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(editor.getByRole("alert")).toContainText("temporarily unavailable");
+  await expect(editor.getByLabel("Notes", { exact: true })).toHaveValue("Unsaved draft");
+  failEdit = false;
+  const original = listItems.get(1)!;
+  listItems.set(1, { ...original, notes: "Changed elsewhere", updatedDate: new Date(Date.parse(original.updatedDate)+1).toISOString() });
+  await editor.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(editor.getByRole("alert")).toContainText("This item changed");
+  await expect(editor.getByLabel("Notes", { exact: true })).toHaveValue("Unsaved draft");
+  await expect(editor.getByRole("button", { name: "Save changes", exact: true })).toBeDisabled();
+  await editor.getByRole("button", { name: "Load latest saved version" }).click();
+  await expect(editor.getByLabel("Notes", { exact: true })).toHaveValue("Changed elsewhere");
+  await editor.getByLabel("Notes", { exact: true }).fill("");
+  await editor.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(editor.getByText("Changes saved.")).toBeVisible();
+  expect(listItems.get(1)!.notes).toBeNull();
+});
+
+test("list pagination and refresh preserve drafts; expiry clears editors", async ({ page }) => {
+  await start(page); await add(page);
+  const editor = page.getByRole("group", { name: `Edit ${product.name}`, exact: true });
+  await expect(editor).toBeVisible({ timeout: 10000 });
+  const original = listItems.get(1)!;
+  for (let id=2; id<=22; id++) listItems.set(id, { ...original, id, product: { ...product, id, name: `Extra product ${id}` } });
+  await page.reload();
+  const list = page.getByRole("region", { name: "Editable shopping list" });
+  await expect(list.getByRole("group", { name: /^Edit / })).toHaveCount(20);
+  await list.getByRole("button", { name: "Load more items" }).click();
+  await expect(list.getByRole("group", { name: /^Edit / })).toHaveCount(22);
+  await editor.getByLabel("Notes", { exact: true }).fill("Keep my draft");
+  await list.getByRole("button", { name: "Refresh items" }).click();
+  await expect(list.getByText("Loading list items…")).toHaveCount(0);
+  await expect(editor.getByLabel("Notes", { exact: true })).toHaveValue("Keep my draft");
+  await list.getByLabel("Show purchased", { exact: true }).uncheck();
+  await expect(editor.getByLabel("Notes", { exact: true })).toHaveValue("Keep my draft");
+  expire = true;
+  await editor.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(page.getByText("Your trial has ended. Start a new trial to continue.")).toBeVisible();
+  await expect(list).toHaveCount(0);
+});
+
+test("editing gateway allows full-length notes and rejects unsafe routes and filters", async ({ page, request }) => {
+  await start(page); await add(page);
+  const editor = page.getByRole("group", { name: `Edit ${product.name}` });
+  await expect(editor).toBeVisible({ timeout: 10000 });
+  const notes = "購".repeat(4000);
+  await editor.getByLabel("Notes", { exact: true }).fill(notes);
+  await editor.getByRole("button", { name: "Save changes", exact: true }).click();
+  await expect(editor.getByText("Changes saved.")).toBeVisible();
+  expect(listItems.get(1)!.notes).toBe(notes);
+  const before = calls;
+  expect((await request.put("/api/shopping-lists/1/items/1", { data: {} })).status()).toBe(403);
+  const headers = { "X-MyShoppingList-Request": "1", "Content-Type": "application/json" };
+  expect((await request.put("/api/auth/trial", { headers, data: {} })).status()).toBe(404);
+  expect((await request.post("/api/shopping-lists/1/items/1", { headers, data: {} })).status()).toBe(404);
+  expect((await request.put("/api/shopping-lists/1/items/1", { headers: { ...headers, Origin: "https://evil.example" }, data: {} })).status()).toBe(403);
+  expect((await request.put("/api/shopping-lists/1/items/1", { headers, data: "a".repeat(32769) })).status()).toBe(413);
+  expect((await request.get("/api/shopping-lists/1/items?includeHidden=invalid")).status()).toBe(400);
+  expect((await request.get("/api/shopping-lists/1/items?includePurchased=true&includePurchased=false")).status()).toBe(400);
+  expect(calls).toBe(before);
+});
 
 test("verified comparison highlights the best price and retains cache context", async ({ page }, info) => {
   comparison = comparable;

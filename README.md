@@ -23,17 +23,17 @@ The lockfile uses the dependency versions already locked in HandyTool. No creden
 
 ## Behaviour and gateway
 
-The browser calls same-origin `/api/*` URLs. The gateway allows trial creation, session lookup, logout, product submission, individual status, and paginated discovery. It forwards only the MyShoppingList session cookie, never unrelated cookies or arbitrary upstream URLs. Raw credentials stay HttpOnly and are not stored in JavaScript or local storage.
+The browser calls same-origin `/api/*` URLs. The gateway allows trial creation, session lookup, logout, product submission, individual status, paginated discovery, list-item reads and item edits. It forwards only the MyShoppingList session cookie, never unrelated cookies or arbitrary upstream URLs. Raw credentials stay HttpOnly and are not stored in JavaScript or local storage.
 
-POST requests require the custom request header and pass browser-origin/fetch-site checks before forwarding. JSON requests are limited to 4 KiB. Redirects are not followed, upstream requests time out after 15 seconds, and responses are not cached. Cookie Secure attributes are retained; HTTPS public deployments receive Secure cookies. Use HTTPS for the public application and production backend. The gateway does not bypass backend HTTPS redirects or certificate validation. Configure an API origin without credentials or a path.
+POST and PUT requests require the custom request header and pass browser-origin/fetch-site checks before forwarding. Request bodies are limited to 4 KiB, except item-edit PUT requests which allow 32 KiB for up to 4,000-character notes including JSON escapes and UTF-8 text. Redirects are not followed, upstream requests time out after 15 seconds, and responses are not cached. Cookie Secure attributes are retained; HTTPS public deployments receive Secure cookies. Use HTTPS for the public application and production backend. The gateway does not bypass backend HTTPS redirects or certificate validation. Configure an API origin without credentials or a path.
 
 Client-supplied forwarding headers are not trusted or forwarded. The backend trial-start rate limit therefore counts requests from the gateway's address together. Before a multi-user production deployment, configure trusted proxy/client-address handling deliberately. Import submission is separately limited per authenticated account.
 
 Imports load in pages of 20, newest first. “Load older imports” fetches the next cursor page. Loaded active imports poll every two seconds without overlapping the previous round. Polling stops on terminal status, session expiry, navigation/unmount, or refresh failure. A failed refresh preserves the card and offers an explicit retry. Trial expiry clears private cards and offers a new trial; expiry is never silently extended.
 
-The form is disabled during the short submission request to prevent a response clearing newly entered text. Other imports continue in parallel. Duplicate active submissions reuse the backend job; importing an existing product does not change its list quantity. Cards represent import history, so repeated imports may refer to the same list item. Displayed quantities are requested import quantities.
+The form is disabled during the short submission request to prevent a response clearing newly entered text. Other imports continue in parallel. Duplicate active submissions reuse the backend job; importing an existing product does not change its list quantity. The editable shopping list shows actual items. Separate import-history cards may refer to the same item and display the original requested import quantities.
 
-Prices show currency, scope, store context, and observation time. Unknown scope is labelled “Store not verified.” Stage 6C adds conditional best-known price summaries as described below. Unavailable/unsupported/failed checks are distinct from “No match found.” Registered login and list-item editing remain future stages.
+Prices show currency, scope, store context, and observation time. Unknown scope is labelled “Store not verified.” Stage 6C adds conditional best-known price summaries as described below. Unavailable/unsupported/failed checks are distinct from “No match found.” Registered login remains a future stage.
 
 ## Verification
 
@@ -71,3 +71,15 @@ Out-of-stock, uncertain matches, invalid amounts/times, expired or future promot
 There are no basket totals or savings calculations: import history may contain repeated references to the same shopping-list item. Stage 6A live access limitations remain: Woolworths denied isolated browser access and Coles timed out in previous checks. UI tests use a fake upstream, so passing them does not verify live retailer access.
 
 Comparison tests cover desktop/mobile rendering, cache labels, ties, scope/currency separation, freshness boundaries, stale/invalid/future dates, uncertain and unavailable results, promotion exclusions, and recommendations expiring after polling stops.
+
+## Stage 7B – Editable shopping list
+
+The shopping list now loads actual items from the Stage 7A API above the separate import history and price comparisons. Each product has one editor even after repeated imports. Edit a positive whole-number quantity, notes (up to 4,000 characters), Purchased and Hidden, then choose Save changes. Empty notes clear the saved notes. Purchase dates are managed by the backend. Hiding preserves the item; select Show hidden, clear Hidden and save to restore it.
+
+Show purchased and Show hidden filter the loaded items locally. Pages contain 20 items including hidden/purchased records, and the count explicitly refers to loaded items. Load more items continues the cursor when more records are available. Hidden editors remain mounted so switching filters does not discard drafts. Refresh items reloads the loaded range; import persistence/completion also triggers an item refresh without continuously polling terminal items. Price observations remain in import history.
+
+Drafts survive failed saves and background refreshes in the current page. Saved updates retain the backend UTC timestamp verbatim for optimistic concurrency. A conflict or newer saved version blocks further saves until Load latest saved version is chosen; the UI explains that this explicit action replaces unsaved edits. Failed reloads preserve the draft. Successful edits invalidate older in-flight list reads. Session expiry/sign-out clears editors and aborts their requests. Unsaved drafts are not persisted across browser reload/navigation, sign-out or expiry.
+
+The gateway allows GET `/api/shopping-lists/{id}/items` and PUT `/api/shopping-lists/{id}/items/{itemId}` only, with numeric pagination and validated boolean filters. PUT cannot invoke the trial/import routes, and POST cannot edit items. Browser protection, cookie isolation, JSON content-type checks and response no-store policy remain in force. No backend or database changes are part of Stage 7B.
+
+Desktop/mobile tests cover edit persistence, clearing notes, purchased/hidden filters and restoration, repeated imports, pagination, preserving drafts on refresh/errors/conflicts, explicit conflict reload, session expiry, full-length Unicode notes, and gateway method/route/filter/body-size protections. Tests use a fake API rather than live retailer requests.
