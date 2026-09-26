@@ -15,6 +15,9 @@ export default function AccountForm({ mode, trial, onSuccess, onBusy, onClose }:
   const register = mode === "register";
   async function submit(event: React.FormEvent) {
     event.preventDefault(); if (posting.current) return;
+    if (register && (password.length < 8 || !/[0-9]/.test(password) || !/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/[\p{P}\p{S}]/u.test(password))) {
+      setError("Use at least 8 characters with a number (0–9), a lowercase letter (a–z), an uppercase letter (A–Z), and a special character. Spaces do not count as special characters."); return;
+    }
     posting.current = true; setPending(true); onBusy(true); setError("");
     const request = new AbortController(); controller.current = request;
     try {
@@ -43,8 +46,8 @@ export default function AccountForm({ mode, trial, onSuccess, onBusy, onClose }:
       <fieldset disabled={pending} className="space-y-4 disabled:opacity-60">
         {register && <label className="block text-sm font-medium">Display name<input autoFocus className={input} required maxLength={200} autoComplete="nickname" value={name} onChange={e => setName(e.target.value)} /></label>}
         <label className="block text-sm font-medium">Email<input autoFocus={!register} className={input} type="email" required maxLength={320} autoComplete="username" value={email} onChange={e => setEmail(e.target.value)} /></label>
-        <label className="block text-sm font-medium">Password<input className={input} type="password" required minLength={register ? 15 : 1} maxLength={1024} autoComplete={register ? "new-password" : "current-password"} aria-describedby={register ? "password-help" : undefined} value={password} onChange={e => setPassword(e.target.value)} /></label>
-        {register && <p id="password-help" className="text-xs text-slate-500">Use at least 15 characters. A long, unique passphrase works well.</p>}
+        <label className="block text-sm font-medium">Password<input className={input} type="password" required minLength={register ? 8 : 1} maxLength={1024} autoComplete={register ? "new-password" : "current-password"} aria-describedby={register ? "password-help" : undefined} value={password} onChange={e => setPassword(e.target.value)} /></label>
+        {register && <p id="password-help" className="text-xs text-slate-500">Use at least 8 characters, including a number (0–9), a lowercase letter (a–z), an uppercase letter (A–Z), and a special character such as !, @ or #. Spaces do not count as special characters.</p>}
       </fieldset>
       {error && <p role="alert" className="text-sm text-amber-800">{error}</p>}
       {expired && <div className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900"><p>An expired trial cannot be recovered. You can explicitly clear its session and create a new, empty list.</p><button type="button" disabled={pending} onClick={resetExpired} className="mt-2 font-semibold underline">Clear expired session for a new account</button></div>}

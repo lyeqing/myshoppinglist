@@ -123,12 +123,26 @@ async function start(page: Page) {
   await page.goto("/"); await page.getByRole("button", { name: "Start my shopping list" }).click();
   await expect(page.getByText("Your trial is active")).toBeVisible();
 }
-const accountPassword = "A long unique passphrase 123";
+const accountPassword = "Abcdef1!";
 async function fillAccount(page: Page, register = true) {
   if (register) await page.getByLabel("Display name").fill("Test shopper");
   await page.getByLabel("Email", { exact: true }).fill("shopper@example.test");
   await page.getByLabel("Password", { exact: true }).fill(accountPassword);
 }
+
+test("account registration validates every password requirement before sending", async ({ page }) => {
+  await page.goto("/"); await page.getByRole("button", { name: "Create an account", exact: true }).click(); await fillAccount(page);
+  const password = page.getByLabel("Password", { exact: true });
+  let requests = 0; page.on("request", r => { if (r.url().endsWith("/auth/register")) requests++; });
+  for (const invalid of ["Aa1!abc", "Abcdefg!", "ABCDEFG1!", "abcdefg1!", "Abcdefg1", "Abcdef1 ", "Abcdef1\u200B"]) {
+    await password.fill(invalid); await page.getByRole("button", { name: "Create account", exact: true }).click();
+    if (invalid.length < 8) expect(await password.evaluate((e: HTMLInputElement) => e.validity.tooShort)).toBe(true);
+    else await expect(page.getByRole("alert").filter({ hasText: "special character" })).toBeVisible();
+    expect(requests).toBe(0);
+  }
+  await password.fill(accountPassword); await page.getByRole("button", { name: "Create account", exact: true }).click();
+  await expect(page.getByText("Signed in as Test shopper")).toBeVisible(); expect(requests).toBe(1);
+});
 
 test("account registration, login failures, rate limits and refresh recovery", async ({ page }, info) => {
   await page.goto("/"); await page.getByRole("button", { name: "Create an account", exact: true }).click();
