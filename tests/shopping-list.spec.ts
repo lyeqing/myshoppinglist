@@ -451,6 +451,21 @@ test("verified comparison highlights the best price and retains cache context", 
   await expect(page.getByText("at Woolworths", { exact: true })).toBeVisible();
 });
 
+test("blocked source imports explain retailer access and survive refresh", async ({ page }) => {
+  comparison = job => ({ ...job, status: "Failed", product: null, shoppingListProductId: null, errorCode: "retailer_access_restricted", retailers: [] });
+  await start(page); await add(page);
+  const blocked = page.getByRole("heading", { name: "The retailer blocked access" });
+  await expect(blocked).toBeVisible();
+  await expect(page.getByText(/The retailer prevented MyShoppingList/)).toBeVisible();
+  await expect(page.getByText("Check the product link and submit it again when you’re ready.")).toHaveCount(0);
+  expect(listItems.size).toBe(0);
+  const polled = counts.get(1); await page.waitForTimeout(2300); expect(counts.get(1)).toBe(polled);
+  await page.reload(); await expect(blocked).toBeVisible();
+  comparison = job => ({ ...job, status: "Failed", product: null, shoppingListProductId: null, errorCode: "product_not_identified", retailers: [] });
+  await add(page, "another");
+  await expect(page.getByRole("heading", { name: "We couldn’t identify this product" })).toBeVisible();
+});
+
 test("unknown stores, uncertain matches and failures do not receive recommendations", async ({ page }) => {
   comparison = job => {
     const result = comparable(job);

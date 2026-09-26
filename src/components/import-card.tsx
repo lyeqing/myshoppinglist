@@ -21,6 +21,8 @@ export default function ImportCard({ job, error, onRetry }: { job: Job; error?: 
   const best = now === null ? [] : bestKnownPrices(job.retailers, now);
   const active = isActive(job);
   const product = job.product;
+  const accessBlocked = job.status === "Failed" && !product
+    && ["retailer_access_restricted", "retailer_http_401", "retailer_http_403"].includes(job.errorCode ?? "");
   const pack = product ? [product.packQuantity ? `${product.packQuantity} ×` : null, product.packSize && product.packUnit ? `${product.packSize}${product.packUnit}` : null].filter(Boolean).join(" ") : "";
   return <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm" aria-label={product?.name ?? `Import ${job.jobId}`}>
     <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3 text-xs">
@@ -32,9 +34,9 @@ export default function ImportCard({ job, error, onRetry }: { job: Job; error?: 
     <div className="flex gap-4 p-5 sm:p-6">
       <div aria-hidden="true" className="flex size-16 shrink-0 items-center justify-center rounded-2xl bg-sky-50 text-2xl font-semibold text-sky-700">{product?.brand?.slice(0, 2).toUpperCase() ?? "↗"}</div>
       <div className="min-w-0 flex-1">
-        <h3 className="wrap-break-word text-lg font-semibold tracking-tight">{product?.name ?? (job.status === "Failed" ? "We couldn’t identify this product" : active ? "Finding your product…" : "Import unavailable")}</h3>
+        <h3 className="wrap-break-word text-lg font-semibold tracking-tight">{product?.name ?? (accessBlocked ? "The retailer blocked access" : job.status === "Failed" ? "We couldn’t identify this product" : active ? "Finding your product…" : "Import unavailable")}</h3>
         {product ? <p className="mt-1 text-sm text-slate-500">{[product.brand, pack].filter(Boolean).join(" · ") || "Product added to your list"}</p>
-          : <p className="mt-1 text-sm leading-6 text-slate-500">{active ? "You can keep adding products while we check this link." : "Check the product link and submit it again when you’re ready."}</p>}
+          : <p className="mt-1 text-sm leading-6 text-slate-500">{accessBlocked ? "The retailer prevented MyShoppingList from reading this product page. Your link may still work in your browser, but we couldn’t import its details. Changing the link won’t resolve this access restriction." : active ? "You can keep adding products while we check this link." : "Check the product link and submit it again when you’re ready."}</p>}
         <p className="mt-2 text-xs text-slate-500">Requested quantity: {job.quantity}{job.nextAttemptDate ? ` · Retrying after ${time(job.nextAttemptDate)}` : ""}</p>
       </div>
     </div>
