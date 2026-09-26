@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Coles Reader</title><link rel="stylesheet" href="popup.css"></head>
+<body>
+  <header><p class="eyebrow">MYSHOPPINGLIST · LOCAL TEST</p><h1>Coles Reader</h1><p>Read a product using Chrome on this computer.</p></header>
+  <form id="read-form">
+    <label for="url">Coles product URL</label>
+    <input id="url" name="url" type="url" required maxlength="8192" placeholder="https://www.coles.com.au/product/…" autocomplete="off">
+    <button id="read" type="submit">Read product</button>
+  </form>
+  <p id="status" role="status" aria-live="polite">Ready. Results stay in this browser session.</p>
+  <section id="result" hidden aria-label="Product result">
+    <h2 id="name"></h2><p id="price" class="price"></p><p id="promotion"></p>
+    <p class="notice">Browser-context price. Your local store price has not been verified.</p>
+    <details><summary>Extraction details</summary><pre id="json"></pre></details>
+  </section>
+  <footer>One worker tab is reused for your reads. If you close it, the next read opens a replacement. You can reopen this popup to see the result. No data is sent to MyShoppingList yet.</footer>
+  <script src="popup.js"></script>
+</body>
+</html>

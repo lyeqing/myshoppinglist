@@ -1,0 +1,22 @@
+:root { color-scheme: light; font-family: system-ui, sans-serif; color: #172b25; background: #f5f8f6; }
+* { box-sizing: border-box; }
+body { width: 380px; margin: 0; padding: 22px; font-size: 14px; line-height: 1.5; }
+h1 { margin: 0; font-size: 25px; letter-spacing: -.6px; }
+h2 { font-size: 18px; margin: 0 0 10px; }
+p { margin: 8px 0; }
+.eyebrow { font-size: 10px; font-weight: 750; letter-spacing: 1.2px; color: #426d5c; }
+header > p:last-child, footer { color: #53645c; }
+form { display: grid; gap: 9px; margin-top: 22px; }
+label { font-weight: 650; }
+input { width: 100%; border: 1px solid #baccc1; border-radius: 8px; padding: 11px; font: inherit; background: white; }
+button { padding: 11px; border: 0; border-radius: 8px; background: #1e694d; color: white; font: inherit; font-weight: 650; cursor: pointer; }
+button:disabled { opacity: .6; cursor: wait; }
+input:focus-visible, button:focus-visible, summary:focus-visible { outline: 3px solid #88baa1; outline-offset: 2px; }
+#status { margin: 16px 0; }
+section { padding: 16px; background: white; border: 1px solid #d3e0d8; border-radius: 12px; }
+.price { font-size: 24px; font-weight: 750; color: #1e694d; }
+.notice { font-size: 12px; background: #fff5df; padding: 10px; border-radius: 6px; color: #695020; }
+summary { cursor: pointer; margin-top: 12px; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; max-height: 220px; overflow-y: auto; }
+footer { margin-top: 18px; font-size: 12px; }
+[hidden] { display: none !important; }
