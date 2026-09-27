@@ -6,8 +6,7 @@
   <form id="worker-form">
     <label for="worker-key">Worker key</label>
     <input id="worker-key" type="password" autocomplete="off" maxlength="512" placeholder="Paste the server worker key">
-    <button id="enable" type="submit">Start worker</button>
-    <button id="pause" type="button">Pause worker</button>
+    <button id="enable" type="submit" disabled>Checking worker…</button>
   </form>
   <p id="connection" role="status" aria-live="polite"></p>
   <div id="queue"></div>
@@ -22,7 +21,7 @@
     <p class="notice">Browser-context price. Your local store price has not been verified.</p>
     <details><summary>Extraction details</summary><pre id="json"></pre></details>
   </section>
-  <footer>Connects to localhost:5392. One worker tab processes queued products and searches sequentially. Keep Chrome open; the popup can be closed. Pausing finishes the current task.</footer>
+  <footer>Connects to localhost:5392. One worker tab processes queued products and searches sequentially. Keep Chrome open; the popup can be closed. Stopping finishes the current task, then takes no new tasks.</footer>
   <script src="popup.js"></script>
 </body>
 </html>

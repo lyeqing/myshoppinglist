@@ -20,6 +20,6 @@ summary { cursor: pointer; margin-top: 12px; }
 pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; max-height: 220px; overflow-y: auto; }
 footer { margin-top: 18px; font-size: 12px; }
 [hidden] { display: none !important; }
-#pause { background: #53645c; }
+#enable[data-running="true"] { background: #53645c; }
 #queue button { padding: 5px 10px; }
 #connection { overflow-wrap: anywhere; }

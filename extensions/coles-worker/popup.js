@@ -5,6 +5,14 @@ const button = document.getElementById("read");
 const status = document.getElementById("status");
 const resultPanel = document.getElementById("result");
 let enabled = false;
+const toggle = document.getElementById("enable");
+let configuring = false;
+function renderWorkerState(value) {
+  enabled = !!value;
+  toggle.textContent = enabled ? "Stop worker" : "Start worker";
+  toggle.dataset.running = String(enabled);
+  toggle.disabled = configuring;
+}
 function render(task) {
   button.disabled = enabled || task?.status === "reading";
   if (task?.remote || !input.value) input.value = task?.kind === "search" ? "" : task?.url || "";
@@ -39,8 +47,9 @@ form.addEventListener("submit", async event => {
   } catch { button.disabled = false; status.textContent = "Extension unavailable. Reload it in chrome://extensions and try again."; }
 });
 async function renderConnection() {
-  const state = await chrome.storage.session.get(["connection", "serverTasks"]);
-  document.getElementById("connection").textContent = `${enabled ? "Running" : "Paused"}. ${state.connection || "Server: localhost:5392"}`;
+  const state = await chrome.storage.session.get(["connection", "serverTasks", "task"]);
+  const mode = enabled ? "Running" : state.task?.status === "reading" ? "Stopping after the current task" : "Stopped";
+  document.getElementById("connection").textContent = `${mode}. ${state.connection || "Server: localhost:5392"}`;
   const container = document.getElementById("queue"); container.replaceChildren();
   const tasks = state.serverTasks || [];
   const count = document.createElement("p"); count.textContent = `${tasks.filter(t => t.status === "Waiting").length} waiting tasks`; container.append(count);
@@ -55,19 +64,24 @@ async function renderConnection() {
   }
 }
 async function configure(value) {
-  const reply = await chrome.runtime.sendMessage({ type: "configure", enabled: value, key: document.getElementById("worker-key").value.trim() });
+  const reply = await chrome.runtime.sendMessage({ type: "configure", enabled: value, key: value ? document.getElementById("worker-key").value.trim() : "" });
   if (!reply?.ok) { status.textContent = reply?.message || "Unable to configure worker."; return; }
-  enabled = value; document.getElementById("worker-key").value = "";
+  renderWorkerState(value); document.getElementById("worker-key").value = "";
   document.getElementById("worker-key").placeholder = "Key saved; leave blank to keep it";
-  button.disabled = enabled; await renderConnection();
+  render((await chrome.storage.session.get("task")).task); await renderConnection();
 }
-document.getElementById("worker-form").addEventListener("submit", event => { event.preventDefault(); configure(true).catch(error => { status.textContent = error.message; }); });
-document.getElementById("pause").addEventListener("click", () => { configure(false).catch(error => { status.textContent = error.message; }); });
+document.getElementById("worker-form").addEventListener("submit", async event => {
+  event.preventDefault(); if (toggle.disabled || configuring) return;
+  configuring = true; toggle.disabled = true;
+  try { await configure(!enabled); } catch (error) { status.textContent = error.message; }
+  finally { configuring = false; renderWorkerState(enabled); }
+});
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === "session" && changes.task) render(changes.task.newValue);
+  if (area === "local" && changes.settings) { renderWorkerState(changes.settings.newValue?.enabled); void renderConnection(); }
+  if (area === "session" && changes.task) { render(changes.task.newValue); void renderConnection(); }
   if (area === "session" && (changes.connection || changes.serverTasks)) void renderConnection();
 });
 chrome.runtime.sendMessage({ type: "status" }).then(reply => {
-  if (reply?.ok) { enabled = reply.enabled; render(reply.task); if (reply.hasKey) document.getElementById("worker-key").placeholder = "Key saved; leave blank to keep it"; void renderConnection(); }
+  if (reply?.ok) { renderWorkerState(reply.enabled); render(reply.task); if (reply.hasKey) document.getElementById("worker-key").placeholder = "Key saved; leave blank to keep it"; void renderConnection(); }
   else status.textContent = reply?.message || "Unable to read status.";
 }).catch(() => { status.textContent = "Extension unavailable. Reload it in chrome://extensions."; });

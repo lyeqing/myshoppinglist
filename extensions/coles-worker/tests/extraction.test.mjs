@@ -219,6 +219,7 @@ test("search reads only bounded product links inside the results container", () 
   doc.querySelector = () => null;
   assert.equal(read(doc, "https://www.coles.com.au/search/products?q=pizza").code, "product_not_identified");
   doc.body.innerText = "No results for pizza";
+  doc.querySelector = selector => selector === 'main h1, h1' ? { textContent: 'No results for pizza' } : null;
   assert.equal(read(doc, "https://www.coles.com.au/search/products?q=pizza").emptyConfirmed, true);
 });
 test("evidence excludes account state and carries only the matching product", () => {
@@ -302,8 +303,47 @@ test("search returns both pack sizes without depending on product link classes",
   }
   assert.equal(read(searchDocument({ stale: true }), searchUrl).code, "product_not_identified");
   assert.equal(read(searchDocument({ fallback: true, extra: true }), searchUrl).code, "product_not_identified");
-  const empty = searchDocument(); empty.body.innerText = "No results for this product";
+  const empty = searchDocument(); empty.body.innerText = "No results for mccain superfries shoestring 900g";
+  const originalQuery = empty.querySelector;
+  empty.querySelector = selector => selector === "main h1, h1" ? { textContent: empty.body.innerText } : originalQuery(selector);
   assert.equal(read(empty, searchUrl).links.length, 0);
+});
+
+test("unrelated empty messages cannot discard real search candidates", () => {
+  const doc = searchDocument();
+  doc.body.innerText += " Recipes: no results found. Footer: we couldn't find any.";
+  const result = read(doc, searchUrl);
+  assert.equal(result.links.length, 2); assert.equal(result.emptyConfirmed, false);
+  const loading = documentFixture(); loading.body.innerText = "No results found in recipes";
+  loading.querySelector = () => null;
+  assert.equal(read(loading, searchUrl).code, "product_not_identified");
+});
+
+test("popup restores one Start/Stop button and toggles saved worker state", async () => {
+  const elements = new Map(); const messages = []; const changes = {};
+  const node = () => ({ value: "", textContent: "", dataset: {}, disabled: false, hidden: false,
+    events: {}, addEventListener(type, fn) { this.events[type] = fn; }, replaceChildren() {}, append() {} });
+  const doc = { getElementById(id) { if (!elements.has(id)) elements.set(id, node()); return elements.get(id); }, createElement: node };
+  const task = { status: "reading", kind: "product", url, remote: { id: 1 } };
+  const chrome = {
+    runtime: { async sendMessage(message) { messages.push(message); return message.type === "status" ? { ok: true, enabled: true, hasKey: true, task } : { ok: true }; } },
+    storage: { session: { get: async () => ({ task, serverTasks: [] }) }, onChanged: { addListener: fn => { changes.listener = fn; } } }
+  };
+  vm.runInContext(readFileSync(new URL("../popup.js", import.meta.url), "utf8"), vm.createContext({ document: doc, chrome, URL, Intl }));
+  await Promise.resolve(); await Promise.resolve();
+  const toggle = doc.getElementById("enable");
+  assert.equal(toggle.textContent, "Stop worker");
+  doc.getElementById("worker-key").value = "unfinished key edit";
+  await doc.getElementById("worker-form").events.submit({ preventDefault() {} });
+  assert.equal(toggle.textContent, "Start worker");
+  assert.equal(messages.at(-1).enabled, false); assert.equal(messages.at(-1).key, "");
+  assert.equal(doc.getElementById("read").disabled, true);
+  assert.match(doc.getElementById("connection").textContent, /Stopping after the current task/);
+  await doc.getElementById("worker-form").events.submit({ preventDefault() {} });
+  assert.equal(toggle.textContent, "Stop worker"); assert.equal(messages.at(-1).enabled, true);
+  changes.listener({ settings: { newValue: { enabled: false } } }, "local");
+  assert.equal(toggle.textContent, "Start worker");
+  assert.equal(elements.has("pause"), false);
 });
 test("search is extracted while background resources load but pending navigation is not read", async () => {
   const task = { status: "reading", kind: "search", tabId: 42, url: searchUrl, deadline: Date.now() + 60000 };
