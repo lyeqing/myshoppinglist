@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Add to MyShoppingList</title><link rel="stylesheet" href="popup.css"></head>
+<body><header><p class="eyebrow">MYSHOPPINGLIST · LOCAL TEST</p><h1>Add to your list</h1></header>
+<p id="product">Checking the current tab…</p>
+<p id="status" role="status" aria-live="polite"></p>
+<form id="login" hidden><h2>Sign in</h2><label>Email<input id="email" type="email" autocomplete="username" maxlength="320" required></label><label>Password<input id="password" type="password" autocomplete="current-password" maxlength="1024" required></label><button type="submit">Sign in</button><a href="http://localhost:3000/" target="_blank" rel="noreferrer">Create an account on MyShoppingList</a></form>
+<section id="account" hidden><div class="account"><span id="name"></span><button id="logout" class="secondary">Sign out</button></div>
+<form id="add"><label id="list-label">Shopping list<select id="list"></select></label><p id="empty" hidden>We’ll create “My shopping list” when you add this product.</p><label>Quantity<input id="quantity" type="number" min="1" max="2147483647" step="1" value="1" required></label><button id="add-button" type="submit">Add to list</button></form></section>
+<button id="refresh" class="secondary">Refresh</button><a href="http://localhost:3000/" target="_blank" rel="noreferrer">Open MyShoppingList</a>
+<footer>Connects to localhost:5392. Sign in again after restarting Chrome. Price checks continue after submission.<details><summary>Local setup</summary><p>Enable this extension ID in the backend’s UserExtension:AllowedExtensionIds setting:</p><code id="extension-id"></code></details></footer>
+<script src="popup.js" type="module"></script></body></html>

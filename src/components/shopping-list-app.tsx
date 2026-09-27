@@ -180,6 +180,7 @@ export default function ShoppingListApp() {
       </div>
     </header>
     <main id="main" className="mx-auto max-w-7xl px-5 pb-16 pt-10 sm:px-8 sm:pt-14">
+      <div className="mb-6"><Link href="/extension" className={secondary}>Add Chrome extension</Link></div>
 
       <div className="mb-9 flex flex-wrap items-end justify-between gap-5">
         <div><p className="mb-3 text-xs font-semibold tracking-widest text-sky-700">LESS GUESSWORK. BETTER SHOPPING.</p><h1 className="text-4xl font-semibold leading-tight tracking-tight sm:text-5xl">Your list. <span className="text-sky-700">A clearer price.</span></h1><p className="mt-4 max-w-xl text-base leading-7 text-slate-500">Save a product link. We’ll find the details and keep the observed price with your shopping list.</p></div>

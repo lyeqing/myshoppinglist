@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "MyShoppingList — Add to list (Local test)",
+  "version": "0.1.0",
+  "description": "Add the current Coles or Woolworths product to your MyShoppingList account.",
+  "minimum_chrome_version": "120",
+  "permissions": ["activeTab", "storage"],
+  "host_permissions": ["http://localhost/*"],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": { "default_title": "Add to MyShoppingList", "default_popup": "popup.html" }
+}

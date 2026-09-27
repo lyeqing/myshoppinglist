@@ -10,6 +10,14 @@ test("root navigation offers in-store shopping before sign in", async ({ page })
   await expect(page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Shop in store", exact: true })).toHaveAttribute("href", "/in-store");
 });
 
+test("root offers local Chrome extension installation instructions", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("link", { name: "Add Chrome extension", exact: true }).click();
+  await expect(page).toHaveURL(/\/extension$/);
+  await expect(page.getByRole("heading", { name: "Install the local test extension" })).toBeVisible();
+  await expect(page.getByText("Load unpacked", { exact: true })).toBeVisible();
+});
+
 let server: Server;
 let sessions: Map<string, Session>;
 let jobs: Map<number, Job>;
