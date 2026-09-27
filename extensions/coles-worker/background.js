@@ -31,6 +31,7 @@ async function workerTab(url) {
   return tab;
 }
 async function finish(task, result) {
+  clearTimeout(activeCheck);
   if (task.remote) {
     const config = await settings();
     const submission = { workerId: config.workerId, claimToken: task.remote.claimToken,
@@ -46,7 +47,16 @@ async function finish(task, result) {
     await chrome.alarms.clear(ALARM);
   }
 }
+let activeCheck;
 async function inspect() {
+  clearTimeout(activeCheck);
+  try { await inspectOnce(); }
+  finally {
+    if ((await current())?.status === "reading")
+      activeCheck = setTimeout(() => { void serial(inspect); }, 1000);
+  }
+}
+async function inspectOnce() {
   const task = await current();
   if (!task || task.status !== "reading") return;
   if (Date.now() >= task.deadline) {
@@ -56,7 +66,7 @@ async function inspect() {
   let tab;
   try { tab = await chrome.tabs.get(task.tabId); }
   catch { await finish(task, failure("tab_closed", "The product tab was closed.")); return; }
-  if (tab.pendingUrl || (task.kind !== "search" && tab.status !== "complete")) return;
+  if (tab.pendingUrl) return;
   if (task.kind === "search" && tab.status === "loading" && tab.url !== task.url) return;
   if (task.kind === "search" ? tab.url !== task.url : (READER.retailerProductUrl(tab.url)?.id !== task.productId || READER.retailerProductUrl(tab.url)?.retailer !== READER.retailerProductUrl(task.url)?.retailer)) {
     await finish(task, failure("product_redirected", "The tab navigated away from the requested product."));
@@ -64,7 +74,7 @@ async function inspect() {
   }
   try {
     const responses = await chrome.scripting.executeScript({ target: { tabId: task.tabId, frameIds: [0] },
-      files: ["content.js"], world: "ISOLATED", injectImmediately: task.kind === "search" });
+      files: ["content.js"], world: "ISOLATED", injectImmediately: true });
     const result = responses[0]?.result;
     if (!result || result.code === "product_not_identified") return;
     if (task.kind === "search" && result.ok && (result.kind !== "search" || result.url !== task.url)) return;

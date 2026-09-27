@@ -54,3 +54,7 @@ Tests use controlled snapshots and mocked Chrome/network APIs. For a live check,
 ## Woolworths fallback
 
 Reload the extension and restart the API after this update. The extension is now named MyShoppingList Retailer Reader and needs access to Woolworths as well as Coles. When a Woolworths backend search or product read is access-restricted, it queues browser work using the same worker key and sequential queue. Fresh cached data is reused. The server validates Woolworths identity and price evidence before saving; browser access restrictions are reported, not bypassed. Re-add an earlier failed product URL after restarting to request a new comparison. Polling intervals are unchanged.
+
+## Active task timing
+
+While reading a page, the worker checks for verifiable product data every second without waiting for all background resources. The 30-second alarm remains a recovery mechanism if Chrome suspends the worker. Idle task polling stays at 30 seconds. A saved result makes queued imports waiting for extension work eligible for the next backend worker cycle (normally about one second when idle). Retailer loading time and other queued work can still add delay.

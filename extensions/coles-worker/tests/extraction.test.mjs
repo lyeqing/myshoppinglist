@@ -116,10 +116,11 @@ function worker(existingTask, existingWorkerTabId) {
       onUpdated: { addListener: fn => { listeners.updated = fn; } }, onRemoved: { addListener: fn => { listeners.removed = fn; } } },
     scripting: { executeScript: async () => [{ result: extract(snapshot()) }] }
   };
-  const scope = vm.createContext({ chrome, URL, Date, AbortSignal, crypto: { randomUUID: () => "test-worker" }, importScripts: () => {} });
+  const timers = new Map(); let timerId = 0;
+  const scope = vm.createContext({ setTimeout: fn => { timers.set(++timerId, fn); return timerId; }, clearTimeout: id => timers.delete(id), chrome, URL, Date, AbortSignal, crypto: { randomUUID: () => "test-worker" }, importScripts: () => {} });
   vm.runInContext(source, scope); vm.runInContext(background, scope);
   const sender = { id: "test", url: "chrome-extension://test/popup.html" };
-  return { storage, local, scope, chrome, listeners, updated, panelBehavior, created: () => created,
+  return { timers, storage, local, scope, chrome, listeners, updated, panelBehavior, created: () => created,
     send: message => new Promise(resolve => listeners.message(message, sender, resolve)) };
 }
 test("toolbar opens the shared side panel without starting a worker task", () => {
@@ -153,7 +154,7 @@ test("expired tasks and closed tabs fail without launching another tab", async (
   await closed.send({ type: "status" }); assert.equal(closed.storage.task.result.code, "tab_closed");
 });
 test("concurrent requests cannot create duplicate active jobs", async () => {
-  const w = worker(); w.chrome.tabs.get = async () => ({ status: "loading", url });
+  const w = worker(); w.chrome.tabs.get = async () => ({ status: "loading", url, pendingUrl: url });
   const results = await Promise.all([w.send({ type: "start", url }), w.send({ type: "start", url })]);
   assert.equal(results[0].ok, true); assert.equal(results[1].code, "busy"); assert.equal(w.created(), 1);
 });
@@ -182,7 +183,7 @@ test("saved worker tab is reused after service-worker suspension", async () => {
 });
 test("closing worker during a task clears ownership and next request replaces it", async () => {
   const w = worker();
-  w.chrome.tabs.get = async () => ({ status: "loading", url });
+  w.chrome.tabs.get = async () => ({ status: "loading", url, pendingUrl: url });
   await w.send({ type: "start", url });
   w.listeners.removed(1);
   await w.send({ type: "status" }); // Wait behind the removal event in the serial queue.
@@ -201,7 +202,7 @@ test("missing idle worker is replaced even if its removal event was missed", asy
 });
 test("unrelated tab closure leaves worker ownership and active task untouched", async () => {
   const w = worker();
-  w.chrome.tabs.get = async () => ({ status: "loading", url });
+  w.chrome.tabs.get = async () => ({ status: "loading", url, pendingUrl: url });
   await w.send({ type: "start", url });
   w.listeners.removed(999);
   await w.send({ type: "status" });
@@ -254,7 +255,7 @@ test("polling receives the entire list but claims one task and reuses the worker
     assert.equal(options.headers.Authorization, "Bearer " + "k".repeat(40));
     return { ok: true, text: async () => JSON.stringify(target.endsWith("/tasks") ? tasks : { ...tasks[0], claimToken: "claim" }) };
   };
-  w.chrome.tabs.get = async () => ({ status: "loading", url });
+  w.chrome.tabs.get = async () => ({ status: "loading", url, pendingUrl: url });
   await vm.runInContext("tick()", w.scope);
   assert.equal(w.storage.serverTasks.length, 2); assert.equal(w.storage.task.remote.id, 1);
   assert.equal(calls.length, 2); assert.equal(w.updated[0].id, 42); assert.equal(w.created(), 0);
@@ -507,4 +508,19 @@ test("Coles apostrophe slugs accept literal and encoded quotes without accepting
   for (const slug of ["four'n-twenty", "four%27n-twenty"])
     assert.equal(productUrl(`https://www.coles.com.au/product/${slug}-frozen-meat-pies-4-pack-700g-5112318?pid=tracking`).id, "5112318");
   assert.equal(productUrl("https://www.coles.com.au/product/four%2Fn-twenty-5112318"), null);
+});
+
+test("active reads retry promptly and stop their timer when product data is ready", async () => {
+  const w = worker();
+  w.chrome.tabs.get = async () => ({ status: "loading", url });
+  w.chrome.scripting.executeScript = async () => [{ result: { ok: false, code: "product_not_identified" } }];
+  await w.send({ type: "start", url });
+  assert.equal(w.timers.size, 1);
+  assert.equal(w.storage.task.status, "reading");
+  w.chrome.scripting.executeScript = async () => [{ result: extract(snapshot()) }];
+  const callback = [...w.timers.values()][0]; callback();
+  await w.send({ type: "status" });
+  assert.equal(w.storage.task.status, "complete");
+  assert.equal(w.timers.size, 0);
+  assert.equal(w.created(), 1);
 });
