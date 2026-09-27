@@ -334,6 +334,26 @@ test("olive oil suggestions survive a no-results heading, but an empty search st
   }
 });
 
+test("Hans single-result search supports the live ID and test ID containers without main", () => {
+  const query = "hans twiggy sticks mild 500g";
+  const productPath = "/product/hans-twiggy-sticks-mild-500g-2517845";
+  for (const containerSelector of ['#coles-targeting-search-content-container', '[data-testid="search-results"]', 'main']) {
+    const doc = documentFixture();
+    doc.body.innerText = `Results for "${query}" 1 - 1 of 1 result`;
+    const container = { querySelectorAll: () => [
+      // Coles places the image link inside a product-card header; the title link is outside it.
+      { getAttribute: () => productPath, closest: () => ({ tagName: "HEADER" }) },
+      { getAttribute: () => productPath, closest: () => null }
+    ] };
+    doc.querySelector = selector => selector === 'main h1, h1' ? { textContent: `Results for "${query}"` }
+      : selector === containerSelector ? container : null;
+    const result = read(doc, `https://www.coles.com.au/search/products?q=${encodeURIComponent(query)}`);
+    assert.equal(result.ok, true, containerSelector);
+    assert.equal(result.emptyConfirmed, false);
+    assert.deepEqual(Array.from(result.links), [`https://www.coles.com.au${productPath}`]);
+  }
+});
+
 test("unrelated empty messages cannot discard real search candidates", () => {
   const doc = searchDocument();
   doc.body.innerText += " Recipes: no results found. Footer: we couldn't find any.";

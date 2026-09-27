@@ -100,8 +100,10 @@
       const query = (pageUrl.searchParams.get("q") || "").trim().toLowerCase();
       if (heading && query && !(heading.textContent || "").toLowerCase().includes(query))
         return fail("product_not_identified", "Waiting for the requested search results.");
-      const results = document.querySelector('.coles-targeting-search-content-container');
-      const count = body.match(/\b\d+\s*[-–]\s*\d+\s+of\s+(\d+)\s+results\b/i);
+      const results = document.querySelector('#coles-targeting-search-content-container')
+        || document.querySelector('[data-testid="search-results"]')
+        || document.querySelector('.coles-targeting-search-content-container');
+      const count = body.match(/\b\d+\s*[-–]\s*\d+\s+of\s+(\d+)\s+results?\b/i);
       // A bounded, visibly identified result page is a fallback when Coles changes its container class.
       const container = results || (heading && count ? document.querySelector('main') : null);
       const candidates = container ? Array.from(container.querySelectorAll('a[href]'))
