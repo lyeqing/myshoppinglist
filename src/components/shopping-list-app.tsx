@@ -6,6 +6,8 @@ import { isActive, placeholder, type Accepted, type ImportPage, type Job, type S
 import ImportCard, { Spinner } from "./import-card";
 import ShoppingListItems from "./shopping-list-items";
 import AccountForm from "./account-form";
+import { useShallow } from "zustand/react/shallow";
+import { useShoppingStore } from "./shopping-store-provider";
 
 const primary = "inline-flex items-center justify-center gap-2 rounded-xl bg-sky-700 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-800 disabled:cursor-not-allowed disabled:opacity-50";
 const secondary = "rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50";
@@ -13,23 +15,22 @@ const message = (e: unknown) => e instanceof Error ? e.message : "Something went
 const aborted = (e: unknown) => e instanceof Error && e.name === "AbortError";
 
 export default function ShoppingListApp() {
-  const [session, setSession] = useState<Session | null>(null);
-  const [booting, setBooting] = useState(true);
+  const { session, booting, restoreError, jobs, errors, loading, cursor, loadError } = useShoppingStore(useShallow(state => ({
+    session: state.session, booting: state.booting, restoreError: state.restoreError,
+    jobs: state.jobs, errors: state.errors, loading: state.loading, cursor: state.cursor, loadError: state.loadError,
+  })));
+  const { setSession, clearSession, setBooting, setRestoreError, setJobs, setErrors, setLoading, setCursor, setLoadError } = useShoppingStore(state => state.actions);
+  const [restoreAttempt, setRestoreAttempt] = useState(0);
   const [busy, setBusy] = useState(false);
   const [accountMode, setAccountMode] = useState<"register" | "login" | null>(null);
   const [authBusy, setAuthBusy] = useState(false);
   const authPending = useRef(false);
   const trialSession = useRef(false);
   const [submitting, setSubmitting] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [jobs, setJobs] = useState<Record<number, Job>>({});
-  const [errors, setErrors] = useState<Record<number, string>>({});
   const [notice, setNotice] = useState("");
   const [formError, setFormError] = useState("");
   const [url, setUrl] = useState("");
   const [quantity, setQuantity] = useState("1");
-  const [cursor, setCursor] = useState<number | null>(null);
-  const [loadError, setLoadError] = useState("");
   const lifetime = useRef<AbortController | null>(null);
   const posting = useRef(false);
   const generation = useRef(0);
@@ -37,8 +38,8 @@ export default function ShoppingListApp() {
   const endSession = useCallback((text: string) => {
     if (authPending.current) return;
     if (trialSession.current && text === "Your session has ended. Sign in again or start a new trial.") text = "Your trial has ended. Start a new trial to continue.";
-    generation.current++; setSession(null); setJobs({}); setErrors({}); setCursor(null); setNotice(text); setLoadError(""); setFormError(""); setUrl(""); setQuantity("1");
-  }, []);
+    generation.current++; clearSession(); setNotice(text); setFormError(""); setUrl(""); setQuantity("1");
+  }, [clearSession]);
   const handleError = useCallback((error: unknown, display: (text: string) => void) => {
     if (aborted(error)) return;
     if (error instanceof ApiError && error.status === 401) endSession(error.message);
@@ -63,19 +64,19 @@ export default function ShoppingListApp() {
       setJobs(previous => ({ ...previous, ...restored })); setErrors(previous => ({ ...previous, ...failures }));
     } catch (error) { if (version === generation.current) handleError(error, setLoadError); }
     finally { if (!signal.aborted && version === generation.current) setLoading(false); }
-  }, [handleError]);
+  }, [handleError, setLoading, setLoadError, setCursor, setJobs, setErrors]);
 
   useEffect(() => {
     const controller = new AbortController(); lifetime.current = controller;
     async function restore() {
       try { const current = await api<Session>("/auth/me", { signal: controller.signal });
         if (controller.signal.aborted) return;
-        trialSession.current = current.account.isTrial; setSession(current); if (current.shoppingListId) await loadPage(current.shoppingListId, null, controller.signal);
-      } catch (error) { if (!aborted(error) && !(error instanceof ApiError && error.status === 401)) setNotice(message(error)); }
+        trialSession.current = current.account.isTrial; setSession(current); if (current.shoppingListId) void loadPage(current.shoppingListId, null, controller.signal);
+      } catch (error) { if (!controller.signal.aborted && !aborted(error) && !(error instanceof ApiError && error.status === 401)) setRestoreError(message(error)); }
       finally { if (!controller.signal.aborted) setBooting(false); }
     }
     void restore(); return () => controller.abort();
-  }, [loadPage]);
+  }, [loadPage, restoreAttempt, setSession, setRestoreError, setBooting]);
 
   useEffect(() => {
     if (!session || authBusy) return;
@@ -108,7 +109,7 @@ export default function ShoppingListApp() {
     }
     timer = setTimeout(poll, 2000);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [activeIds, session, authBusy, endSession]);
+  }, [activeIds, session, authBusy, endSession, setJobs, setErrors]);
 
   function accountBusy(value: boolean) {
     authPending.current = value; setAuthBusy(value);
@@ -119,7 +120,7 @@ export default function ShoppingListApp() {
     generation.current++; trialSession.current = current.account.isTrial;
     setSession(current); setAccountMode(null); setLoading(false);
     setNotice(sameList ? "Your account is ready. Your list and edits are kept." : "You’re signed in.");
-    if (!sameList) { setJobs({}); setErrors({}); setCursor(null); setLoadError(""); setFormError(""); setUrl(""); setQuantity("1"); }
+    if (!sameList) { setFormError(""); setUrl(""); setQuantity("1"); }
     if (current.shoppingListId) void loadPage(current.shoppingListId, null, lifetime.current!.signal);
   }
 
@@ -127,7 +128,7 @@ export default function ShoppingListApp() {
     setBusy(true); setNotice("");
     try { const current = await api<Session>("/auth/trial", { method: "POST", signal: lifetime.current?.signal });
       if (lifetime.current?.signal.aborted) return;
-      generation.current++; trialSession.current = current.account.isTrial; setSession(current); setJobs({}); setErrors({}); setAccountMode(null);
+      generation.current++; trialSession.current = current.account.isTrial; setSession(current); setAccountMode(null);
       if (current.shoppingListId) await loadPage(current.shoppingListId, null, lifetime.current!.signal);
     } catch (error) { handleError(error, setNotice); } finally { setBusy(false); }
   }
@@ -183,12 +184,17 @@ export default function ShoppingListApp() {
         {session && <div className="max-w-full break-words rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-900"><span className="font-semibold">{session.account.isTrial ? "Your trial is active" : "Your list is saved"}</span><p className="mt-1 text-xs">{session.account.isTrial ? `Expires ${new Date(session.sessionExpiresDate).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit" })} · No account needed` : "Your shopping list is saved to your account."}</p></div>}
       </div>
       {notice && <p role="status" className="mb-6 rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-900">{notice}</p>}
-      {!booting && (!session || session.account.isTrial) && <div className="mb-5 flex flex-wrap gap-3">
+      {!booting && !restoreError && (!session || session.account.isTrial) && <div className="mb-5 flex flex-wrap gap-3">
         <button disabled={busy || authBusy || submitting} onClick={() => setAccountMode("register")} className={secondary}>{session ? "Keep my list" : "Create an account"}</button>
         <button disabled={busy || authBusy || submitting} onClick={() => setAccountMode("login")} className={secondary}>Sign in</button>
       </div>}
       {accountMode && <AccountForm key={accountMode} mode={accountMode} trial={!!session?.account.isTrial} onBusy={accountBusy} onSuccess={accountReady} onClose={() => setAccountMode(null)} />}
-      {booting ? <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-8 text-slate-500" role="status"><Spinner /> Restoring your shopping list…</div> : !session ?
+      {booting ? <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-8 text-slate-500" role="status"><Spinner /> Restoring your shopping list…</div> : restoreError ?
+        <section className="rounded-2xl border border-amber-200 bg-white p-8">
+          <h2 className="text-lg font-semibold">We couldn’t restore your shopping list</h2>
+          <p role="alert" className="mt-2 text-sm text-amber-900">{restoreError}</p>
+          <button className={`${primary} mt-5`} onClick={() => { setRestoreError(""); setBooting(true); setRestoreAttempt(attempt => attempt + 1); }}>Retry restoring my list</button>
+        </section> : !session ?
         <section className="grid overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm md:grid-cols-2">
           <div className="p-7 sm:p-10"><span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">FREE 3-HOUR TRIAL</span><h2 className="mt-6 text-3xl font-semibold tracking-tight">A small step before<br />your next shop.</h2><p className="mt-4 max-w-md leading-7 text-slate-500">Try a temporary shopping list. No email, password, or payment details. Your list expires after three hours.</p><button onClick={startTrial} disabled={busy || authBusy} className={`${primary} mt-7`}>{busy && <Spinner />}{busy ? "Starting your trial…" : "Start my shopping list"}<span aria-hidden="true">→</span></button><p className="mt-4 text-xs text-slate-400">Coles and Woolworths product links supported today.</p></div>
           <div className="border-t border-slate-100 bg-sky-50/60 p-7 sm:p-10 md:border-l md:border-t-0"><p className="text-xs font-semibold tracking-widest text-slate-500">THREE SIMPLE STEPS</p><ol className="mt-7 space-y-7">{[["Paste a product link", "Copy the product page URL from Coles or Woolworths."], ["Keep adding to your list", "We’ll find the details in the background."], ["See what we found", "Check the price, source, and observation time."]].map(([title, detail], i) => <li key={title} className="flex gap-4"><span className="flex size-9 shrink-0 items-center justify-center rounded-full border border-sky-200 bg-white text-sm font-semibold text-sky-700">{i + 1}</span><div><h3 className="font-semibold">{title}</h3><p className="mt-1 text-sm leading-6 text-slate-500">{detail}</p></div></li>)}</ol></div>

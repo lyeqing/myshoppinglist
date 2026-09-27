@@ -3,43 +3,46 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/api-client";
 import type { ListItem, ListItemPage, ListItemUpdate } from "@/lib/api-types";
 import ShoppingListItemCard from "./shopping-list-item-card";
+import { useShallow } from "zustand/react/shallow";
+import { useShoppingStore, useShoppingStoreApi } from "./shopping-store-provider";
 
 export default function ShoppingListItems({ listId, refreshKey, onExpired }: { listId: number; refreshKey: string; onExpired: (message: string) => void }) {
-  const [items, setItems] = useState<ListItem[]>([]);
-  const latestItems = useRef<ListItem[]>([]);
-  const [cursor, setCursor] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const store = useShoppingStoreApi();
+  const { items, cursor, loading, error } = useShoppingStore(useShallow(state => ({
+    items: state.items, cursor: state.itemCursor, loading: state.itemsLoading, error: state.itemsError,
+  })));
+  const { setItems: updateItems, setItemCursor: setCursor, setItemsLoading: setLoading, setItemsError: setError } = useShoppingStore(state => state.actions);
   const [showHidden, setShowHidden] = useState(false);
   const [showPurchased, setShowPurchased] = useState(true);
   const lifetime = useRef<AbortController | null>(null);
   const readVersion = useRef(0);
-  const updateItems = useCallback((value: ListItem[]) => { latestItems.current = value; setItems(value); }, []);
   const handle = useCallback((e: unknown) => {
     if (e instanceof ApiError && e.status === 401) onExpired(e.message);
     else if (!(e instanceof Error && e.name === "AbortError")) setError(e instanceof Error ? e.message : "Unable to load your items.");
-  }, [onExpired]);
+  }, [onExpired, setError]);
   const load = useCallback(async (before: number | null = null, targetId?: number): Promise<ListItem | null> => {
     const signal = lifetime.current?.signal;
     if (!signal || signal.aborted) return null;
     const version = ++readVersion.current;
+    const owner = store.getState().session?.account.id;
+    const isCurrent = () => !signal.aborted && version === readVersion.current && store.getState().session?.account.id === owner && store.getState().session?.shoppingListId === listId;
     setLoading(true); setError("");
     try {
-      const oldest = Math.min(targetId ?? Infinity, ...latestItems.current.map(i => i.id));
+      const oldest = Math.min(targetId ?? Infinity, ...store.getState().items.map(i => i.id));
       let next = before;
       const found: ListItem[] = [];
       do {
         const page = await api<ListItemPage>(`/shopping-lists/${listId}/items?pageSize=20&includeHidden=true&includePurchased=true${next ? `&beforeId=${next}` : ""}`, { signal });
         found.push(...page.items); next = page.nextBeforeId;
       } while (before === null && next !== null && next > oldest);
-      if (signal.aborted || version !== readVersion.current) throw new DOMException("Read superseded", "AbortError");
-      const merged = before === null ? found : [...latestItems.current, ...found];
+      if (!isCurrent()) throw new DOMException("Read superseded", "AbortError");
+      const merged = before === null ? found : [...store.getState().items, ...found];
       updateItems([...new Map(merged.map(i => [i.id, i])).values()].sort((a, b) => b.id - a.id));
       setCursor(next);
       return found.find(i => i.id === targetId) ?? null;
-    } catch (e) { if (version === readVersion.current && !signal.aborted) handle(e); throw e; }
-    finally { if (version === readVersion.current && !signal.aborted) setLoading(false); }
-  }, [listId, handle, updateItems]);
+    } catch (e) { if (isCurrent()) handle(e); throw e; }
+    finally { if (isCurrent()) setLoading(false); }
+  }, [listId, handle, updateItems, store, setLoading, setError, setCursor]);
   useEffect(() => {
     const controller = new AbortController(); lifetime.current = controller;
     return () => controller.abort();
@@ -47,16 +50,18 @@ export default function ShoppingListItems({ listId, refreshKey, onExpired }: { l
   useEffect(() => { void load().catch(() => {}); }, [load, refreshKey]);
   async function save(id: number, edit: ListItemUpdate) {
     const signal = lifetime.current!.signal;
+    const owner = store.getState().session?.account.id;
+    const isCurrent = () => !signal.aborted && store.getState().session?.account.id === owner && store.getState().session?.shoppingListId === listId;
     // Invalidate older GET responses so a pre-save snapshot cannot replace a successful edit.
     readVersion.current++; setLoading(false);
     try {
       const saved = await api<ListItem>(`/shopping-lists/${listId}/items/${id}`, { method: "PUT", body: JSON.stringify(edit), signal });
-      if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+      if (!isCurrent()) throw new DOMException("Aborted", "AbortError");
       readVersion.current++;
       setLoading(false);
-      updateItems(latestItems.current.map(i => i.id === id ? saved : i));
+      updateItems(store.getState().items.map(i => i.id === id ? saved : i));
       return saved;
-    } catch (e) { if (!signal.aborted && e instanceof ApiError && e.status === 401) onExpired(e.message); throw e; }
+    } catch (e) { if (isCurrent() && e instanceof ApiError && e.status === 401) onExpired(e.message); throw e; }
   }
   const visible = items.filter(i => (showHidden || !i.isHidden) && (showPurchased || !i.isPurchased));
   return <section aria-label="Editable shopping list" className="mb-10">
