@@ -5,6 +5,13 @@ export interface Accepted { jobId: number; status: JobState; quantity: number; r
 export interface ImportPage { items: { jobId: number; status: JobState; createdDate: string }[]; nextBeforeId: number | null }
 export interface ListItem { id: number; shoppingListId: number; product: NonNullable<Job["product"]>; quantity: number; notes: string | null; isPurchased: boolean; purchasedDate: string | null; isHidden: boolean; preferredShopId: number | null; addedDate: string; updatedDate: string }
 export interface ListItemPage { items: ListItem[]; nextBeforeId: number | null }
+export interface InStoreRetailer { id: number; name: string }
+export interface InStoreList { id: number; name: string; remainingCount: number; retailers: InStoreRetailer[] }
+export interface InStorePrice { shopId: number; shopName: string; price: number | null; status: string; checkedDate: string | null }
+export interface InStoreItem { item: ListItem; prices: InStorePrice[] }
+export interface InStoreDetail { id: number; name: string; retailers: InStoreRetailer[]; items: InStoreItem[]; remainingCount: number;
+  baskets: { shopId: number; shopName: string; subtotal: number; pricedCount: number; comparableSubtotal: number; savingsBySplitting: number }[];
+  splitSubtotal: number; splitPricedCount: number; comparableCount: number; comparableSplitSubtotal: number }
 export interface ListItemUpdate { quantity: number; notes: string | null; isPurchased: boolean; isHidden: boolean; expectedUpdatedDate: string }
 export interface Price { price: number; normalPrice: number | null; unitPrice: number | null; currency: string; shopLocationId: number | null; priceScope: string; sourceType: string; sourceUrl: string; checkedDate: string; inStock: boolean | null; specialType: string | null; specialDescription: string | null; specialStartDate: string | null; specialEndDate: string | null }
 export interface Retailer { shopId: number; shopName: string; status: RetailerState; matchType: string | null; matchConfidence: number | null; isFromCache: boolean; checkedDate: string | null; errorCode: string | null; prices: Price[] }

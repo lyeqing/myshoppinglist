@@ -179,6 +179,7 @@ export default function ShoppingListApp() {
       </div>
     </header>
     <main id="main" className="mx-auto max-w-7xl px-5 pb-16 pt-10 sm:px-8 sm:pt-14">
+      {session && <nav className="mb-6"><Link href="/in-store" className={primary}>Shop in store →</Link></nav>}
       <div className="mb-9 flex flex-wrap items-end justify-between gap-5">
         <div><p className="mb-3 text-xs font-semibold tracking-widest text-sky-700">LESS GUESSWORK. BETTER SHOPPING.</p><h1 className="text-4xl font-semibold leading-tight tracking-tight sm:text-5xl">Your list. <span className="text-sky-700">A clearer price.</span></h1><p className="mt-4 max-w-xl text-base leading-7 text-slate-500">Save a product link. We’ll find the details and keep the observed price with your shopping list.</p></div>
         {session && <div className="max-w-full break-words rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-900"><span className="font-semibold">{session.account.isTrial ? "Your trial is active" : "Your list is saved"}</span><p className="mt-1 text-xs">{session.account.isTrial ? `Expires ${new Date(session.sessionExpiresDate).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit" })} · No account needed` : "Your shopping list is saved to your account."}</p></div>}

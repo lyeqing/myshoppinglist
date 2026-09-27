@@ -8,7 +8,7 @@ async function forward(request: NextRequest, context: { params: Promise<{ path: 
   const account = route === "auth/register" || route === "auth/login";
   const reset = route === "auth/reset-expired";
   const edit = request.method === "PUT" && /^shopping-lists\/[1-9]\d{0,18}\/items\/[1-9]\d{0,18}$/.test(route);
-  const allowed = get ? /^(auth\/me|product-import-jobs\/[1-9]\d{0,18}|shopping-lists\/[1-9]\d{0,18}\/(imports|items))$/.test(route)
+  const allowed = get ? /^(shopping-lists|auth\/me|product-import-jobs\/[1-9]\d{0,18}|shopping-lists\/[1-9]\d{0,18}\/(imports|items|in-store))$/.test(route)
     : edit || request.method === "POST" && /^(auth\/(trial|logout|register|login|reset-expired)|shopping-lists\/[1-9]\d{0,18}\/products\/url)$/.test(route);
   if (!allowed) return reply(404, "This route is unavailable.");
   try {
