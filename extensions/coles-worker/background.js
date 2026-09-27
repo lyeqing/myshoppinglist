@@ -152,7 +152,12 @@ async function server(path, body) {
     body: body === undefined ? undefined : JSON.stringify(body) });
   if (!response.ok) {
     const error = new Error(response.status === 401 ? "Worker key rejected. Check the server key." : "Server returned " + response.status);
-    error.status = response.status; throw error;
+    error.status = response.status;
+    if (response.status === 400) {
+      const problem = await response.json().catch(() => null);
+      if (typeof problem?.error === "string" && /^[a-z_]{1,100}$/.test(problem.error)) error.code = problem.error;
+    }
+    throw error;
   }
   const text = await response.text(); return text ? JSON.parse(text) : null;
 }
@@ -174,7 +179,7 @@ async function deliver() {
     if (error.status === 400 && outbox.submission.ok) {
       // Report rejected evidence as a failure; never keep resending invalid data forever.
       await chrome.storage.local.set({ outbox: { id: outbox.id,
-        submission: { ...outbox.submission, ok: false, evidence: null, links: null, errorCode: "invalid_product_evidence" } } });
+        submission: { ...outbox.submission, ok: false, evidence: null, links: null, errorCode: error.code || "invalid_product_evidence" } } });
     }
     await chrome.storage.session.set({ connection: error.message || "Server unavailable; result kept for retry." });
     return false;

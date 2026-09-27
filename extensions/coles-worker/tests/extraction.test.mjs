@@ -280,10 +280,11 @@ test("unacknowledged result survives network failure and prevents claiming anoth
 test("invalid evidence becomes a failed result and lost leases discard only the old outbox", async () => {
   const w = worker(); w.local.settings = { key: "k".repeat(40) };
   w.local.outbox = { id: 1, submission: { ok: true, evidence: {}, claimToken: "claim" } };
-  w.scope.fetch = async () => ({ ok: false, status: 400 });
+  w.scope.fetch = async () => ({ ok: false, status: 400, json: async () => ({ error: "same_barcode_conflict" }) });
   assert.equal(await vm.runInContext("deliver()", w.scope), false);
   assert.equal(w.local.outbox.submission.ok, false);
   assert.equal(w.local.outbox.submission.evidence, null);
+  assert.equal(w.local.outbox.submission.errorCode, "same_barcode_conflict");
   w.scope.fetch = async () => ({ ok: false, status: 409 });
   assert.equal(await vm.runInContext("deliver()", w.scope), true);
   assert.equal(w.local.outbox, undefined);
@@ -500,4 +501,10 @@ test("worker accepts Woolworths work but rejects a cross-retailer redirect with 
   redirected.chrome.tabs.get = async () => ({ status: "complete", url: "https://www.coles.com.au/product/916772" });
   await redirected.send({ type: "start", url: woolUrl });
   assert.equal(redirected.storage.task.result.code, "product_redirected");
+});
+
+test("Coles apostrophe slugs accept literal and encoded quotes without accepting encoded slashes", () => {
+  for (const slug of ["four'n-twenty", "four%27n-twenty"])
+    assert.equal(productUrl(`https://www.coles.com.au/product/${slug}-frozen-meat-pies-4-pack-700g-5112318?pid=tracking`).id, "5112318");
+  assert.equal(productUrl("https://www.coles.com.au/product/four%2Fn-twenty-5112318"), null);
 });

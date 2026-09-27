@@ -9,7 +9,7 @@
       const url = new URL(value);
       if (url.protocol !== "https:" || url.port || url.username || url.password ||
           !["www.coles.com.au", "coles.com.au"].includes(url.hostname)) return null;
-      const match = url.pathname.match(/^\/product\/(?:[a-z0-9.-]+-)?(\d{1,15})\/?$/i);
+      const match = url.pathname.match(/^\/product\/(?:(?:[a-z0-9.'-]|%27)+-)?(\d{1,15})\/?$/i);
       return match ? { id: match[1], url: url.origin + url.pathname } : null;
     } catch { return null; }
   }
