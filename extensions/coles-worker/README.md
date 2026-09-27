@@ -50,3 +50,7 @@ npx eslint extensions/coles-worker
 ```
 
 Tests use controlled snapshots and mocked Chrome/network APIs. For a live check, add the Supreme Pizza URL, watch the worker tab, verify the saved price against Coles, then add the same product again to verify cache reuse. Test several queued URLs, pause/resume and an API interruption. Actual retailer availability still depends on Chrome access and Coles page structure.
+
+## Woolworths fallback
+
+Reload the extension and restart the API after this update. The extension is now named MyShoppingList Retailer Reader and needs access to Woolworths as well as Coles. When a Woolworths backend search or product read is access-restricted, it queues browser work using the same worker key and sequential queue. Fresh cached data is reused. The server validates Woolworths identity and price evidence before saving; browser access restrictions are reported, not bypassed. Re-add an earlier failed product URL after restarting to request a new comparison. Polling intervals are unchanged.

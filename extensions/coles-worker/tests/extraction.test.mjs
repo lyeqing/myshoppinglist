@@ -453,3 +453,51 @@ test("search completion continues through both candidate products one by one", a
   assert.equal(w.created(), 0); assert.equal(w.updated.length, 3);
   assert.ok(w.updated.every(tab => tab.id === 42)); assert.equal(w.local.outbox, undefined);
 });
+
+const woolUrl = "https://www.woolworths.com.au/shop/productdetails/916772";
+test("Woolworths evidence includes only the requested product, not account state", () => {
+  const product = { Stockcode: 916772, DisplayName: "Panadol Rapid 16 pack", Price: 6 };
+  const ld = { "@type": "Product", sku: "916772", name: product.DisplayName, offers: { price: 6, priceCurrency: "AUD" } };
+  const doc = documentFixture({ scripts: [
+    { id: "__NEXT_DATA__", text: JSON.stringify({ props: { pageProps: { pdDetails: { Product: product }, account: { email: "private@example.test" } } } }) },
+    { type: "application/ld+json", text: JSON.stringify(ld) }
+  ] });
+  const result = read(doc, woolUrl);
+  assert.equal(result.ok, true); assert.equal(result.productId, "916772");
+  assert.equal(JSON.stringify(result).includes("private@example.test"), false);
+  assert.equal(JSON.parse(result.evidence.nextProductJson).Price, 6);
+  assert.equal(read(doc, woolUrl.replace("916772", "999")).code, "product_identity_conflict");
+  assert.equal(read(documentFixture({ blocked: true }), woolUrl).code, "retailer_access_restricted");
+  assert.equal(context.ColesReader.woolworthsUrl("https://evil.example/shop/productdetails/916772"), null);
+});
+test("Woolworths search reads shadow-root tiles and rejects unrelated retailer links", () => {
+  const anchor = href => ({ getAttribute: () => href });
+  const root = { querySelectorAll: selector => selector === 'a[href]' ? [anchor(woolUrl), anchor(url)] : [] };
+  const container = { innerText: "1 Product", querySelectorAll: selector => selector === '*' ? [{ shadowRoot: root }] : [] };
+  const doc = documentFixture();
+  doc.querySelector = selector => selector === '[data-testid="search-results-product-scrollable-content"]' ? container : null;
+  const search = "https://www.woolworths.com.au/shop/search/products?searchTerm=panadol";
+  const originalAll = doc.querySelectorAll;
+  doc.querySelectorAll = selector => selector === 'h1, h2, h3'
+    ? [{ textContent: "WIN" }, { textContent: "Showing results for panadol" }] : originalAll(selector);
+  assert.deepEqual(Array.from(read(doc, search).links), [woolUrl]);
+  doc.querySelectorAll = selector => selector === 'h1, h2, h3'
+    ? [{ textContent: "Showing results for pizza" }] : originalAll(selector);
+  assert.equal(read(doc, search).code, "product_not_identified");
+  doc.querySelectorAll = originalAll;
+  container.querySelectorAll = () => [];
+  assert.equal(read(doc, search).code, "product_not_identified");
+  container.innerText = "No products found";
+  assert.equal(read(doc, search).emptyConfirmed, true);
+});
+test("worker accepts Woolworths work but rejects a cross-retailer redirect with the same ID", async () => {
+  const w = worker();
+  w.chrome.tabs.get = async () => ({ status: "complete", url: woolUrl });
+  w.chrome.scripting.executeScript = async () => [{ result: { ok: true, productId: "916772", evidence: { jsonLd: [] } } }];
+  assert.equal((await w.send({ type: "start", url: woolUrl })).ok, true);
+  assert.equal(w.storage.task.result.ok, true);
+  const redirected = worker();
+  redirected.chrome.tabs.get = async () => ({ status: "complete", url: "https://www.coles.com.au/product/916772" });
+  await redirected.send({ type: "start", url: woolUrl });
+  assert.equal(redirected.storage.task.result.code, "product_redirected");
+});

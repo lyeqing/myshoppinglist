@@ -1,8 +1,8 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Coles Reader</title><link rel="stylesheet" href="popup.css"></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Retailer Reader</title><link rel="stylesheet" href="popup.css"></head>
 <body>
-  <header><p class="eyebrow">MYSHOPPINGLIST · LOCAL TEST</p><h1>Coles Reader</h1><p>Read a product using Chrome on this computer.</p></header>
+  <header><p class="eyebrow">MYSHOPPINGLIST · LOCAL TEST</p><h1>Retailer Reader</h1><p>Read a product using Chrome on this computer.</p></header>
   <form id="worker-form">
     <label for="worker-key">Worker key</label>
     <input id="worker-key" type="password" autocomplete="off" maxlength="512" placeholder="Paste the server worker key">
@@ -11,7 +11,7 @@
   <p id="connection" role="status" aria-live="polite"></p>
   <div id="queue"></div>
   <form id="read-form">
-    <label for="url">Coles product URL</label>
+    <label for="url">Coles or Woolworths product URL</label>
     <input id="url" name="url" type="url" required maxlength="8192" placeholder="https://www.coles.com.au/product/…" autocomplete="off">
     <button id="read" type="submit">Read product</button>
   </form>

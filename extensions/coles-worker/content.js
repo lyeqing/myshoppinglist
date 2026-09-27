@@ -13,6 +13,77 @@
       return match ? { id: match[1], url: url.origin + url.pathname } : null;
     } catch { return null; }
   }
+  function woolworthsUrl(value) {
+    if (typeof value !== "string" || value.length > 8192 || value.includes("\\")) return null;
+    try {
+      const url = new URL(value);
+      if (url.protocol !== "https:" || url.port || url.username || url.password ||
+          !["www.woolworths.com.au", "woolworths.com.au"].includes(url.hostname)) return null;
+      const match = url.pathname.match(/^\/shop\/productdetails\/([1-9]\d{0,14})(?:\/[a-z0-9-]+)?\/?$/i);
+      return match ? { id: match[1], url: url.origin + url.pathname } : null;
+    } catch { return null; }
+  }
+  const retailerProductUrl = value => {
+    const coles = productUrl(value);
+    if (coles) return { ...coles, retailer: "coles" };
+    const woolworths = woolworthsUrl(value);
+    return woolworths ? { ...woolworths, retailer: "woolworths" } : null;
+  };
+  function readWoolworths(document, url, blocked) {
+    if (blocked) return fail("retailer_access_restricted", "Woolworths restricted access. Inspect the retailer tab.");
+    const pageUrl = new URL(url);
+    if (pageUrl.pathname === "/shop/search/products") {
+      const container = document.querySelector('[data-testid="search-results-product-scrollable-content"]');
+      if (!container) return fail("product_not_identified", "Waiting for Woolworths search results.");
+      const heading = Array.from(document.querySelectorAll('h1, h2, h3'))
+        .find(node => /showing results for|search results for/i.test(node.textContent || ""));
+      const query = (pageUrl.searchParams.get("searchTerm") || "").trim().toLowerCase();
+      if (heading && query && !(heading.textContent || "").toLowerCase().includes(query))
+        return fail("product_not_identified", "Waiting for the requested Woolworths search.");
+      // Woolworths product tiles render their links inside open shadow roots.
+      const anchors = [];
+      const collect = (root, depth = 0) => {
+        if (depth > 8) return;
+        anchors.push(...root.querySelectorAll('a[href]'));
+        for (const node of root.querySelectorAll('*')) if (node.shadowRoot) collect(node.shadowRoot, depth + 1);
+      };
+      collect(container);
+      const links = anchors.map(a => {
+        try { return woolworthsUrl(new URL(a.getAttribute("href"), url).href); } catch { return null; }
+      }).filter(Boolean);
+      const unique = [...new Map(links.map(p => [p.id, p.url])).values()].slice(0, 5);
+      const emptyConfirmed = !unique.length && /no results|no products|couldn.t find|could not find/i.test(container.innerText || "");
+      if (!unique.length && !emptyConfirmed) return fail("product_not_identified", "Waiting for Woolworths search results.");
+      return { ok: true, kind: "search", url: pageUrl.href, links: unique, emptyConfirmed };
+    }
+    const page = woolworthsUrl(url);
+    if (!page) return fail("product_identity_conflict", "Unexpected Woolworths product URL.");
+    const nodes = Array.from(document.querySelectorAll('script#__NEXT_DATA__, script[type="application/ld+json"]'));
+    if (nodes.length > 100 || nodes.reduce((sum, node) => sum + (node.textContent || "").length, 0) > MAX_DATA)
+      return fail("page_too_large", "Product data exceeds the reader's size limit.");
+    const props = parseJson(nodes.find(n => n.id === "__NEXT_DATA__")?.textContent)?.props?.pageProps;
+    if (props?.isRestrictedProduct === true) return fail("retailer_access_restricted", "Woolworths restricted this product.");
+    const main = props?.pdDetails?.Product;
+    if (main?.Stockcode != null && text(main.Stockcode) !== page.id)
+      return fail("product_identity_conflict", "Embedded product belongs to another product.");
+    if (main?.IsMarketProduct === true) return fail("marketplace_not_supported", "Marketplace sellers are not supported.");
+    const matching = nodes.filter(n => n.type === "application/ld+json").flatMap(n => products(parseJson(n.textContent)))
+      .filter(p => {
+        const sku = text(p.sku), link = p.url || p["@id"];
+        const code = link ? woolworthsUrl(link)?.id : null;
+        return (sku === page.id || code === page.id) && (!sku || sku === page.id) && (!link || code === page.id);
+      });
+    if (matching.length > 1) return fail("ambiguous_product", "Multiple main-product records were found.");
+    const ld = matching[0];
+    const identified = main && text(main.Stockcode) === page.id ? main : null;
+    if (!ld && !identified) return fail("product_not_identified", "Waiting for verifiable Woolworths product data.");
+    const name = text(ld?.name) || text(identified?.DisplayName);
+    if (!name || name.length > 500) return fail("invalid_product_name", "Product name is missing or invalid.");
+    // The backend parser validates the raw product/offer evidence before saving any price.
+    return { ok: true, productId: page.id, url: page.url, name, price: null,
+      priceIssue: "server_validation_pending", promotion: null,
+      evidence: { nextProductJson: identified ? JSON.stringify(identified) : null, jsonLd: matching.map(p => JSON.stringify(p)) } };
+  }
   function money(value) {
     if (!/^(?:\d+)(?:\.\d{1,2})?$/.test(text(value))) return null;
     const amount = Number(value);
@@ -94,6 +165,8 @@
         catch { return false; }
       });
     const pageUrl = new URL(url);
+    if (["www.woolworths.com.au", "woolworths.com.au"].includes(pageUrl.hostname) && pageUrl.protocol === "https:")
+      return readWoolworths(document, url, blocked);
     if (pageUrl.origin === "https://www.coles.com.au" && pageUrl.pathname === "/search/products") {
       if (blocked) return fail("retailer_access_restricted", "Coles restricted access to search.");
       const heading = document.querySelector('main h1, h1');
@@ -151,6 +224,6 @@
     }
     return result;
   }
-  globalThis.ColesReader = Object.freeze({ productUrl, extract, read });
+  globalThis.ColesReader = Object.freeze({ productUrl, woolworthsUrl, retailerProductUrl, extract, read });
   if (typeof document !== "undefined") return read(document, location.href);
 })();

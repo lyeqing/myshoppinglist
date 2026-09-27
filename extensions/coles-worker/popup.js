@@ -18,15 +18,17 @@ function render(task) {
   if (task?.remote || !input.value) input.value = task?.kind === "search" ? "" : task?.url || "";
   resultPanel.hidden = true;
   if (!task) { status.textContent = "Ready. Results stay in this browser session."; return; }
+  const retailer = new URL(task.url).hostname.includes("woolworths") ? "Woolworths" : "Coles";
   if (task.status === "reading") {
     status.textContent = task.note || (task.kind === "search"
-      ? `Searching Coles for “${task.remote?.query || new URL(task.url).searchParams.get("q") || "product"}”…`
-      : "Reading the Coles product… This can take up to 90 seconds.");
+      ? `Searching ${retailer} for “${task.remote?.query || new URL(task.url).searchParams.get("q") || new URL(task.url).searchParams.get("searchTerm") || "product"}”…`
+      : `Reading the ${retailer} product… This can take up to 90 seconds.`);
     return;
   }
   const result = task.result;
   if (!result?.ok) { status.textContent = result?.message || "The read could not be completed."; return; }
   if (result.kind === "search") { status.textContent = `Search complete: ${result.links.length} candidates.`; return; }
+  if (result.priceIssue === "server_validation_pending") { status.textContent = "Product read; check your shopping list for the server-validated price."; return; }
   status.textContent = result.priceIssue ? "Product identified; single-item price could not be verified." : "Product and price read successfully.";
   resultPanel.hidden = false;
   document.getElementById("name").textContent = result.name;

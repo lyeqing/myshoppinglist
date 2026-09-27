@@ -50,7 +50,7 @@ async function inspect() {
   const task = await current();
   if (!task || task.status !== "reading") return;
   if (Date.now() >= task.deadline) {
-    await finish(task, failure("read_timeout", "Timed out after 90 seconds. Inspect the Coles tab, then try again."));
+    await finish(task, failure("read_timeout", "Timed out after 90 seconds. Inspect the retailer tab, then try again."));
     return;
   }
   let tab;
@@ -58,7 +58,7 @@ async function inspect() {
   catch { await finish(task, failure("tab_closed", "The product tab was closed.")); return; }
   if (tab.pendingUrl || (task.kind !== "search" && tab.status !== "complete")) return;
   if (task.kind === "search" && tab.status === "loading" && tab.url !== task.url) return;
-  if (task.kind === "search" ? tab.url !== task.url : READER.productUrl(tab.url)?.id !== task.productId) {
+  if (task.kind === "search" ? tab.url !== task.url : (READER.retailerProductUrl(tab.url)?.id !== task.productId || READER.retailerProductUrl(tab.url)?.retailer !== READER.retailerProductUrl(task.url)?.retailer)) {
     await finish(task, failure("product_redirected", "The tab navigated away from the requested product."));
     return;
   }
@@ -73,13 +73,13 @@ async function inspect() {
     } else await finish(task, result);
   } catch {
     // A navigation can race injection. Retry on the next completion event/alarm.
-    await chrome.storage.session.set({ task: { ...task, note: "Waiting for page access. Check that the extension is allowed on Coles." } });
+    await chrome.storage.session.set({ task: { ...task, note: "Waiting for page access. Check that the extension is allowed on the retailer website." } });
   }
 }
 async function start(url, remote = null) {
   const isSearch = remote?.kind === "search" && validSearchUrl(url);
-  const product = isSearch ? { id: null, url } : READER.productUrl(url);
-  if (!product) return failure("invalid_url", "Paste an HTTPS Coles product URL.");
+  const product = isSearch ? { id: null, url } : READER.retailerProductUrl(url);
+  if (!product) return failure("invalid_url", "Paste an HTTPS Coles or Woolworths product URL.");
   await inspect();
   if ((await current())?.status === "reading") return failure("busy", "A product is already being read. Wait for it to finish.");
   const task = { status: "reading", kind: isSearch ? "search" : "product", remote,
@@ -138,8 +138,9 @@ chrome.alarms.onAlarm.addListener(alarm => {
 function validSearchUrl(value) {
   try {
     const url = new URL(value);
-    return url.origin === "https://www.coles.com.au" && !url.username && !url.password
-      && url.pathname === "/search/products" && url.searchParams.has("q") && value.length <= 2048;
+    return !url.username && !url.password && value.length <= 2048 && (
+      url.origin === "https://www.coles.com.au" && url.pathname === "/search/products" && url.searchParams.has("q")
+      || url.origin === "https://www.woolworths.com.au" && url.pathname === "/shop/search/products" && url.searchParams.has("searchTerm"));
   } catch { return false; }
 }
 async function settings() { return (await chrome.storage.local.get("settings")).settings || { enabled: false }; }
@@ -193,7 +194,7 @@ async function tick() {
     // Keep the entire list, but claim only the next item: later entries cannot expire while waiting.
     for (const task of tasks.filter(t => t.status === "Waiting")) {
       if (!Number.isSafeInteger(task.id) || task.id < 1) continue;
-      if (task.kind === "product" ? !READER.productUrl(task.url) : task.kind !== "search" || !validSearchUrl(task.url)) continue;
+      if (task.kind === "product" ? !READER.retailerProductUrl(task.url) : task.kind !== "search" || !validSearchUrl(task.url)) continue;
       let claim;
       try { claim = await server("/tasks/" + task.id + "/claim", { workerId: config.workerId }); }
       catch (error) { if (error.status === 409) continue; throw error; }
