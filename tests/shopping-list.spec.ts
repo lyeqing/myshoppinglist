@@ -5,6 +5,11 @@ import type { Job, Session, ListItem, ListItemUpdate } from "../src/lib/api-type
 import { bestKnownPrices, freshness } from "../src/lib/price-comparison";
 import { createShoppingStore } from "../src/stores/shopping-store";
 
+test("root navigation offers in-store shopping before sign in", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Shop in store", exact: true })).toHaveAttribute("href", "/in-store");
+});
+
 let server: Server;
 let sessions: Map<string, Session>;
 let jobs: Map<number, Job>;

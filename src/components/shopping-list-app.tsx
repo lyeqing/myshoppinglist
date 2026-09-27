@@ -167,6 +167,7 @@ export default function ShoppingListApp() {
   return <>
     <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-white focus:p-3">Skip to content</a>
     <header className="border-b border-slate-200 bg-white">
+      <nav aria-label="Main navigation" className="mx-auto flex max-w-7xl gap-5 px-5 pt-4 text-sm font-semibold sm:px-8"><Link href="/" aria-current="page" className="text-sky-700">My lists</Link><Link href="/in-store">Shop in store</Link></nav>
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-5 py-5 sm:gap-4 sm:px-8">
         <Link href="/" className="flex min-w-0 items-center gap-2 font-semibold tracking-tight sm:gap-3"><span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-sky-700 text-white" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M4 8h16l-2 12H6L4 8ZM8 8l4-6 4 6M9 11v5m6-5v5" /></svg></span><span className="truncate text-sm sm:text-base">MyShoppingList<span className="ml-2 hidden text-xs font-normal text-slate-400 sm:inline">EARLY ACCESS</span></span></Link>
         {session ? <div className="flex shrink-0 items-center gap-3 sm:gap-4">
@@ -179,7 +180,7 @@ export default function ShoppingListApp() {
       </div>
     </header>
     <main id="main" className="mx-auto max-w-7xl px-5 pb-16 pt-10 sm:px-8 sm:pt-14">
-      {session && <nav className="mb-6"><Link href="/in-store" className={primary}>Shop in store →</Link></nav>}
+
       <div className="mb-9 flex flex-wrap items-end justify-between gap-5">
         <div><p className="mb-3 text-xs font-semibold tracking-widest text-sky-700">LESS GUESSWORK. BETTER SHOPPING.</p><h1 className="text-4xl font-semibold leading-tight tracking-tight sm:text-5xl">Your list. <span className="text-sky-700">A clearer price.</span></h1><p className="mt-4 max-w-xl text-base leading-7 text-slate-500">Save a product link. We’ll find the details and keep the observed price with your shopping list.</p></div>
         {session && <div className="max-w-full break-words rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-900"><span className="font-semibold">{session.account.isTrial ? "Your trial is active" : "Your list is saved"}</span><p className="mt-1 text-xs">{session.account.isTrial ? `Expires ${new Date(session.sessionExpiresDate).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit" })} · No account needed` : "Your shopping list is saved to your account."}</p></div>}
