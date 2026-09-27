@@ -104,7 +104,9 @@ function worker(existingTask, existingWorkerTabId) {
   const local = {};
   let created = 0;
   const updated = [];
+  const panelBehavior = [];
   const chrome = {
+    sidePanel: { setPanelBehavior: async options => { panelBehavior.push({ ...options }); } },
     runtime: { id: "test", getURL: path => "chrome-extension://test/" + path, onMessage: { addListener: fn => { listeners.message = fn; } } },
     storage: { session: { get: async () => storage, set: async data => Object.assign(storage, data) },
       local: { get: async () => local, set: async data => Object.assign(local, data), remove: async key => { delete local[key]; }, setAccessLevel: async () => {} } },
@@ -117,10 +119,21 @@ function worker(existingTask, existingWorkerTabId) {
   const scope = vm.createContext({ chrome, URL, Date, AbortSignal, crypto: { randomUUID: () => "test-worker" }, importScripts: () => {} });
   vm.runInContext(source, scope); vm.runInContext(background, scope);
   const sender = { id: "test", url: "chrome-extension://test/popup.html" };
-  return { storage, local, scope, chrome, listeners, updated, created: () => created,
+  return { storage, local, scope, chrome, listeners, updated, panelBehavior, created: () => created,
     send: message => new Promise(resolve => listeners.message(message, sender, resolve)) };
 }
-test("background completes an approved popup request and rejects page commands", async () => {
+test("toolbar opens the shared side panel without starting a worker task", () => {
+  const manifest = JSON.parse(readFileSync(new URL("../manifest.json", import.meta.url), "utf8"));
+  assert.ok(manifest.permissions.includes("sidePanel"));
+  assert.equal(manifest.side_panel.default_path, "popup.html");
+  assert.equal(manifest.action.default_popup, undefined);
+  const w = worker();
+  assert.deepEqual(w.panelBehavior, [{ openPanelOnActionClick: true }]);
+  assert.equal(w.created(), 0);
+  assert.equal(w.storage.task, undefined);
+});
+
+test("background completes an approved panel request and rejects page commands", async () => {
   const w = worker();
   assert.equal(w.listeners.message({ type: "start", url }, { id: "test", url }, () => {}), false);
   assert.equal((await w.send({ type: "start", url })).ok, true);

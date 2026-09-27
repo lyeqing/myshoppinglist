@@ -1,6 +1,6 @@
 :root { color-scheme: light; font-family: system-ui, sans-serif; color: #172b25; background: #f5f8f6; }
 * { box-sizing: border-box; }
-body { width: 380px; margin: 0; padding: 22px; font-size: 14px; line-height: 1.5; }
+body { width: 100%; margin: 0; padding: clamp(12px, 5vw, 22px); font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
 h1 { margin: 0; font-size: 25px; letter-spacing: -.6px; }
 h2 { font-size: 18px; margin: 0 0 10px; }
 p { margin: 8px 0; }

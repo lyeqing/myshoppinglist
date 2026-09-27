@@ -1,6 +1,8 @@
 /* global chrome, importScripts */
 importScripts("content.js");
 const READER = globalThis.ColesReader;
+chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true })
+  .catch(() => console.error("Could not configure the Coles Reader side panel."));
 const ALARM = "coles-read-deadline";
 const POLL = "coles-server-poll";
 const API = "http://localhost:5392/api/coles-worker";
@@ -98,7 +100,7 @@ async function start(url, remote = null) {
   }
 }
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
-  // Accept commands only from this extension's popup, never a retailer tab.
+  // Accept commands only from this extension's panel, never a retailer tab.
   if (sender.id !== chrome.runtime.id || sender.url !== chrome.runtime.getURL("popup.html")) return false;
   serial(async () => {
     if (message?.type === "configure") return configure(message);
