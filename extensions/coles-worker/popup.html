@@ -3,6 +3,14 @@
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Coles Reader</title><link rel="stylesheet" href="popup.css"></head>
 <body>
   <header><p class="eyebrow">MYSHOPPINGLIST · LOCAL TEST</p><h1>Coles Reader</h1><p>Read a product using Chrome on this computer.</p></header>
+  <form id="worker-form">
+    <label for="worker-key">Worker key</label>
+    <input id="worker-key" type="password" autocomplete="off" maxlength="512" placeholder="Paste the server worker key">
+    <button id="enable" type="submit">Start worker</button>
+    <button id="pause" type="button">Pause worker</button>
+  </form>
+  <p id="connection" role="status" aria-live="polite"></p>
+  <div id="queue"></div>
   <form id="read-form">
     <label for="url">Coles product URL</label>
     <input id="url" name="url" type="url" required maxlength="8192" placeholder="https://www.coles.com.au/product/…" autocomplete="off">
@@ -14,7 +22,7 @@
     <p class="notice">Browser-context price. Your local store price has not been verified.</p>
     <details><summary>Extraction details</summary><pre id="json"></pre></details>
   </section>
-  <footer>One worker tab is reused for your reads. If you close it, the next read opens a replacement. You can reopen this popup to see the result. No data is sent to MyShoppingList yet.</footer>
+  <footer>Connects to localhost:5392. One worker tab processes queued products and searches sequentially. Keep Chrome open; the popup can be closed. Pausing finishes the current task.</footer>
   <script src="popup.js"></script>
 </body>
 </html>

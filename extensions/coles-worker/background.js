@@ -2,6 +2,8 @@
 importScripts("content.js");
 const READER = globalThis.ColesReader;
 const ALARM = "coles-read-deadline";
+const POLL = "coles-server-poll";
+const API = "http://localhost:5392/api/coles-worker";
 let queue = Promise.resolve();
 const serial = (work) => {
   const next = queue.then(work);
@@ -27,8 +29,20 @@ async function workerTab(url) {
   return tab;
 }
 async function finish(task, result) {
-  await chrome.storage.session.set({ task: { ...task, status: "complete", result } });
-  await chrome.alarms.clear(ALARM);
+  if (task.remote) {
+    const config = await settings();
+    const submission = { workerId: config.workerId, claimToken: task.remote.claimToken,
+      url: task.url, ok: result.ok, evidence: result.evidence || null, links: result.links || null,
+      emptyConfirmed: !!result.emptyConfirmed, errorCode: result.ok ? null : result.code };
+    await chrome.storage.local.set({ outbox: { id: task.remote.id, submission } });
+    await chrome.storage.session.set({ task: { ...task, status: "complete", result } });
+    await chrome.alarms.clear(ALARM);
+    await deliver();
+    void serial(tick);
+  } else {
+    await chrome.storage.session.set({ task: { ...task, status: "complete", result } });
+    await chrome.alarms.clear(ALARM);
+  }
 }
 async function inspect() {
   const task = await current();
@@ -41,7 +55,7 @@ async function inspect() {
   try { tab = await chrome.tabs.get(task.tabId); }
   catch { await finish(task, failure("tab_closed", "The product tab was closed.")); return; }
   if (tab.status !== "complete" || tab.pendingUrl) return;
-  if (READER.productUrl(tab.url)?.id !== task.productId) {
+  if (task.kind === "search" ? tab.url !== task.url : READER.productUrl(tab.url)?.id !== task.productId) {
     await finish(task, failure("product_redirected", "The tab navigated away from the requested product."));
     return;
   }
@@ -49,7 +63,7 @@ async function inspect() {
     const responses = await chrome.scripting.executeScript({ target: { tabId: task.tabId, frameIds: [0] }, files: ["content.js"], world: "ISOLATED" });
     const result = responses[0]?.result;
     if (!result || result.code === "product_not_identified") return;
-    if (result.ok && result.productId !== task.productId) {
+    if (result.ok && task.kind !== "search" && result.productId !== task.productId) {
       await finish(task, failure("product_identity_conflict", "The extracted product does not match the request."));
     } else await finish(task, result);
   } catch {
@@ -57,12 +71,14 @@ async function inspect() {
     await chrome.storage.session.set({ task: { ...task, note: "Waiting for page access. Check that the extension is allowed on Coles." } });
   }
 }
-async function start(url) {
-  const product = READER.productUrl(url);
+async function start(url, remote = null) {
+  const isSearch = remote?.kind === "search" && validSearchUrl(url);
+  const product = isSearch ? { id: null, url } : READER.productUrl(url);
   if (!product) return failure("invalid_url", "Paste an HTTPS Coles product URL.");
   await inspect();
   if ((await current())?.status === "reading") return failure("busy", "A product is already being read. Wait for it to finish.");
-  const task = { status: "reading", productId: product.id, url: product.url, startedAt: Date.now(), deadline: Date.now() + 90000 };
+  const task = { status: "reading", kind: isSearch ? "search" : "product", remote,
+    productId: product.id, url: product.url, startedAt: Date.now(), deadline: Date.now() + 90000 };
   // Persist before navigation; subsequent Chrome events can resume after worker suspension.
   await chrome.storage.session.set({ task });
   try {
@@ -82,8 +98,18 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
   // Accept commands only from this extension's popup, never a retailer tab.
   if (sender.id !== chrome.runtime.id || sender.url !== chrome.runtime.getURL("popup.html")) return false;
   serial(async () => {
-    if (message?.type === "start") return start(message.url);
-    if (message?.type === "status") { await inspect(); return { ok: true, task: await current() }; }
+    if (message?.type === "configure") return configure(message);
+    if (message?.type === "retry" && Number.isSafeInteger(message.id)) {
+      await server("/tasks/" + message.id + "/retry", {}); void serial(tick); return { ok: true };
+    }
+    if (message?.type === "start") {
+      if ((await settings()).enabled) return failure("worker_running", "Pause the server worker before starting a manual read.");
+      return start(message.url);
+    }
+    if (message?.type === "status") {
+      await inspect(); const config = await settings();
+      return { ok: true, task: await current(), enabled: config.enabled, hasKey: !!config.key };
+    }
     return failure("invalid_command", "Unknown command.");
   }).then(respond, () => respond(failure("browser_error", "Chrome could not complete this action.")));
   return true;
@@ -99,4 +125,104 @@ chrome.tabs.onRemoved.addListener(tabId => {
     if (task?.tabId === tabId && task.status === "reading") await finish(task, failure("tab_closed", "The product tab was closed."));
   });
 });
-chrome.alarms.onAlarm.addListener(alarm => { if (alarm.name === ALARM) void serial(inspect); });
+chrome.alarms.onAlarm.addListener(alarm => {
+  if (alarm.name === ALARM) void serial(inspect);
+  if (alarm.name === POLL) void serial(tick);
+});
+
+function validSearchUrl(value) {
+  try {
+    const url = new URL(value);
+    return url.origin === "https://www.coles.com.au" && !url.username && !url.password
+      && url.pathname === "/search/products" && url.searchParams.has("q") && value.length <= 2048;
+  } catch { return false; }
+}
+async function settings() { return (await chrome.storage.local.get("settings")).settings || { enabled: false }; }
+async function server(path, body) {
+  const config = await settings();
+  const response = await fetch(API + path, { method: body === undefined ? "GET" : "POST", credentials: "omit",
+    redirect: "error", cache: "no-store", signal: AbortSignal.timeout(12000),
+    headers: { Authorization: "Bearer " + config.key, "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body) });
+  if (!response.ok) {
+    const error = new Error(response.status === 401 ? "Worker key rejected. Check the server key." : "Server returned " + response.status);
+    error.status = response.status; throw error;
+  }
+  const text = await response.text(); return text ? JSON.parse(text) : null;
+}
+async function deliver() {
+  const { outbox } = await chrome.storage.local.get("outbox");
+  if (!outbox) return true;
+  try {
+    await server("/tasks/" + outbox.id + "/result", outbox.submission);
+    await chrome.storage.local.remove("outbox");
+    await chrome.storage.session.set({ connection: "Result saved by server." });
+    return true;
+  } catch (error) {
+    if (error.status === 409) {
+      // The old lease is no longer authoritative. The server will reassign the task.
+      await chrome.storage.local.remove("outbox");
+      await chrome.storage.session.set({ connection: "Assignment expired; waiting for the server to reassign it." });
+      return true;
+    }
+    if (error.status === 400 && outbox.submission.ok) {
+      // Report rejected evidence as a failure; never keep resending invalid data forever.
+      await chrome.storage.local.set({ outbox: { id: outbox.id,
+        submission: { ...outbox.submission, ok: false, evidence: null, links: null, errorCode: "invalid_product_evidence" } } });
+    }
+    await chrome.storage.session.set({ connection: error.message || "Server unavailable; result kept for retry." });
+    return false;
+  }
+}
+async function tick() {
+  try {
+    const config = await settings();
+    if (!config.enabled) return;
+    if (!await deliver()) return;
+    await inspect();
+    if ((await current())?.status === "reading") return;
+    if ((await chrome.storage.local.get("outbox")).outbox) return;
+    const tasks = await server("/tasks");
+    if (!Array.isArray(tasks)) throw new Error("Invalid server queue response.");
+    await chrome.storage.session.set({ serverTasks: tasks, connection: "Connected · " + tasks.filter(t => t.status === "Waiting").length + " waiting" });
+    // Keep the entire list, but claim only the next item: later entries cannot expire while waiting.
+    for (const task of tasks.filter(t => t.status === "Waiting")) {
+      if (!Number.isSafeInteger(task.id) || task.id < 1) continue;
+      if (task.kind === "product" ? !READER.productUrl(task.url) : task.kind !== "search" || !validSearchUrl(task.url)) continue;
+      let claim;
+      try { claim = await server("/tasks/" + task.id + "/claim", { workerId: config.workerId }); }
+      catch (error) { if (error.status === 409) continue; throw error; }
+      if (claim?.id !== task.id || claim.url !== task.url || claim.kind !== task.kind || typeof claim.claimToken !== "string")
+        throw new Error("Invalid task assignment.");
+      await start(claim.url, claim); return;
+    }
+  } catch (error) {
+    await chrome.storage.session.set({ connection: error.message || "Server unavailable; polling will retry." });
+  }
+}
+async function configure(message) {
+  const old = await settings();
+  const key = typeof message.key === "string" && message.key.trim() ? message.key.trim() : old.key;
+  if (message.enabled && (!key || key.length < 32 || key.length > 512)) return failure("invalid_key", "Enter the server's worker key (at least 32 characters).");
+  if (key !== old.key && (await chrome.storage.local.get("outbox")).outbox)
+    return failure("pending_result", "Finish submitting the pending result before changing the key.");
+  await chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
+  await chrome.storage.local.set({ settings: { enabled: !!message.enabled, key, workerId: old.workerId || crypto.randomUUID() } });
+  if (message.enabled) {
+    await chrome.alarms.create(POLL, { periodInMinutes: 0.5 });
+    void serial(tick);
+  } else await chrome.alarms.clear(POLL);
+  return { ok: true };
+}
+chrome.runtime.onStartup?.addListener(() => {
+  void serial(async () => {
+    await chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
+    if ((await settings()).enabled) { await chrome.alarms.create(POLL, { periodInMinutes: 0.5 }); await tick(); }
+  });
+});
+chrome.runtime.onInstalled?.addListener(() => {
+  void serial(async () => {
+    await chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
+    if ((await settings()).enabled) { await chrome.alarms.create(POLL, { periodInMinutes: 0.5 }); await tick(); }
+  });
+});

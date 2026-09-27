@@ -93,6 +93,17 @@
         try { const src = new URL(frame.getAttribute("src"), url); return src.hostname === new URL(url).hostname && src.pathname === "/_Incapsula_Resource"; }
         catch { return false; }
       });
+    const pageUrl = new URL(url);
+    if (pageUrl.origin === "https://www.coles.com.au" && pageUrl.pathname === "/search/products") {
+      if (blocked) return fail("retailer_access_restricted", "Coles restricted access to search.");
+      const container = document.querySelector('.coles-targeting-search-content-container');
+      const links = container ? Array.from(container.querySelectorAll('a.product__link[href]'))
+        .map(a => { try { return productUrl(new URL(a.getAttribute("href"), url).href)?.url; } catch { return null; } })
+        .filter(Boolean) : [];
+      const emptyConfirmed = /no results for|no results found|no products found|we couldn't find any|we couldn’t find any/i.test(body);
+      if (!links.length && !emptyConfirmed) return fail("product_not_identified", "Waiting for Coles search results.");
+      return { ok: true, kind: "search", url: pageUrl.href, links: emptyConfirmed ? [] : [...new Set(links)].slice(0, 5), emptyConfirmed };
+    }
     const nodes = Array.from(document.querySelectorAll('script#__NEXT_DATA__, script[type="application/ld+json"]'));
     let size = 0;
     const scripts = [];
@@ -108,7 +119,18 @@
     const locationLabel = labels.find(label => /delivery|deliver to|collect/i.test(label) && /\b\d{4}\b/.test(label));
     const location = locationLabel ? { postcode: locationLabel.match(/\b\d{4}\b/)[0],
       mode: /collect/i.test(locationLabel) ? "collection" : "delivery", verified: false } : null;
-    return extract({ url, scripts, blocked, location });
+    const result = extract({ url, scripts, blocked, location });
+    if (result.ok) {
+      const state = parseJson(scripts.find(script => script.id === "__NEXT_DATA__")?.text);
+      // Send only main-product data, never the application's account/session state.
+      const main = state?.props?.pageProps?.product;
+      const jsonLd = scripts.filter(script => script.type === "application/ld+json")
+        .flatMap(script => products(parseJson(script.text)))
+        .filter(product => text(product.sku) === result.productId || productUrl(product.url || product["@id"])?.id === result.productId)
+        .map(product => JSON.stringify(product));
+      result.evidence = { nextProductJson: main ? JSON.stringify(main) : null, jsonLd };
+    }
+    return result;
   }
   globalThis.ColesReader = Object.freeze({ productUrl, extract, read });
   if (typeof document !== "undefined") return read(document, location.href);

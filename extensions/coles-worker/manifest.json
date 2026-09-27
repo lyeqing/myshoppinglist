@@ -2,10 +2,10 @@
   "manifest_version": 3,
   "name": "MyShoppingList Coles Reader",
   "version": "0.1.0",
-  "description": "Read a Coles product in your browser and inspect the result locally.",
+  "description": "Process MyShoppingList Coles product and comparison tasks using one browser tab.",
   "minimum_chrome_version": "120",
   "permissions": ["scripting", "storage", "alarms"],
-  "host_permissions": ["https://www.coles.com.au/*", "https://coles.com.au/*"],
+  "host_permissions": ["https://www.coles.com.au/*", "https://coles.com.au/*", "http://localhost/*"],
   "background": { "service_worker": "background.js" },
   "action": { "default_popup": "popup.html", "default_title": "MyShoppingList Coles Reader" }
 }

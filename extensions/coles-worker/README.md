@@ -1,57 +1,48 @@
-# MyShoppingList Coles Reader — local proof of concept
+# MyShoppingList Coles worker
 
-This unpacked Manifest V3 extension reads a Coles product in a normal Chrome tab on your computer. It does not poll the MyShoppingList server or submit data yet. No API key, frontend server, npm install, or extension build is needed.
+This unpacked Chrome extension polls http://localhost:5392/api/coles-worker every 30 seconds while enabled. It receives the full waiting list, claims one task, reads its product or search page in one reusable tab, and submits the result before starting another task. Keep Chrome running and the computer awake; the popup can be closed. No npm install or extension build is needed.
 
-## Load in Chrome
+## Connect to the local API
 
-1. Prefer a dedicated Chrome profile for this test. Open `chrome://extensions` in that profile.
-2. Turn on **Developer mode**, then choose **Load unpacked**.
-3. Select `D:\pra\myshoppinglist\extensions\coles-worker` (the folder containing `manifest.json`).
-4. Pin **MyShoppingList Coles Reader** from Chrome's Extensions menu.
-5. Open the extension, paste a Coles product URL, and select **Read product**.
-6. The first read opens a background Coles worker tab. Later reads navigate that same tab to the requested product. Allow up to 90 seconds while Chrome is running and the computer is awake. Open that tab if it needs your attention.
-7. Reopen the extension to see the result. Closing the popup does not cancel the task. Leave the worker tab open for further reads, or close it; the next read will create a replacement. Closing it during a read ends that task with a tab-closed error.
+1. Configure a random worker key of at least 32 characters in the API environment as `ColesExtension__WorkerKey`. Use the same key in the extension. This is a worker credential, not your MyShoppingList account password. An absent key disables worker access.
+2. Start/restart the updated API on http://localhost:5392. The AddColesExtensionTasks migration must have been applied to MyShoppingList.
+3. Open chrome://extensions, enable Developer mode, and load `D:\pra\myshoppinglist\extensions\coles-worker`, or click **Reload** if already installed. Approve its additional localhost host permission if Chrome requests it.
+4. Open the extension popup, paste the key into **Worker key**, and select **Start worker**. It should show **Connected**. Later, leave the key field blank to retain the saved key.
+5. Add a Coles URL in MyShoppingList. Fresh catalogue data is reused; otherwise the worker opens its Coles tab and processes the request. Results appear after the API resumes the import, normally within another 30 seconds.
 
-After code updates, select **Reload** on the extension card before testing again. Remove the extension through `chrome://extensions` when no longer needed.
+Example PowerShell setup in the API terminal (the key is copied to your clipboard for the popup and is not printed):
 
-Reloading the extension or restarting Chrome clears its session-stored worker tab ID. Close any old test tabs yourself after reloading; the extension will not adopt or close existing tabs. During a session, the worker tab stays reserved for product reads, so use a different tab for your own browsing.
+```powershell
+$env:ColesExtension__WorkerKey = [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
+Set-Clipboard -Value $env:ColesExtension__WorkerKey
+dotnet run --no-launch-profile --urls http://localhost:5392
+```
 
-## Three live checks
+That key lasts for the terminal session. For later API terminals, configure the same secret through your normal environment/secret management. Do not commit it to source control. A changed key must also be entered in the extension. The endpoint is fixed to the local test API; remote deployment needs a separate HTTPS configuration change.
 
-- Supreme Pizza: https://www.coles.com.au/product/coles-kitchen-supreme-pizza-445g-1435461?pid=meals-hub_productlist_oven-faves
-- Chicken Kyiv Pizza: https://www.coles.com.au/product/coles-kitchen-limited-edition-chicken-kyiv-pizza-500g-1435392
-- Coca-Cola: https://www.coles.com.au/product/coca-cola-classic-soft-drink-bottle-1.25l-123011
+## Queue and recovery
 
-For each, compare the name, product ID, pack and single-item price with the actual Coles tab. Compare multibuy offers separately. Record any error code from Extraction details or error message. Prices may change; tests do not assume today's live prices.
+- Only one task is claimed per worker at a time. Each lease lasts three minutes; a page read has a 90-second deadline. Subsequent tasks do not lose their leases while waiting in the batch.
+- A result is kept in extension local storage until the server acknowledges it. Temporary connection failures retry the same submission without duplicating catalogue/history writes. No new task starts while a result awaits acknowledgement.
+- Temporary page/network failures and expired leases retry up to three attempts. Access restrictions and invalid evidence become failed tasks. Failed tasks remain visible with a **Retry** button. Retry also requeues associated failed imports.
+- When the worker is offline, unclaimed requests remain waiting without consuming attempts. Other retailer processing can continue.
+- **Pause worker** stops new assignments; a current read finishes. If its result cannot be submitted, resume the worker to continue delivery. Manual **Read product** is available while paused.
+- Closing the worker tab during a read reports a failure. The next task opens a replacement. The extension never adopts or closes your other tabs.
+- Reloading the extension or restarting Chrome clears the session tab ID. Close any old worker tab yourself after reloading. The saved key, enabled setting and pending submission survive; abandoned server leases expire and recover.
 
-Success means the exact product and usable single-item price are returned in your actual Chrome profile. A successful fixture test is not a successful live check. Server task polling is a separate approval stage after these checks.
+## Freshness and validation
 
-## What it reads and stores
+Coles and Woolworths catalogue freshness starts at the latest Wednesday 00:00 Australia/Adelaide, including daylight saving. Expired promotions are not reused. Server code validates product IDs, structured evidence, single-item prices, currencies and exact comparison matches before saving. Searches return at most five unique candidate URLs from the actual result container; recommendations beneath an explicit empty result do not become matches.
 
-- Only matching product JSON-LD and `__NEXT_DATA__` from the rendered page; it does not execute scripts found in that data or guess products from titles.
-- Single-item price, pack label when available, promotion, unit price, stock flag and extraction timestamp.
-- Only delivery/collection mode and postcode when an identifiable header button exposes them. Missing context stays unknown. All prices remain **unverified browser context**, never assumed national or local-to-you.
-- Only the latest task/result and the extension-created worker tab ID in extension session storage. Reloading/disabling the extension or restarting Chrome clears them. No browsing history, cookies, credentials, full HTML, account name or address is collected or uploaded by this extension. Chrome still makes its normal requests to Coles to load the tab.
+The extension sends only main-product structured data or candidate URLs. It does not send full HTML, cookies or application/account state. The local popup can display an unverified delivery postcode, but this is not submitted. Prices retain an unknown store scope; they are not claimed to be national or your local-store price. Multibuy rewards and variant prices do not replace single-item prices. Access challenges are reported, not bypassed.
 
-Permissions: `scripting` for reading the created Coles tab; Coles-only host access; `storage` for the latest task/result; `alarms` for retries and timeout recovery. No general tabs/history/cookies permission and no remote executable code.
+Permissions: scripting for the worker tab, storage for settings/results, alarms for polling, Coles host access, and localhost host access. Chrome host permissions cannot restrict by port; background requests are hard-coded to port 5392. The key is stored in extension local storage restricted to trusted extension contexts, never in content scripts or result JSON.
 
-## Behaviour and limitations
-
-- One active task at a time. Chrome alarms wake the background worker every 30 seconds during a read; completion events also trigger extraction. Progress survives worker suspension and closing the popup, not a full browser restart.
-- One reusable worker tab per extension session, including after failed reads. Only the tab created and tracked by the extension is navigated. Other tabs are never selected, reused, or closed; the extension does not automatically close any tabs.
-- A 90-second deadline is checked on wake-up; sleeping computers or delayed alarms can delay reporting the timeout.
-- Conflicting prices produce a verified identity with an unavailable price. Multibuy rewards and related product prices never replace the single-item price.
-- Access challenges are reported and not bypassed. This extension cannot guarantee Coles availability or server-hosted browser reliability.
-- Structure changes or product pages without matching embedded data may fail. Header location extraction is best-effort, not proof of the price's store.
-- Start with the three packaged-product examples. Variable-weight items need additional validation before production use.
-
-## Developer checks
-
-From `D:\pra\myshoppinglist`:
+## Verify
 
 ```powershell
 node --test extensions/coles-worker/tests/extraction.test.mjs
 npx eslint extensions/coles-worker
 ```
 
-Tests use Node's built-in test runner and controlled snapshots/Chrome API mocks; no retailer requests or installed Chrome changes. No frontend/backend configuration changes are required.
+Tests use controlled snapshots and mocked Chrome/network APIs. For a live check, add the Supreme Pizza URL, watch the worker tab, verify the saved price against Coles, then add the same product again to verify cache reuse. Test several queued URLs, pause/resume and an API interruption. Actual retailer availability still depends on Chrome access and Coles page structure.

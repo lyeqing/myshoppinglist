@@ -101,21 +101,23 @@ test("injected file returns an extraction result to Chrome scripting", () => {
 function worker(existingTask, existingWorkerTabId) {
   const listeners = {};
   const storage = { task: existingTask, workerTabId: existingWorkerTabId };
+  const local = {};
   let created = 0;
   const updated = [];
   const chrome = {
     runtime: { id: "test", getURL: path => "chrome-extension://test/" + path, onMessage: { addListener: fn => { listeners.message = fn; } } },
-    storage: { session: { get: async () => storage, set: async data => Object.assign(storage, data) } },
+    storage: { session: { get: async () => storage, set: async data => Object.assign(storage, data) },
+      local: { get: async () => local, set: async data => Object.assign(local, data), remove: async key => { delete local[key]; }, setAccessLevel: async () => {} } },
     alarms: { create: async () => {}, clear: async () => {}, onAlarm: { addListener: fn => { listeners.alarm = fn; } } },
     tabs: { create: async () => { created++; return { id: created }; }, get: async () => ({ status: "complete", url }),
       update: async (id, properties) => { updated.push({ id, ...properties }); return { id }; },
       onUpdated: { addListener: fn => { listeners.updated = fn; } }, onRemoved: { addListener: fn => { listeners.removed = fn; } } },
     scripting: { executeScript: async () => [{ result: extract(snapshot()) }] }
   };
-  const scope = vm.createContext({ chrome, URL, Date, importScripts: () => {} });
+  const scope = vm.createContext({ chrome, URL, Date, AbortSignal, crypto: { randomUUID: () => "test-worker" }, importScripts: () => {} });
   vm.runInContext(source, scope); vm.runInContext(background, scope);
   const sender = { id: "test", url: "chrome-extension://test/popup.html" };
-  return { storage, chrome, listeners, updated, created: () => created,
+  return { storage, local, scope, chrome, listeners, updated, created: () => created,
     send: message => new Promise(resolve => listeners.message(message, sender, resolve)) };
 }
 test("background completes an approved popup request and rejects page commands", async () => {
@@ -205,4 +207,75 @@ test("pending navigation does not read stale product content", async () => {
   w.chrome.scripting.executeScript = async () => { assert.fail("Must wait for navigation"); };
   await w.send({ type: "start", url });
   assert.equal(w.storage.task.status, "reading");
+});
+
+test("search reads only bounded product links inside the results container", () => {
+  const doc = documentFixture();
+  doc.querySelector = () => ({ querySelectorAll: () => [url, url, "https://evil.example/product/123", ...Array.from({ length: 8 }, (_, i) => `/product/${i + 1}`)].map(href => ({ getAttribute: () => href })) });
+  const result = read(doc, "https://www.coles.com.au/search/products?q=pizza");
+  assert.equal(result.kind, "search"); assert.equal(result.links.length, 5);
+  assert.equal(result.links.filter(link => link === url).length, 1);
+  assert.equal(result.links.some(link => link.includes("evil")), false);
+  doc.querySelector = () => null;
+  assert.equal(read(doc, "https://www.coles.com.au/search/products?q=pizza").code, "product_not_identified");
+  doc.body.innerText = "No results for pizza";
+  assert.equal(read(doc, "https://www.coles.com.au/search/products?q=pizza").emptyConfirmed, true);
+});
+test("evidence excludes account state and carries only the matching product", () => {
+  const data = snapshot();
+  const state = JSON.parse(data.scripts[0].text); state.account = { email: "private@example.test" };
+  data.scripts[0].text = JSON.stringify(state);
+  const result = read(documentFixture({ scripts: data.scripts }), url);
+  assert.equal(JSON.parse(result.evidence.nextProductJson).id, 1435461);
+  assert.equal(result.evidence.jsonLd.length, 1);
+  assert.equal(JSON.stringify(result.evidence).includes("private@"), false);
+});
+test("polling receives the entire list but claims one task and reuses the worker tab", async () => {
+  const w = worker(undefined, 42);
+  w.local.settings = { enabled: true, key: "k".repeat(40), workerId: "worker-test" };
+  const tasks = [1, 2].map(id => ({ id, kind: "product", url, status: "Waiting" }));
+  const calls = [];
+  w.scope.fetch = async (target, options) => {
+    calls.push({ target, options });
+    assert.equal(options.headers.Authorization, "Bearer " + "k".repeat(40));
+    return { ok: true, text: async () => JSON.stringify(target.endsWith("/tasks") ? tasks : { ...tasks[0], claimToken: "claim" }) };
+  };
+  w.chrome.tabs.get = async () => ({ status: "loading", url });
+  await vm.runInContext("tick()", w.scope);
+  assert.equal(w.storage.serverTasks.length, 2); assert.equal(w.storage.task.remote.id, 1);
+  assert.equal(calls.length, 2); assert.equal(w.updated[0].id, 42); assert.equal(w.created(), 0);
+  await vm.runInContext("tick()", w.scope); assert.equal(calls.length, 2);
+});
+test("unacknowledged result survives network failure and prevents claiming another task", async () => {
+  const w = worker({ status: "reading", kind: "product", tabId: 1, productId: "1435461", url,
+    deadline: Date.now() + 60000, remote: { id: 1, claimToken: "claim" } });
+  w.local.settings = { enabled: true, key: "k".repeat(40), workerId: "worker-test" };
+  const calls = [];
+  w.scope.fetch = async target => { calls.push(target); throw new Error("offline"); };
+  await w.send({ type: "status" });
+  assert.equal(w.local.outbox.id, 1);
+  await vm.runInContext("tick()", w.scope);
+  assert.ok(calls.every(target => target.endsWith("/result")));
+  const saved = JSON.stringify(w.local.outbox.submission);
+  w.scope.fetch = async (target, options) => {
+    assert.ok(target.endsWith("/result")); assert.equal(options.body, saved);
+    return { ok: true, text: async () => '{"saved":true}' };
+  };
+  await vm.runInContext("deliver()", w.scope); assert.equal(w.local.outbox, undefined);
+});
+test("invalid evidence becomes a failed result and lost leases discard only the old outbox", async () => {
+  const w = worker(); w.local.settings = { key: "k".repeat(40) };
+  w.local.outbox = { id: 1, submission: { ok: true, evidence: {}, claimToken: "claim" } };
+  w.scope.fetch = async () => ({ ok: false, status: 400 });
+  assert.equal(await vm.runInContext("deliver()", w.scope), false);
+  assert.equal(w.local.outbox.submission.ok, false);
+  assert.equal(w.local.outbox.submission.evidence, null);
+  w.scope.fetch = async () => ({ ok: false, status: 409 });
+  assert.equal(await vm.runInContext("deliver()", w.scope), true);
+  assert.equal(w.local.outbox, undefined);
+});
+test("manual reads are disabled while the server worker runs", async () => {
+  const w = worker(); w.local.settings = { enabled: true };
+  assert.equal((await w.send({ type: "start", url })).code, "worker_running");
+  assert.equal(w.created(), 0);
 });
