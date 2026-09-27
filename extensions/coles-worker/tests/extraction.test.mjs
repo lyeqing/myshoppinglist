@@ -211,7 +211,7 @@ test("pending navigation does not read stale product content", async () => {
 
 test("search reads only bounded product links inside the results container", () => {
   const doc = documentFixture();
-  doc.querySelector = () => ({ querySelectorAll: () => [url, url, "https://evil.example/product/123", ...Array.from({ length: 8 }, (_, i) => `/product/${i + 1}`)].map(href => ({ getAttribute: () => href })) });
+  doc.querySelector = selector => selector === '.coles-targeting-search-content-container' ? ({ querySelectorAll: () => [url, url, "https://evil.example/product/123", ...Array.from({ length: 8 }, (_, i) => `/product/${i + 1}`)].map(href => ({ getAttribute: () => href })) }) : null;
   const result = read(doc, "https://www.coles.com.au/search/products?q=pizza");
   assert.equal(result.kind, "search"); assert.equal(result.links.length, 5);
   assert.equal(result.links.filter(link => link === url).length, 1);
@@ -278,4 +278,80 @@ test("manual reads are disabled while the server worker runs", async () => {
   const w = worker(); w.local.settings = { enabled: true };
   assert.equal((await w.send({ type: "start", url })).code, "worker_running");
   assert.equal(w.created(), 0);
+});
+
+const searchUrl = "https://www.coles.com.au/search/products?q=mccain+superfries+shoestring+900g";
+function searchDocument({ fallback = false, extra = false, stale = false } = {}) {
+  const doc = documentFixture();
+  doc.body.innerText = 'Results for "mccain superfries shoestring 900g" 1 - 2 of 2 results';
+  const heading = { textContent: stale ? 'Results for "pizza"' : 'Results for "mccain superfries shoestring 900g"' };
+  const container = { querySelectorAll(selector) {
+    assert.equal(selector, "a[href]");
+    return ["/product/mccain-shoestring-2kg-111", "/product/mccain-shoestring-900g-222", "/product/222?tracking=duplicate",
+      ...(extra ? ["/product/recommended-333"] : [])].map(href => ({ getAttribute: () => href, closest: () => null }));
+  } };
+  doc.querySelector = selector => selector === "main h1, h1" ? heading
+    : selector === "main" || selector === ".coles-targeting-search-content-container" && !fallback ? container : null;
+  return doc;
+}
+test("search returns both pack sizes without depending on product link classes", () => {
+  for (const fallback of [false, true]) {
+    const result = read(searchDocument({ fallback }), searchUrl);
+    assert.equal(result.ok, true);
+    assert.deepEqual(Array.from(result.links, link => productUrl(link).id), ["111", "222"]);
+  }
+  assert.equal(read(searchDocument({ stale: true }), searchUrl).code, "product_not_identified");
+  assert.equal(read(searchDocument({ fallback: true, extra: true }), searchUrl).code, "product_not_identified");
+  const empty = searchDocument(); empty.body.innerText = "No results for this product";
+  assert.equal(read(empty, searchUrl).links.length, 0);
+});
+test("search is extracted while background resources load but pending navigation is not read", async () => {
+  const task = { status: "reading", kind: "search", tabId: 42, url: searchUrl, deadline: Date.now() + 60000 };
+  const w = worker(task, 42);
+  w.chrome.tabs.get = async () => ({ status: "loading", url: searchUrl });
+  w.chrome.scripting.executeScript = async options => {
+    assert.equal(options.injectImmediately, true);
+    return [{ result: read(searchDocument(), searchUrl) }];
+  };
+  await w.send({ type: "status" });
+  assert.equal(w.storage.task.status, "complete"); assert.equal(w.storage.task.result.links.length, 2);
+  const pending = worker(task, 42);
+  pending.chrome.tabs.get = async () => ({ status: "loading", url: searchUrl, pendingUrl: searchUrl });
+  pending.chrome.scripting.executeScript = async () => assert.fail("Pending navigation must not be read");
+  await pending.send({ type: "status" }); assert.equal(pending.storage.task.status, "reading");
+});
+test("stale injected search results wait for the requested query", async () => {
+  const w = worker({ status: "reading", kind: "search", tabId: 42, url: searchUrl, deadline: Date.now() + 60000 });
+  w.chrome.tabs.get = async () => ({ status: "complete", url: searchUrl });
+  w.chrome.scripting.executeScript = async () => [{ result: { ok: true, kind: "search", url: "https://www.coles.com.au/search/products?q=pizza", links: [url] } }];
+  await w.send({ type: "status" }); assert.equal(w.storage.task.status, "reading");
+});
+test("search completion continues through both candidate products one by one", async () => {
+  const w = worker(undefined, 42);
+  w.local.settings = { enabled: true, key: "k".repeat(40), workerId: "worker-test" };
+  const search = { id: 1, kind: "search", url: searchUrl, status: "Waiting" };
+  let tasks = [search]; let activeUrl = searchUrl; const submitted = []; const claimed = [];
+  w.chrome.tabs.update = async (id, properties) => { activeUrl = properties.url; w.updated.push({ id, ...properties }); return { id }; };
+  w.chrome.tabs.get = async () => ({ status: activeUrl === searchUrl ? "loading" : "complete", url: activeUrl });
+  w.chrome.scripting.executeScript = async () => [{ result: activeUrl === searchUrl ? read(searchDocument(), searchUrl)
+    : { ok: true, productId: productUrl(activeUrl).id, evidence: { nextProductJson: null, jsonLd: [] } } }];
+  w.scope.fetch = async (target, options) => {
+    let response;
+    if (target.endsWith("/tasks")) response = tasks;
+    else if (target.endsWith("/claim")) {
+      const id = Number(target.split("/").at(-2)); claimed.push(id);
+      response = { ...tasks.find(t => t.id === id), claimToken: "claim-" + id };
+    } else {
+      const id = Number(target.split("/").at(-2)); const submission = JSON.parse(options.body);
+      submitted.push(id); tasks = tasks.filter(t => t.id !== id);
+      if (id === 1) tasks = submission.links.map((link, i) => ({ id: i + 2, kind: "product", url: link, status: "Waiting" }));
+      response = { saved: true };
+    }
+    return { ok: true, text: async () => JSON.stringify(response) };
+  };
+  await vm.runInContext("serial(tick)", w.scope);
+  for (let i = 0; i < 6; i++) await w.send({ type: "status" });
+  assert.deepEqual(claimed, [1, 2, 3]); assert.deepEqual(submitted, [1, 2, 3]);
+  assert.equal(w.created(), 0); assert.equal(w.updated.length, 3);
+  assert.ok(w.updated.every(tab => tab.id === 42)); assert.equal(w.local.outbox, undefined);
 });

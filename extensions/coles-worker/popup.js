@@ -7,11 +7,13 @@ const resultPanel = document.getElementById("result");
 let enabled = false;
 function render(task) {
   button.disabled = enabled || task?.status === "reading";
-  if (!input.value && task?.url) input.value = task.url;
+  if (task?.remote || !input.value) input.value = task?.kind === "search" ? "" : task?.url || "";
   resultPanel.hidden = true;
   if (!task) { status.textContent = "Ready. Results stay in this browser session."; return; }
   if (task.status === "reading") {
-    status.textContent = task.note || "Reading the Coles tab… This can take up to 90 seconds.";
+    status.textContent = task.note || (task.kind === "search"
+      ? `Searching Coles for “${task.remote?.query || new URL(task.url).searchParams.get("q") || "product"}”…`
+      : "Reading the Coles product… This can take up to 90 seconds.");
     return;
   }
   const result = task.result;

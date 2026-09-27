@@ -54,15 +54,18 @@ async function inspect() {
   let tab;
   try { tab = await chrome.tabs.get(task.tabId); }
   catch { await finish(task, failure("tab_closed", "The product tab was closed.")); return; }
-  if (tab.status !== "complete" || tab.pendingUrl) return;
+  if (tab.pendingUrl || (task.kind !== "search" && tab.status !== "complete")) return;
+  if (task.kind === "search" && tab.status === "loading" && tab.url !== task.url) return;
   if (task.kind === "search" ? tab.url !== task.url : READER.productUrl(tab.url)?.id !== task.productId) {
     await finish(task, failure("product_redirected", "The tab navigated away from the requested product."));
     return;
   }
   try {
-    const responses = await chrome.scripting.executeScript({ target: { tabId: task.tabId, frameIds: [0] }, files: ["content.js"], world: "ISOLATED" });
+    const responses = await chrome.scripting.executeScript({ target: { tabId: task.tabId, frameIds: [0] },
+      files: ["content.js"], world: "ISOLATED", injectImmediately: task.kind === "search" });
     const result = responses[0]?.result;
     if (!result || result.code === "product_not_identified") return;
+    if (task.kind === "search" && result.ok && (result.kind !== "search" || result.url !== task.url)) return;
     if (result.ok && task.kind !== "search" && result.productId !== task.productId) {
       await finish(task, failure("product_identity_conflict", "The extracted product does not match the request."));
     } else await finish(task, result);

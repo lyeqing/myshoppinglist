@@ -96,12 +96,24 @@
     const pageUrl = new URL(url);
     if (pageUrl.origin === "https://www.coles.com.au" && pageUrl.pathname === "/search/products") {
       if (blocked) return fail("retailer_access_restricted", "Coles restricted access to search.");
-      const container = document.querySelector('.coles-targeting-search-content-container');
-      const links = container ? Array.from(container.querySelectorAll('a.product__link[href]'))
+      const heading = document.querySelector('main h1, h1');
+      const query = (pageUrl.searchParams.get("q") || "").trim().toLowerCase();
+      if (heading && query && !(heading.textContent || "").toLowerCase().includes(query))
+        return fail("product_not_identified", "Waiting for the requested search results.");
+      const results = document.querySelector('.coles-targeting-search-content-container');
+      const count = body.match(/\b\d+\s*[-–]\s*\d+\s+of\s+(\d+)\s+results\b/i);
+      // A bounded, visibly identified result page is a fallback when Coles changes its container class.
+      const container = results || (heading && count ? document.querySelector('main') : null);
+      const candidates = container ? Array.from(container.querySelectorAll('a[href]'))
+        .filter(a => !a.closest?.('aside, nav, header, footer, [aria-label*="recommend" i]'))
         .map(a => { try { return productUrl(new URL(a.getAttribute("href"), url).href)?.url; } catch { return null; } })
         .filter(Boolean) : [];
+      const unique = new Map(candidates.map(link => [productUrl(link).id, link]));
+      const links = [...unique.values()];
       const emptyConfirmed = /no results for|no results found|no products found|we couldn't find any|we couldn’t find any/i.test(body);
       if (!links.length && !emptyConfirmed) return fail("product_not_identified", "Waiting for Coles search results.");
+      if (!results && count && links.length > Number(count[1]))
+        return fail("product_not_identified", "Search results could not be separated from recommendations.");
       return { ok: true, kind: "search", url: pageUrl.href, links: emptyConfirmed ? [] : [...new Set(links)].slice(0, 5), emptyConfirmed };
     }
     const nodes = Array.from(document.querySelectorAll('script#__NEXT_DATA__, script[type="application/ld+json"]'));
