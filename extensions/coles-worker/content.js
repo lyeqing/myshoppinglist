@@ -112,9 +112,10 @@
       const links = [...unique.values()];
       const emptyMessage = /no results for|no results found|no products found|we couldn't find any|we couldn’t find any/i;
       // Only the current search heading/result region can establish an empty search.
-      // A footer, recipe tab or unrelated message must not discard actual product links.
-      const emptyConfirmed = emptyMessage.test(heading?.textContent || "")
-        || links.length === 0 && emptyMessage.test(results?.innerText || "");
+      // Coles can show suggested products beneath a "No results" heading.
+      // Keep those candidates for product matching rather than declaring the search empty.
+      const emptyConfirmed = links.length === 0 && (emptyMessage.test(heading?.textContent || "")
+        || emptyMessage.test(results?.innerText || ""));
       if (!links.length && !emptyConfirmed) return fail("product_not_identified", "Waiting for Coles search results.");
       if (!results && count && links.length > Number(count[1]))
         return fail("product_not_identified", "Search results could not be separated from recommendations.");

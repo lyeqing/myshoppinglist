@@ -306,7 +306,32 @@ test("search returns both pack sizes without depending on product link classes",
   const empty = searchDocument(); empty.body.innerText = "No results for mccain superfries shoestring 900g";
   const originalQuery = empty.querySelector;
   empty.querySelector = selector => selector === "main h1, h1" ? { textContent: empty.body.innerText } : originalQuery(selector);
-  assert.equal(read(empty, searchUrl).links.length, 0);
+  assert.equal(read(empty, searchUrl).links.length, 2);
+  assert.equal(read(empty, searchUrl).emptyConfirmed, false);
+});
+
+test("olive oil suggestions survive a no-results heading, but an empty search stays empty", () => {
+  const query = "red island extra virgin olive oil cold pressed 1l";
+  const requestedUrl = `https://www.coles.com.au/search/products?q=${encodeURIComponent(query)}`;
+  for (const fallback of [false, true]) {
+    for (const hasProducts of [true, false]) {
+      const doc = documentFixture();
+      const heading = { textContent: `No results for "${query}"` };
+      doc.body.innerText = `${heading.textContent} Here are our best guesses for "${query}"`
+        + (hasProducts ? " 1 - 4 of 4 results" : "");
+      // Synthetic IDs represent the four pack sizes displayed in the search results.
+      const paths = ["250ml-111", "500ml-222", "1l-333", "3l-444"]
+        .map(pack => `/product/red-island-extra-virgin-olive-oil-${pack}`);
+      const container = { innerText: doc.body.innerText, querySelectorAll: () =>
+        (hasProducts ? paths : []).map(href => ({ getAttribute: () => href, closest: () => null })) };
+      doc.querySelector = selector => selector === "main h1, h1" ? heading
+        : selector === "main" || selector === ".coles-targeting-search-content-container" && !fallback ? container : null;
+      const result = read(doc, requestedUrl);
+      assert.equal(result.ok, true);
+      assert.equal(result.emptyConfirmed, !hasProducts);
+      assert.deepEqual(Array.from(result.links), hasProducts ? paths.map(path => `https://www.coles.com.au${path}`) : []);
+    }
+  }
 });
 
 test("unrelated empty messages cannot discard real search candidates", () => {
