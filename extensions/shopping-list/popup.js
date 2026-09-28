@@ -3,9 +3,17 @@ const el = id => document.getElementById(id);
 let url = null;
 let busy = false;
 let signedIn = false;
+let tabId;
+let activeImport = false;
 el("extension-id").textContent = chrome.runtime.id;
 function status(text, error = false) { el("status").textContent = text; el("status").className = error ? "error" : ""; }
-function disabled(value) { busy = value; document.querySelectorAll("button,input,select").forEach(e => { e.disabled = value; }); el("add-button").disabled = value || !url || !signedIn; }
+function disabled(value) { busy = value; document.querySelectorAll("button,input,select").forEach(e => { e.disabled = value; }); el("add-button").disabled = value || activeImport || !url || !signedIn; }
+function progress(workflow) {
+  activeImport = workflow?.status === "Reading";
+  el("retry").hidden = workflow?.status !== "Failed";
+  if (workflow) status(workflow.message, workflow.status === "Failed");
+  disabled(busy);
+}
 async function send(message) { const result = await chrome.runtime.sendMessage(message); if (!result?.ok) throw new Error(result?.error || "The extension could not complete the request."); return result.data; }
 function render(data) {
   signedIn = !!data.session;
@@ -18,6 +26,7 @@ function render(data) {
   el("list-label").hidden = !lists.length; el("list").required = lists.length > 1;
   el("empty").hidden = !!lists.length;
   if (data.result?.url === url) confirmation(data.result);
+  progress(data.workflow);
 }
 function confirmation(result) { status(result.reused ? "This product is already being checked. Its original quantity is unchanged." : `Added to the import queue (quantity ${result.quantity}). Price checks are in progress. Open MyShoppingList to follow progress.`); }
 async function refresh() {
@@ -25,6 +34,7 @@ async function refresh() {
   disabled(true); status("");
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    tabId = tab?.id;
     url = productUrl(tab?.url);
     el("product").textContent = url || "Open a Coles or Woolworths product page to add it.";
     render(await send({ type: "state" }));
@@ -39,7 +49,7 @@ el("login").addEventListener("submit", async event => {
 });
 el("add").addEventListener("submit", async event => {
   event.preventDefault(); if (busy) return; disabled(true); status("Adding product…");
-  try { const data = await send({ type: "add", url, listId: el("list").value ? Number(el("list").value) : null, quantity: Number(el("quantity").value) }); confirmation(data.result); }
+  try { const data = await send({ type: "add", url, tabId, listId: el("list").value ? Number(el("list").value) : null, quantity: Number(el("quantity").value) }); progress(data.workflow); }
   catch (error) { status(error.message, true); }
   finally { disabled(false); }
 });
@@ -50,4 +60,11 @@ el("logout").addEventListener("click", async () => {
   finally { render({ session: null }); disabled(false); }
 });
 el("refresh").addEventListener("click", refresh);
+el("retry").addEventListener("click", async () => {
+  if (busy) return; disabled(true);
+  try { progress((await send({ type: "retry" })).workflow); }
+  catch (error) { status(error.message, true); }
+  finally { disabled(false); }
+});
+chrome.storage.onChanged.addListener((changes, area) => { if (area === "session" && changes.workflow) progress(changes.workflow.newValue); });
 void refresh();
