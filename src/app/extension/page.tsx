@@ -14,9 +14,9 @@ export default function ExtensionPage() {
         <li>Click <strong>Load unpacked</strong> and select <code className="break-all">D:\pra\myshoppinglist\extensions\shopping-list</code>.</li>
         <li>Copy the extension ID and ask the local server owner to add it to <code className="break-all">UserExtension:AllowedExtensionIds</code>, then restart the API. Detailed setup is in the extension folder’s README.</li>
         <li>Pin <strong>MyShoppingList — Add to list (Local test)</strong> from Chrome’s Extensions menu.</li>
-        <li>Visit a Coles or Woolworths product page, open the extension and sign in. Choose a list and click <strong>Add to list</strong>. If none exists, we create one for you.</li>
+        <li>Visit a Coles or Woolworths product page and open the blue basket extension. It shares your website sign-in. Choose a list and click <strong>Add to list</strong>. If none exists, we create one using your local date, such as Shopping_List_04_10_2026_01.</li>
       </ol>
     </section>
-    <p className="mt-6 text-sm leading-6 text-slate-600">This is separate from the Retailer Reader extension. It reads product details only after you click Add and handles only that import. Keep Chrome open; you can close the popup. Temporary comparison tabs close when work finishes. Passwords are not stored; sign in again after restarting Chrome. A Chrome Web Store installation link will replace these steps after publication.</p>
+    <p className="mt-6 text-sm leading-6 text-slate-600">The blue basket identifies Add to list; the orange tag identifies the separate Retailer Reader. Shared price collection is on by default when signed in. While idle, it opens and closes temporary retailer tabs to help refresh prices, using some bandwidth. Turn this off at any time with “Help refresh shared prices” in the extension. Your Add actions take priority. Keep Chrome open; you can close the popup. Temporary comparison tabs close when work finishes. Passwords are not stored. Sign-in survives Chrome restarts until the website session expires. Signing out in the website or extension signs out both. A Chrome Web Store installation link will replace these steps after publication.</p>
   </main>;
 }

@@ -19,6 +19,15 @@ export default function InStoreApp() {
   const initials = [parts[0], ...(parts.length > 1 ? [parts.at(-1)!] : [])].map(p => Array.from(p)[0]).join("").toLocaleUpperCase();
   const { load, dispose } = state;
   useEffect(() => { void load(null); return dispose; }, [load, dispose]);
+  useEffect(() => {
+    const changed = () => {
+      setSigningIn(false); dispose();
+      store.setState({ session: null, lists: [], detail: null, selectedList: null, shopId: null, saving: false, authBusy: false });
+      void load(null);
+    };
+    window.addEventListener("myshoppinglist-session-changed", changed);
+    return () => window.removeEventListener("myshoppinglist-session-changed", changed);
+  }, [store, load, dispose]);
   const retailers = state.detail?.retailers ?? [...new Map(state.lists.flatMap(l => l.retailers).map(s => [s.id, s])).values()];
   const selected = retailers.find(s => s.id === state.shopId);
   const detail = state.detail;

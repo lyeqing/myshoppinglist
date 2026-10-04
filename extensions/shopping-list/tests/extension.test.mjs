@@ -6,12 +6,15 @@ const { productUrl, createWorker } = await import(`data:text/javascript;base64,$
 const token = "a".repeat(64);
 function fixture(lists = [{ id: 1, name: "One" }]) {
   let data = { token };
+  let cookie = { value: token, name: "myshoppinglist_session", path: "/", domain: "localhost", httpOnly: true };
   const calls = [];
   const removed = [];
   const tabs = new Map([[7, { id: 7, url: "https://www.coles.com.au/product/test-123" }]]);
   const browser = { runtime: { id: "a".repeat(32) },
+    cookies: { get: async () => cookie ? structuredClone(cookie) : null,
+      set: async value => { cookie = { ...value, domain: "localhost" }; return cookie; }, remove: async () => { cookie = null; } },
     alarms: { create: async () => {}, clear: async () => {} },
-    tabs: { get: async id => { if (!tabs.has(id)) throw new Error("closed"); return tabs.get(id); },
+    tabs: { query: async () => [], sendMessage: async () => {}, get: async id => { if (!tabs.has(id)) throw new Error("closed"); return tabs.get(id); },
       create: async ({ url }) => { const tab = { id: 100, url }; tabs.set(100, tab); return tab; },
       update: async (id, value) => { Object.assign(tabs.get(id), value); }, remove: async id => { removed.push(id); tabs.delete(id); } },
     scripting: { executeScript: async () => [{ result: { ok: true, evidence: { nextProductJson: "{}", jsonLd: [] } } }] },
@@ -20,10 +23,11 @@ function fixture(lists = [{ id: 1, name: "One" }]) {
   } } };
   const fetcher = async (url, options) => {
     calls.push({ url, ...options });
-    const value = url.endsWith("user-extension/login") ? { token, session: { account: { id: 1 } } }
+    const value = url.endsWith("user-extension/login") ? { token, session: { account: { id: 1 }, sessionExpiresDate: new Date(Date.now() + 86400000).toISOString() } }
       : url.endsWith("/me") ? { account: { id: 1 } }
       : url.endsWith("/shopping-lists") ? lists
       : url.endsWith("/default") ? { shoppingListId: 3 }
+      : url.endsWith("/preference") ? { enabled: true, blocked: false }
       : { jobId: 10, status: "Completed", sourceSaved: true, stage: "complete" };
     return { ok: true, status: 200, json: async () => value };
   };
@@ -63,7 +67,7 @@ test("creates default only with no lists, and rejects unowned or missing selecti
 test("login stores only token, state never returns token and logout clears it", async () => {
   const f = fixture(); await f.browser.storage.session.clear();
   await f.handle({ type: "login", email: "a@example.test", password: "secret" });
-  assert.deepEqual(f.data(), { token });
+  assert.deepEqual(f.data(), { token, contributionPreference: { enabled: true, blocked: false } });
   assert.equal(f.calls[0].headers.Authorization, undefined);
   assert.equal((await f.handle({ type: "state" })).token, undefined);
   await f.handle({ type: "logout" }); assert.deepEqual(f.data(), {});
@@ -132,4 +136,93 @@ test("comparison read failure closes only the temporary tab", async () => {
   await handle({ type: "add", url, tabId: 7, quantity: 2, listId: 1 }); await handle.pump();
   f.browser.scripting.executeScript = async () => [{ result: { ok: false, code: "access_restricted" } }];
   await handle.pump(); assert.deepEqual(f.removed, [100]); assert.equal(f.data().workflow.status, "Failed");
+});
+
+test("idle sharing claims only one task, survives worker suspension, submits and closes its own tab", async () => {
+  const f = fixture(); const calls = [];
+  const fetcher = async (address, options) => {
+    calls.push({ address, options });
+    if (address.endsWith("/claim")) return { ok: true, status: 200, json: async () => ({ id: 50, kind: "product", url, claimToken: "reserved", leaseExpiresAt: new Date(Date.now() + 180000).toISOString() }) };
+    return { ok: true, status: 204 };
+  };
+  await createWorker(f.browser, fetcher).sharedPump();
+  assert.equal(f.data().sharedTask.id, 50);
+  await createWorker(f.browser, fetcher).sharedPump();
+  assert.equal(calls.filter(c => c.address.endsWith("/claim")).length, 1);
+  assert.equal(JSON.parse(calls[1].options.body).claimToken, "reserved");
+  assert.equal(JSON.parse(calls[1].options.body).ok, true);
+  assert.deepEqual(f.removed, [100]); assert.equal(f.data().sharedTask, undefined);
+  assert.equal((await f.browser.tabs.get(7)).url, url);
+});
+
+test("opt-out and active personal work do not claim; Add preempts a reserved shared tab", async () => {
+  const f = fixture();
+  await f.browser.storage.session.set({ contributionPreference: { enabled: false } });
+  await f.handle.sharedPump(); assert.equal(f.calls.length, 0);
+  await f.browser.storage.session.set({ contributionPreference: { enabled: true }, workflow: { status: "Reading" } });
+  await f.handle.sharedPump(); assert.equal(f.calls.length, 0);
+  await f.browser.storage.session.remove("workflow");
+  await f.browser.tabs.create({ url });
+  await f.browser.storage.session.set({ sharedTask: { id: 12, tabId: 100 } });
+  await f.handle({ type: "add", url, tabId: 7, quantity: 1, listId: 1 });
+  assert.deepEqual(f.removed, [100]); assert.equal(f.data().workflow.kind, "source");
+  assert.equal(f.data().sharedTask, undefined);
+});
+
+test("no shared work backs off and signed-out browsers do not contact the server", async () => {
+  const f = fixture(); let calls = 0;
+  const handle = createWorker(f.browser, async () => { calls++; return { ok: true, status: 200, json: async () => null }; });
+  await handle.sharedPump(); await handle.sharedPump(); assert.equal(calls, 1);
+  await f.browser.cookies.remove(); await f.browser.storage.session.clear(); await handle.sharedPump(); assert.equal(calls, 1);
+});
+
+test("unsupported shared task URL never opens a tab", async () => {
+  const f = fixture();
+  const handle = createWorker(f.browser, async () => ({ ok: true, status: 200, json: async () => ({ id: 1, kind: "product", url: "https://evil.example/product/1" }) }));
+  await handle.sharedPump(); assert.equal(f.data().sharedTask, undefined);
+  await assert.rejects(f.browser.tabs.get(100));
+});
+
+test("website session survives extension storage loss and sign-out removes the shared cookie", async () => {
+  const f = fixture();
+  await f.browser.storage.session.clear();
+  const state = await f.handle({ type: "state" });
+  assert.equal(state.session.account.id, 1); assert.equal(f.data().token, token);
+  assert.equal(f.calls.some(c => c.url.endsWith("/login")), false);
+  await f.handle({ type: "logout" });
+  assert.equal(await f.browser.cookies.get(), null); assert.deepEqual(f.data(), {});
+});
+
+test("extension login creates an HTTP-only website cookie with the server expiry", async () => {
+  const f = fixture(); await f.browser.cookies.remove(); await f.browser.storage.session.clear();
+  await f.handle({ type: "login", email: "shopper@example.test", password: "Password1!" });
+  const cookie = await f.browser.cookies.get();
+  assert.equal(cookie.value, token); assert.equal(cookie.httpOnly, true); assert.equal(cookie.sameSite, "lax");
+  assert.equal(cookie.url, "http://localhost:3000/"); assert.ok(cookie.expirationDate > Date.now() / 1000);
+});
+
+test("website logout clears queued work and closes only extension-owned tabs", async () => {
+  const f = fixture(); await f.browser.tabs.create({ url });
+  await f.browser.storage.session.set({ workflow: { status: "Reading", temporaryTabId: 100, sessionToken: token } });
+  await f.browser.cookies.remove(); await f.handle.syncSession();
+  assert.deepEqual(f.removed, [100]); assert.deepEqual(f.data(), {});
+  assert.equal((await f.browser.tabs.get(7)).url, url);
+});
+
+test("switching website accounts discards a delayed response instead of using its data", async () => {
+  const f = fixture(); let resolveResponse;
+  const handle = createWorker(f.browser, () => new Promise(resolve => { resolveResponse = resolve; }));
+  const pending = handle({ type: "state" });
+  while (!resolveResponse) await new Promise(resolve => setTimeout(resolve, 0));
+  await f.browser.cookies.set({ name: "myshoppinglist_session", path: "/", value: "b".repeat(64) });
+  await handle.syncSession();
+  resolveResponse({ ok: true, status: 200, json: async () => ({ account: { id: 1 } }) });
+  await assert.rejects(pending, /account changed/);
+  assert.equal(f.data().token, "b".repeat(64)); assert.equal(f.data().workflow, undefined);
+});
+
+test("default list requests carry the browser timezone", async () => {
+  const f = fixture([]);
+  await f.handle({ type: "add", url, tabId: 7, quantity: 1 });
+  assert.equal(f.calls.find(c => c.url.endsWith("/default")).headers["X-Client-Timezone"], Intl.DateTimeFormat().resolvedOptions().timeZone);
 });

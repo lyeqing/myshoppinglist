@@ -17,6 +17,8 @@ function progress(workflow) {
 async function send(message) { const result = await chrome.runtime.sendMessage(message); if (!result?.ok) throw new Error(result?.error || "The extension could not complete the request."); return result.data; }
 function render(data) {
   signedIn = !!data.session;
+  el("help-prices").checked = data.preference?.enabled !== false;
+  el("shared-status").textContent = data.preference?.blocked ? "Shared collection is restricted for this account. You can still add products." : data.preference?.enabled ? "Ready to help while idle." : "Shared collection is off.";
   el("login").hidden = signedIn; el("account").hidden = !signedIn;
   el("name").textContent = data.session?.account.displayName || "";
   el("list").replaceChildren();
@@ -68,3 +70,25 @@ el("retry").addEventListener("click", async () => {
 });
 chrome.storage.onChanged.addListener((changes, area) => { if (area === "session" && changes.workflow) progress(changes.workflow.newValue); });
 void refresh();
+let sessionRefreshTimer;
+function refreshSharedSession() {
+  clearTimeout(sessionRefreshTimer);
+  if (busy) { sessionRefreshTimer = setTimeout(refreshSharedSession, 150); return; }
+  void refresh();
+}
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "session" || !changes.token) return;
+  if (!changes.token.newValue) render({ session: null });
+  clearTimeout(sessionRefreshTimer); sessionRefreshTimer = setTimeout(refreshSharedSession, 100);
+});
+el("help-prices").addEventListener("change", async () => {
+  disabled(true);
+  try { render(await send({ type: "contributionPreference", enabled: el("help-prices").checked })); }
+  catch (error) { status(error.message, true); }
+  finally { disabled(false); }
+});
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "session") return;
+  if (changes.sharedTask) el("shared-status").textContent = changes.sharedTask.newValue ? "Checking a shared retailer task…" : "Ready to help while idle.";
+  if (changes.sharedMessage) el("shared-status").textContent = changes.sharedMessage.newValue;
+});

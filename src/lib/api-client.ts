@@ -7,7 +7,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   else init.signal?.addEventListener("abort", cancel, { once: true });
   const timer = setTimeout(() => { timedOut = true; controller.abort(); }, 20000);
   try {
-    const response = await fetch(`/api${path}`, { ...init, signal: controller.signal, credentials: "same-origin", cache: "no-store", headers: { "Content-Type": "application/json", "X-MyShoppingList-Request": "1", ...init.headers } });
+    const response = await fetch(`/api${path}`, { ...init, signal: controller.signal, credentials: "same-origin", cache: "no-store", headers: { "Content-Type": "application/json", "X-MyShoppingList-Request": "1", "X-Client-Timezone": Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", ...init.headers } });
     if (!response.ok) {
       const problem = await response.json().catch(error => { if (controller.signal.aborted) throw error; return {}; });
       const wait = Number(response.headers.get("Retry-After")) || null;
