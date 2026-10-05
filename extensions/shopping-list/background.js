@@ -811,10 +811,25 @@ export function createPanelController(browser, worker) {
     };
   async function close(tabId) {
     if (tabId == null) return;
+    let windowId;
+    try {
+      windowId = (await browser.tabs.get(tabId)).windowId;
+    } catch {
+      windowId = (await read()).fullWindowId;
+    }
     try {
       await browser.sidePanel.close({ tabId });
     } catch {
       /* Already closed. */
+    }
+    // The first toolbar opening uses the manifest's global panel. Since Chrome
+    // 145, closing by tabId alone does not close that window-level panel.
+    if (windowId != null) {
+      try {
+        await browser.sidePanel.close({ windowId });
+      } catch {
+        /* No global panel is open in this window. */
+      }
     }
   }
   async function notify() {
@@ -867,6 +882,7 @@ export function createPanelController(browser, worker) {
     ui.opened = true;
     ui.hidden = false;
     ui.fullTabId = tab.id;
+    ui.fullWindowId = tab.windowId;
     ui.fullUrl = tab.url;
     await storage.set({ panelUi: ui });
     if (previous !== tab.id) await close(previous);
@@ -939,10 +955,14 @@ export function createPanelController(browser, worker) {
         }
         await notify();
       }),
-    closed: (tabId) =>
+    closed: (tabId, windowId) =>
       run(async () => {
         const ui = await read();
-        if (ui.fullTabId === tabId) {
+        if (
+          ui.fullTabId != null &&
+          (ui.fullTabId === tabId ||
+            (tabId == null && ui.fullWindowId === windowId))
+        ) {
           ui.fullTabId = null;
           ui.hidden = true;
           ui.tickets = {};
@@ -996,7 +1016,7 @@ if (
       .catch((error) => console.error("Panel could not open:", error.message));
   });
   chrome.sidePanel.onClosed.addListener((info) => {
-    if (info.tabId != null) void panels.closed(info.tabId);
+    void panels.closed(info.tabId, info.windowId);
   });
   chrome.tabs.onActivated.addListener((info) => {
     void panels.navigation(info.tabId, null, true);

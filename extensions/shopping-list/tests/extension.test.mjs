@@ -138,6 +138,46 @@ function panelFixture() {
     panels: createPanelController(f.browser, f.handle),
   };
 }
+test("Hide closes the first global panel and later tab-specific panels, including after worker restart", async () => {
+  const f = panelFixture();
+  await f.browser.tabs.update(7, { windowId: 11, url: "chrome://newtab/" });
+  const tab = await f.browser.tabs.get(7);
+  let globalOpen = true;
+  let tabOpen = false;
+  const closes = [];
+  f.browser.sidePanel.close = async (options) => {
+    closes.push(options);
+    if (options.tabId != null) {
+      if (!tabOpen) throw new Error("No tab-specific panel is open");
+      tabOpen = false;
+    } else {
+      assert.equal(options.windowId, 11);
+      globalOpen = false;
+    }
+  };
+  await f.panels.toolbar(tab, true);
+  const restored = createPanelController(f.browser, f.handle);
+  await restored.hide();
+  assert.equal(globalOpen, false);
+  assert.deepEqual(closes, [{ tabId: 7 }, { windowId: 11 }]);
+  assert.equal(f.data().panelUi.hidden, true);
+  tabOpen = true;
+  await restored.toolbar(tab, true);
+  await restored.hide();
+  assert.equal(tabOpen, false);
+  assert.equal(f.data().panelUi.hidden, true);
+});
+test("Chrome closing a global panel remembers Hide only for the owning window", async () => {
+  const f = panelFixture();
+  await f.browser.tabs.update(7, { windowId: 11 });
+  await f.panels.toolbar(await f.browser.tabs.get(7), true);
+  await f.panels.closed(undefined, 12);
+  assert.equal(f.data().panelUi.hidden, false);
+  await f.panels.closed(undefined, 11);
+  assert.equal(f.data().panelUi.hidden, true);
+  await f.panels.navigation(7, url);
+  assert.equal((await f.panels.visible(7)).show, false);
+});
 test("first open is full, minimize is compact, and Hide survives navigation and worker restart", async () => {
   const f = panelFixture();
   const tab = await f.browser.tabs.get(7);
