@@ -70,7 +70,7 @@ function render(data) {
 function confirmation(result) {
   status(
     result.reused
-      ? "This product is already being checked. Its original quantity is unchanged."
+      ? "This product is already being checked with this quantity."
       : `Added to the import queue (quantity ${result.quantity}). Price checks are in progress. Open MyShoppingList to follow progress.`,
   );
 }

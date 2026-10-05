@@ -1,4 +1,96 @@
 import { test, expect, type Page } from "@playwright/test";
+
+for (const paid of [false, true]) {
+  test(`list management creates, selects and ${paid ? "archives" : "deletes"} within the tier limit`, async ({
+    page,
+  }) => {
+    const timestamp = "2026-10-05T00:00:00Z";
+    let lists = [
+      { id: 1, name: "Weekly", createdDate: timestamp, updatedDate: timestamp },
+    ];
+    await page.route("**/api/**", async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      const method = route.request().method();
+      if (path.endsWith("auth/me"))
+        return route.fulfill({
+          json: {
+            account: {
+              id: 1,
+              displayName: "Alex",
+              isTrial: false,
+              isPaid: paid,
+            },
+            shoppingListId: 1,
+          },
+        });
+      if (path.endsWith("/manage"))
+        return route.fulfill({
+          json: { isPaid: paid, limit: paid ? 5 : 2, lists },
+        });
+      if (path === "/api/shopping-lists" && method === "POST") {
+        const created = {
+          id: 2,
+          name: route.request().postDataJSON().name,
+          createdDate: timestamp,
+          updatedDate: timestamp,
+        };
+        lists.push(created);
+        return route.fulfill({ json: created });
+      }
+      if (method === "DELETE" || path.endsWith("/archive")) {
+        expect(route.request().postDataJSON().expectedUpdatedDate).toBe(
+          timestamp,
+        );
+        lists = lists.filter((list) => list.id !== 2);
+        return route.fulfill({ status: 204 });
+      }
+      if (path.endsWith("/imports"))
+        return route.fulfill({ json: { items: [], nextBeforeId: null } });
+      if (path.endsWith("/plan"))
+        return route.fulfill({
+          json: {
+            id: 1,
+            name: "Weekly",
+            items: [],
+            lowest: { subtotal: 0, pricedCount: 0, missingItems: [] },
+            retailers: [],
+          },
+        });
+      return route.fulfill({ status: 404 });
+    });
+    await page.goto("/");
+    await page.getByLabel("New list name (optional)").fill("Weekend");
+    await page.getByRole("button", { name: "Create new list" }).click();
+    await expect(page.getByLabel("Selected list")).toHaveValue("2");
+    if (!paid) {
+      await expect(
+        page.getByRole("button", { name: "Create new list" }),
+      ).toBeDisabled();
+      await expect(
+        page.getByRole("button", { name: "Archive list" }),
+      ).toHaveCount(0);
+      await expect(
+        page.getByRole("link", { name: "History", exact: true }),
+      ).toHaveCount(0);
+      page.once("dialog", (dialog) => dialog.accept());
+    }
+    await page
+      .getByRole("button", {
+        name: paid ? "Archive list" : "Delete list",
+        exact: true,
+      })
+      .click();
+    await expect(page.getByLabel("Selected list")).toHaveValue("1");
+    await expect(
+      page.getByRole("button", { name: "Create new list" }),
+    ).toBeEnabled();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+  });
+}
 import { createServer, type Server } from "node:http";
 import { randomBytes } from "node:crypto";
 import type {

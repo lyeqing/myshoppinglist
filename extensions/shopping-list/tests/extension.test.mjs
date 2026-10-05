@@ -120,6 +120,122 @@ function fixture(lists = [{ id: 1, name: "One" }]) {
   };
 }
 const url = "https://www.coles.com.au/product/test-123";
+test("stale product identity retries once in a background tab and saves the selected product", async () => {
+  for (const product of [
+    url,
+    "https://www.woolworths.com.au/shop/productdetails/456",
+  ]) {
+    const f = fixture();
+    await f.browser.tabs.update(7, { url: product });
+    const created = [];
+    const create = f.browser.tabs.create;
+    f.browser.tabs.create = async (options) => {
+      created.push(options);
+      return create(options);
+    };
+    f.browser.scripting.executeScript = async ({ target }) => [
+      {
+        result:
+          target.tabId === 7
+            ? { ok: false, code: "product_identity_conflict" }
+            : {
+                ok: true,
+                evidence: { nextProductJson: "fresh selected product" },
+              },
+      },
+    ];
+    await f.handle({
+      type: "add",
+      url: product,
+      tabId: 7,
+      quantity: 2,
+      listId: 1,
+    });
+    const requestId = f.data().workflow.requestId;
+    await f.handle.pump();
+    assert.deepEqual(created, [{ url: product, active: false }]);
+    assert.equal(
+      f.calls.some((call) => call.url.endsWith("/imports/")),
+      false,
+    );
+    await f.handle.pump();
+    const submitted = JSON.parse(
+      f.calls.find((call) => call.url.endsWith("/imports/")).body,
+    );
+    assert.equal(submitted.url, product);
+    assert.equal(submitted.requestId, requestId);
+    assert.equal(submitted.quantity, 2);
+    assert.equal(submitted.evidence.nextProductJson, "fresh selected product");
+    assert.equal(f.data().workflow.status, "Completed");
+    assert.deepEqual(f.removed, [100]);
+    assert.equal((await f.browser.tabs.get(7)).url, product);
+  }
+});
+test("repeated identity conflict fails safely and closes the retry tab without submitting", async () => {
+  const f = fixture();
+  let created = 0;
+  const create = f.browser.tabs.create;
+  f.browser.tabs.create = async (options) => {
+    created++;
+    return create(options);
+  };
+  f.browser.scripting.executeScript = async () => [
+    { result: { ok: false, code: "product_identity_conflict" } },
+  ];
+  await f.handle({ type: "add", url, tabId: 7, quantity: 1, listId: 1 });
+  await f.handle.pump();
+  await f.handle.pump();
+  await f.handle.pump();
+  assert.equal(created, 1);
+  assert.equal(f.data().workflow.status, "Failed");
+  assert.deepEqual(f.removed, [100]);
+  assert.equal(
+    f.calls.some((call) => call.url.endsWith("/imports/")),
+    false,
+  );
+});
+test("navigating away after Add does not retry a different product", async () => {
+  const f = fixture();
+  await f.handle({ type: "add", url, tabId: 7, quantity: 1, listId: 1 });
+  await f.browser.tabs.update(7, {
+    url: "https://www.coles.com.au/product/other-456",
+  });
+  await f.handle.pump();
+  assert.equal(f.data().workflow.status, "Failed");
+  assert.equal(f.data().workflow.sourceReloadAttempted, undefined);
+  assert.deepEqual(f.removed, []);
+  assert.equal(
+    f.calls.some((call) => call.url.endsWith("/imports/")),
+    false,
+  );
+});
+test("fresh-document retry closes its tab on timeout or sign-out", async () => {
+  for (const reason of ["timeout", "signout"]) {
+    const f = fixture();
+    f.browser.scripting.executeScript = async () => [
+      { result: { ok: false, code: "product_identity_conflict" } },
+    ];
+    await f.handle({ type: "add", url, tabId: 7, quantity: 1, listId: 1 });
+    await f.handle.pump();
+    if (reason === "timeout") {
+      await f.browser.storage.session.set({
+        workflow: { ...f.data().workflow, deadline: 0 },
+      });
+      await f.handle.pump();
+      assert.equal(f.data().workflow.status, "Failed");
+    } else {
+      await f.browser.cookies.remove();
+      await f.handle.syncSession();
+      assert.equal(f.data().workflow, undefined);
+    }
+    assert.deepEqual(f.removed, [100]);
+    assert.equal((await f.browser.tabs.get(7)).url, url);
+    assert.equal(
+      f.calls.some((call) => call.url.endsWith("/imports/")),
+      false,
+    );
+  }
+});
 function panelFixture() {
   const f = fixture();
   const opened = [],

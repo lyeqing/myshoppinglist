@@ -9,6 +9,8 @@ import {
   type ImportPage,
   type Job,
   type Session,
+  type ShoppingListManagement,
+  type ShoppingListSummary,
 } from "@/lib/api-types";
 import ImportCard, { Spinner } from "./import-card";
 import ShoppingListItems from "./shopping-list-items";
@@ -25,6 +27,13 @@ const message = (e: unknown) =>
 const aborted = (e: unknown) => e instanceof Error && e.name === "AbortError";
 
 export default function ShoppingListApp() {
+  const management = useShoppingStore((state) => state.management);
+  const setManagement = useShoppingStore(
+    (state) => state.actions.setManagement,
+  );
+  const [newListName, setNewListName] = useState("");
+  const [listError, setListError] = useState("");
+  const [managing, setManaging] = useState(false);
   const {
     session,
     booting,
@@ -273,27 +282,138 @@ export default function ShoppingListApp() {
       setLoading(false);
     }
   }
-  function accountReady(current: Session) {
-    const sameList =
-      current.account.id === session?.account.id &&
-      current.shoppingListId === session.shoppingListId;
-    generation.current++;
-    trialSession.current = current.account.isTrial;
-    setSession(current);
-    setAccountMode(null);
-    setLoading(false);
-    setNotice(
-      sameList
-        ? "Your account is ready. Your list and edits are kept."
-        : "You’re signed in.",
+  const accountReady = useCallback(
+    (current: Session) => {
+      const sameList =
+        current.account.id === session?.account.id &&
+        current.shoppingListId === session.shoppingListId;
+      generation.current++;
+      trialSession.current = current.account.isTrial;
+      setSession(current);
+      setAccountMode(null);
+      setLoading(false);
+      setNotice(
+        sameList
+          ? "Your account is ready. Your list and edits are kept."
+          : "You’re signed in.",
+      );
+      if (!sameList) {
+        setFormError("");
+        setUrl("");
+        setQuantity("1");
+      }
+      if (current.shoppingListId)
+        void loadPage(current.shoppingListId, null, lifetime.current!.signal);
+    },
+    [session, setSession, setLoading, loadPage],
+  );
+
+  useEffect(() => {
+    if (!session || session.account.isTrial) return;
+    const controller = new AbortController();
+    const refresh = async () => {
+      try {
+        const value = await api<ShoppingListManagement>(
+          "/shopping-lists/manage",
+          { signal: controller.signal },
+        );
+        if (!controller.signal.aborted) {
+          setManagement(value);
+          setListError("");
+          if (
+            session.shoppingListId &&
+            !value.lists.some((list) => list.id === session.shoppingListId)
+          ) {
+            accountReady({
+              ...session,
+              shoppingListId: value.lists[0]?.id ?? null,
+            });
+            setNotice(
+              "Your previous list is no longer active. Choose or create a list to continue.",
+            );
+          }
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) setListError(message(error));
+      }
+    };
+    void refresh();
+    window.addEventListener("focus", refresh);
+    return () => {
+      controller.abort();
+      window.removeEventListener("focus", refresh);
+    };
+  }, [session, accountReady, setManagement]);
+
+  async function manageList(action: "create" | "delete" | "archive") {
+    if (!session || managing) return;
+    const selected = management?.lists.find(
+      (list) => list.id === session.shoppingListId,
     );
-    if (!sameList) {
-      setFormError("");
-      setUrl("");
-      setQuantity("1");
+    if (action !== "create" && !selected) return;
+    if (
+      action === "delete" &&
+      !window.confirm(
+        `Delete “${selected!.name}” permanently? It will not appear in History.`,
+      )
+    )
+      return;
+    const version = generation.current;
+    setManaging(true);
+    setListError("");
+    try {
+      let created: ShoppingListSummary | undefined;
+      if (action === "create")
+        created = await api<ShoppingListSummary>("/shopping-lists", {
+          method: "POST",
+          body: JSON.stringify({ name: newListName }),
+        });
+      else {
+        const latest = await api<ShoppingListManagement>(
+          "/shopping-lists/manage",
+        );
+        if (version !== generation.current) return;
+        const current = latest.lists.find((list) => list.id === selected!.id);
+        if (!current)
+          throw new Error("This list is no longer active. Refresh your lists.");
+        await api<void>(
+          `/shopping-lists/${current.id}${action === "archive" ? "/archive" : ""}`,
+          {
+            method: action === "archive" ? "POST" : "DELETE",
+            body: JSON.stringify({ expectedUpdatedDate: current.updatedDate }),
+          },
+        );
+      }
+      const value = await api<ShoppingListManagement>("/shopping-lists/manage");
+      if (version !== generation.current) return;
+      setManagement(value);
+      accountReady({
+        ...session,
+        shoppingListId: created?.id ?? value.lists[0]?.id ?? null,
+      });
+      setNewListName("");
+      setNotice(
+        action === "create"
+          ? "Your new list is ready."
+          : action === "archive"
+            ? "List archived. Find it in History."
+            : "List deleted permanently.",
+      );
+    } catch (error) {
+      if (version === generation.current) {
+        setListError(message(error));
+        try {
+          const value = await api<ShoppingListManagement>(
+            "/shopping-lists/manage",
+          );
+          if (version === generation.current) setManagement(value);
+        } catch {
+          /* Keep the original error. */
+        }
+      }
+    } finally {
+      setManaging(false);
     }
-    if (current.shoppingListId)
-      void loadPage(current.shoppingListId, null, lifetime.current!.signal);
   }
 
   async function startTrial() {
@@ -370,7 +490,7 @@ export default function ShoppingListApp() {
       setQuantity("1");
       setNotice(
         accepted.reused
-          ? "This product is already being checked. Its original requested quantity is unchanged."
+          ? "This product is already being checked with this quantity."
           : "Link added. Keep shopping while we find your product.",
       );
     } catch (error) {
@@ -503,6 +623,127 @@ export default function ShoppingListApp() {
             Add Chrome extension
           </Link>
         </div>
+
+        {session && !session.account.isTrial && (
+          <section
+            aria-label="Manage shopping lists"
+            className="mb-8 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-lg font-semibold">Your lists</h2>
+              {session.account.isPaid && (
+                <Link href="/history" className="font-semibold text-sky-700">
+                  History
+                </Link>
+              )}
+            </div>
+            {management && (
+              <>
+                <p className="my-3 text-sm text-slate-500">
+                  {management.lists.length} of {management.limit} active lists ·{" "}
+                  {management.isPaid ? "Paid account" : "Free account"}
+                </p>
+                <div className="flex flex-wrap items-end gap-3">
+                  <label className="min-w-48 flex-1 text-sm font-medium">
+                    Selected list
+                    <select
+                      aria-label="Selected list"
+                      className="mt-1 block w-full rounded-xl border border-slate-300 p-3"
+                      disabled={managing || authBusy || submitting}
+                      value={session.shoppingListId ?? ""}
+                      onChange={(event) => {
+                        accountReady({
+                          ...session,
+                          shoppingListId: Number(event.target.value),
+                        });
+                        setNotice("");
+                      }}
+                    >
+                      <option value="" disabled>
+                        {management.lists.length
+                          ? "Choose a list"
+                          : "No active lists"}
+                      </option>
+                      {management.lists.map((list) => (
+                        <option key={list.id} value={list.id}>
+                          {list.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {management.isPaid && (
+                    <button
+                      className={secondary}
+                      disabled={
+                        managing ||
+                        authBusy ||
+                        submitting ||
+                        !session.shoppingListId
+                      }
+                      onClick={() => void manageList("archive")}
+                    >
+                      Archive list
+                    </button>
+                  )}
+                  <button
+                    className={`${secondary} text-red-700`}
+                    disabled={
+                      managing ||
+                      authBusy ||
+                      submitting ||
+                      !session.shoppingListId
+                    }
+                    onClick={() => void manageList("delete")}
+                  >
+                    Delete list
+                  </button>
+                </div>
+                <form
+                  className="mt-4 flex flex-wrap items-end gap-3"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void manageList("create");
+                  }}
+                >
+                  <label className="min-w-48 flex-1 text-sm font-medium">
+                    New list name (optional)
+                    <input
+                      maxLength={200}
+                      className="mt-1 block w-full rounded-xl border border-slate-300 p-3"
+                      value={newListName}
+                      onChange={(event) => setNewListName(event.target.value)}
+                      placeholder="Leave blank for an automatic name"
+                      disabled={managing || authBusy}
+                    />
+                  </label>
+                  <button
+                    className={primary}
+                    disabled={
+                      managing ||
+                      authBusy ||
+                      submitting ||
+                      management.lists.length >= management.limit
+                    }
+                  >
+                    Create new list
+                  </button>
+                </form>
+                {management.lists.length >= management.limit && (
+                  <p className="mt-3 text-sm text-amber-800">
+                    {management.isPaid
+                      ? "Delete or archive a list to free a slot."
+                      : "Delete a list to free a slot."}
+                  </p>
+                )}
+              </>
+            )}
+            {listError && (
+              <p role="alert" className="mt-3 text-sm text-red-700">
+                {listError}
+              </p>
+            )}
+          </section>
+        )}
 
         <div className="mb-9 flex flex-wrap items-end justify-between gap-5">
           <div>
@@ -887,7 +1128,7 @@ export default function ShoppingListApp() {
           <p className="mt-4 text-xs leading-6 text-slate-400">
             MyShoppingList is independent of these retailers. Comparison
             coverage varies by retailer. Some prices need verification. Existing
-            list-item quantities stay unchanged when you import the same product
+            list-item quantities are replaced when you import the same product
             again.
           </p>
         </section>

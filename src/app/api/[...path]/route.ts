@@ -25,6 +25,16 @@ async function forward(
   const adminEdit =
     request.method === "PUT" && /^admin\/accounts\/[1-9]\d{0,18}$/.test(route);
   const allowed =
+    (get &&
+      /^shopping-lists\/(manage|history|[1-9]\d{0,18}\/history)$/.test(
+        route,
+      )) ||
+    (request.method === "POST" &&
+      /^(shopping-lists|shopping-lists\/[1-9]\d{0,18}\/archive)$/.test(
+        route,
+      )) ||
+    (request.method === "DELETE" &&
+      /^shopping-lists\/[1-9]\d{0,18}$/.test(route)) ||
     adminGet ||
     adminEdit ||
     (get

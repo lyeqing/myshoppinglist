@@ -20,6 +20,7 @@ export interface Session {
     id: number;
     displayName: string;
     isTrial: boolean;
+    isPaid?: boolean;
     expiresDate: string | null;
   };
   shoppingListId: number | null;
@@ -37,6 +38,7 @@ export interface ImportPage {
   nextBeforeId: number | null;
 }
 export interface ListItem {
+  listArchived?: boolean;
   id: number;
   shoppingListId: number;
   product: NonNullable<Job["product"]>;
@@ -48,6 +50,21 @@ export interface ListItem {
   preferredShopId: number | null;
   addedDate: string;
   updatedDate: string;
+}
+export interface ShoppingListSummary {
+  id: number;
+  name: string;
+  createdDate: string;
+  updatedDate: string;
+}
+export interface ShoppingListManagement {
+  limit: number;
+  isPaid: boolean;
+  lists: ShoppingListSummary[];
+}
+export interface ShoppingListHistory {
+  list: ShoppingListSummary;
+  items: ListItem[];
 }
 export interface ListItemPage {
   items: ListItem[];

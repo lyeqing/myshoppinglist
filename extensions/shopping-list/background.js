@@ -379,6 +379,39 @@ export function createWorker(browser, fetcher = fetch) {
                 await schedule();
                 return;
               }
+              if (
+                workflow.kind === "source" &&
+                result?.code === "product_identity_conflict" &&
+                !workflow.sourceReloadAttempted
+              ) {
+                await syncSession();
+                if (version !== sessionGeneration) return;
+                // Client-side retailer navigation can retain the previous product's
+                // embedded JSON. Read a fresh document without changing the user's tab.
+                workflow.sourceReloadAttempted = true;
+                workflow.message =
+                  "Refreshing product details in a temporary tab…";
+                await storage.set({ workflow });
+                const freshTab = await browser.tabs.create({
+                  url: workflow.url,
+                  active: false,
+                });
+                await syncSession();
+                if (version !== sessionGeneration) {
+                  try {
+                    await browser.tabs.remove(freshTab.id);
+                  } catch {
+                    /* Already closed. */
+                  }
+                  return;
+                }
+                workflow.temporaryTabId = freshTab.id;
+                workflow.tabId = freshTab.id;
+                workflow.deadline = Date.now() + 90000;
+                await storage.set({ workflow });
+                await schedule();
+                return;
+              }
               if (!result || result.code === "product_not_identified") {
                 await schedule();
                 return;

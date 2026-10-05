@@ -4,6 +4,7 @@ import type {
   ListItem,
   Session,
   ShoppingListPlan,
+  ShoppingListManagement,
 } from "../lib/api-types";
 
 type Update<T> = T | ((previous: T) => T);
@@ -25,6 +26,7 @@ const emptyList = () => ({
 
 export interface ShoppingState {
   session: Session | null;
+  management: ShoppingListManagement | null;
   booting: boolean;
   restoreError: string;
   jobs: Record<number, Job>;
@@ -38,6 +40,7 @@ export interface ShoppingState {
   itemsLoading: boolean;
   itemsError: string;
   actions: {
+    setManagement: (management: ShoppingListManagement | null) => void;
     setSession: (session: Session) => void;
     clearSession: () => void;
     setBooting: (booting: boolean) => void;
@@ -59,10 +62,12 @@ export interface ShoppingState {
 export const createShoppingStore = () =>
   createStore<ShoppingState>()((set) => ({
     session: null,
+    management: null,
     booting: true,
     restoreError: "",
     ...emptyList(),
     actions: {
+      setManagement: (management) => set({ management }),
       setSession: (session) =>
         set((previous) => ({
           ...(previous.session?.account.id !== session.account.id ||
@@ -70,12 +75,16 @@ export const createShoppingStore = () =>
             ? emptyList()
             : {}),
           session,
+          ...(previous.session?.account.id !== session.account.id
+            ? { management: null }
+            : {}),
           restoreError: "",
         })),
       clearSession: () =>
         set({
           ...emptyList(),
           session: null,
+          management: null,
           booting: false,
           restoreError: "",
         }),
