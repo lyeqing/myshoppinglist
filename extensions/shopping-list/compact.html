@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>MyShoppingList quick add</title>
+    <link rel="stylesheet" href="compact.css" />
+  </head>
+  <body>
+    <header>
+      <strong><span aria-hidden="true">▣</span> MyShoppingList</strong>
+      <div>
+        <button id="expand" title="Open full view" aria-label="Open full view">
+          ↗</button
+        ><button
+          id="hide"
+          title="Hide until toolbar click"
+          aria-label="Hide quick add"
+        >
+          ×
+        </button>
+      </div>
+    </header>
+    <p id="list" title="Selected shopping list">Loading your list…</p>
+    <form id="add">
+      <label for="quantity">Quantity</label>
+      <div class="controls">
+        <input
+          id="quantity"
+          type="number"
+          min="1"
+          max="2147483647"
+          step="1"
+          value="1"
+          required
+        /><button id="add-button" disabled type="submit">+ Add</button>
+      </div>
+    </form>
+    <p id="status" role="status" aria-live="polite">Checking this page…</p>
+    <script src="compact.js" type="module"></script>
+  </body>
+</html>

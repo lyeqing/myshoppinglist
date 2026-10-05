@@ -54,6 +54,12 @@ export interface ListItemPage {
   nextBeforeId: number | null;
 }
 export interface PlanningPrice {
+  multibuy?: {
+    quantity: number;
+    total: number;
+    unitPrice: number;
+    savings: number;
+  } | null;
   refreshStatus?: "Waiting" | "Updating" | "RetryLater" | null;
   shopId: number;
   shopName: string;

@@ -1,12 +1,104 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Add to MyShoppingList</title><link rel="stylesheet" href="popup.css"></head>
-<body><header><p class="eyebrow">MYSHOPPINGLIST · LOCAL TEST</p><h1>Add to your list</h1></header>
-<p id="product">Checking the current tab…</p>
-<p id="status" role="status" aria-live="polite"></p>
-<form id="login" hidden><h2>Sign in</h2><label>Email<input id="email" type="email" autocomplete="username" maxlength="320" required></label><label>Password<input id="password" type="password" autocomplete="current-password" maxlength="1024" required></label><button type="submit">Sign in</button><a href="http://localhost:3000/" target="_blank" rel="noreferrer">Create an account on MyShoppingList</a></form>
-<section id="account" hidden><div class="account"><span id="name"></span><button id="logout" class="secondary">Sign out</button></div>
-<section class="sharing"><label><input id="help-prices" type="checkbox" checked> Help refresh shared prices</label><p>On by default. While you are signed in and not adding a product, this opens and closes temporary retailer tabs and uses some bandwidth. You can turn it off at any time.</p><p id="shared-status" role="status"></p></section>
-<form id="add"><label id="list-label">Shopping list<select id="list"></select></label><p id="empty" hidden>We’ll create a shopping list named with your local date when you add this product.</p><label>Quantity<input id="quantity" type="number" min="1" max="2147483647" step="1" value="1" required></label><button id="add-button" type="submit">Add to list</button></form></section>
-<button id="retry" hidden>Retry comparison</button><button id="refresh" class="secondary">Refresh</button><a href="http://localhost:3000/" target="_blank" rel="noreferrer">Open MyShoppingList</a>
-<footer>Shares sign-in with MyShoppingList in this Chrome profile. Signing out here or on the website signs out both. Your sign-in remains after Chrome restarts until it expires. Reads this product and, if needed, checks the other retailer in one temporary tab. Closing this popup does not stop the current import.<details><summary>Local setup</summary><p>Enable this extension ID in the backend’s UserExtension:AllowedExtensionIds setting:</p><code id="extension-id"></code></details></footer>
-<script src="popup.js" type="module"></script></body></html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Add to MyShoppingList</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <div class="panel-controls">
+        <button
+          id="minimize"
+          class="secondary"
+          disabled
+          title="Sign in on a Coles or Woolworths page to minimize"
+        >
+          Minimize</button
+        ><button id="hide" class="secondary">Hide</button>
+      </div>
+      <p class="eyebrow">MYSHOPPINGLIST · LOCAL TEST</p>
+      <h1>Add to your list</h1>
+    </header>
+    <p id="product">Checking the current tab…</p>
+    <p id="status" role="status" aria-live="polite"></p>
+    <form id="login" hidden>
+      <h2>Sign in</h2>
+      <label
+        >Email<input
+          id="email"
+          type="email"
+          autocomplete="username"
+          maxlength="320"
+          required /></label
+      ><label
+        >Password<input
+          id="password"
+          type="password"
+          autocomplete="current-password"
+          maxlength="1024"
+          required /></label
+      ><button type="submit">Sign in</button
+      ><a href="http://localhost:3000/" target="_blank" rel="noreferrer"
+        >Create an account on MyShoppingList</a
+      >
+    </form>
+    <section id="account" hidden>
+      <div class="account">
+        <span id="name"></span
+        ><button id="logout" class="secondary">Sign out</button>
+      </div>
+      <section class="sharing">
+        <label
+          ><input id="help-prices" type="checkbox" checked /> Help refresh
+          shared prices</label
+        >
+        <p>
+          On by default. While you are signed in and not adding a product, this
+          opens and closes temporary retailer tabs and uses some bandwidth. You
+          can turn it off at any time.
+        </p>
+        <p id="shared-status" role="status"></p>
+      </section>
+      <form id="add">
+        <label id="list-label">Shopping list<select id="list"></select></label>
+        <p id="empty" hidden>
+          We’ll create a shopping list named with your local date when you add
+          this product.
+        </p>
+        <label
+          >Quantity<input
+            id="quantity"
+            type="number"
+            min="1"
+            max="2147483647"
+            step="1"
+            value="1"
+            required /></label
+        ><button id="add-button" type="submit">Add to list</button>
+      </form>
+    </section>
+    <button id="retry" hidden>Retry comparison</button
+    ><button id="refresh" class="secondary">Refresh</button
+    ><a href="http://localhost:3000/" target="_blank" rel="noreferrer"
+      >Open MyShoppingList</a
+    >
+    <footer>
+      Shares sign-in with MyShoppingList in this Chrome profile. Signing out
+      here or on the website signs out both. Your sign-in remains after Chrome
+      restarts until it expires. Reads this product and, if needed, checks the
+      other retailer in one temporary tab. Hiding this panel does not stop the
+      current import. Click the toolbar icon to show it again.
+      <details>
+        <summary>Local setup</summary>
+        <p>
+          Enable this extension ID in the backend’s
+          UserExtension:AllowedExtensionIds setting:
+        </p>
+        <code id="extension-id"></code>
+      </details>
+    </footer>
+    <script src="popup.js" type="module"></script>
+  </body>
+</html>

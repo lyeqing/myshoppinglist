@@ -14,14 +14,26 @@ This is the shopper's add-to-list extension, separate from `coles-worker` (the r
    ```
 
    Merge that section into the existing JSON object; do not replace existing settings. Alternatively set environment variable `UserExtension__AllowedExtensionIds__0` for the API process. Restart the API. No extension is allowed by default. The ID is an allowlist identifier, not a secret or a replacement for signing in.
+
 5. Pin the extension using Chrome's Extensions menu. Open a Coles or Woolworths product, click the extension, and use your existing website sign-in. You can also sign in from the extension; both share the same session.
 6. Choose a list if there are several, set quantity, and click **Add to list**. With no active lists, a list is created automatically using your local date, for example `Shopping_List_04_10_2026_01`. Subsequent automatically created lists that day use the next number; existing names are preserved. The extension reads this product page and saves it to your list. If the other retailer has a fresh exact match in the database, that price is reused. Otherwise the extension opens one background tab, searches and reads candidates, and sends evidence to the server. The server validates identity and price evidence; ambiguous matches are not marked exact.
 
 Personal imports start when you click Add. Shared collection defaults to on for signed-in customers and can be disabled with Help refresh shared prices. While idle the extension asks for one reserved task every minute, backing off to five minutes when no work is available or on errors. Personal Add takes priority, closing any shared task tab; unfinished claims expire for another worker. You can close the popup while Chrome remains open. The temporary comparison tab is reused and closed on completion or failure; the original product tab is never closed or navigated. Status and pending submissions are kept in session storage so service-worker suspension and lost responses can recover. Retry replays the same request ID/step token. A 90-second page timeout or failed comparison keeps the saved source product and offers Retry comparison. After a Chrome restart, your website sign-in remains available until its session expires. Click Add again on the source page to resume an unfinished personal import; existing list items are preserved. Server claims expire after ten minutes of inactivity. Session storage does not survive a browser restart, so any tab restored by Chrome after a crash may need to be closed manually.
 
+## Full and compact views
+
+Requires Chrome 142 or newer. Reload the extension after updating; Chrome does not need restarting. The first toolbar click each Chrome session opens the full side panel. Chrome controls which side its side panel occupies (normally the right).
+
+On Coles or Woolworths pages, signed-in shoppers can minimize to a small panel on the right, approximately two-thirds down the page. Subsequent toolbar clicks use this compact view. It shows the remembered shopping list, quantity and Add, plus expand and hide controls. Add works only on product pages. If the remembered list no longer exists, the account's default list or first available list is used; if there are no lists, Add creates one. Open the full panel to change the selected list.
+
+On other websites the toolbar opens the full panel and Minimize is disabled. Navigating away closes the full panel; supported retailer pages can then display the compact view. Hide (including Chrome's side-panel close button) stays hidden until the toolbar is clicked again. Signing out disables compact view. Hiding either view does not cancel imports or change the shared-price collection preference.
+
+The compact controls run in an isolated extension frame. Retailer pages receive visibility information only; Add is validated against the actual active tab, signed-in session and owned shopping lists.
+
 ## Data and permissions
 
 - `activeTab`: identify the current product tab when you open the extension.
+- `sidePanel`: display the full extension interface beside the current tab.
 - `scripting` and retailer host permissions: read bounded product JSON and search links from Coles and Woolworths. Only supported retailer pages in the current Add tab or extension-created task tabs are read. No account details or whole-page HTML are sent.
 - `alarms`: resume active imports and schedule idle shared work. Shared polling stops on sign-out or opt-out.
 - `storage`: cache the shared session and active work in `chrome.storage.session`. Passwords are never saved. The website cookie restores sign-in after Chrome restarts; unfinished work does not survive a restart.
@@ -35,7 +47,7 @@ From the frontend: `node --test extensions/shopping-list/tests/extension.test.mj
 
 ## Before Chrome Web Store publication
 
-This local version is not ready for public installation. Set the production HTTPS API and website URL in `background.js`, update the cookie domain checks, website bridge origins and content-script matches, replace localhost host permission with the production host, update website links in `popup.html`, remove the local-test name and setup text, and configure the published extension ID on the server. Review the included blue basket icon (the Retailer Reader has an orange tag icon), add screenshots, a public privacy policy, support/contact URLs, a store description, and accurate privacy/permission disclosures. Verify production sign-in, expiry, imports, list selection and accessibility in an installed Chrome build. Package only runtime files (manifest, background, content.js, website-session.js, popup HTML/JS/CSS and icons), excluding tests and this README. Publish through the owner's Chrome Web Store developer account after review. Replace the website's installation instructions link with the published listing when available.
+This local version is not ready for public installation. Set the production HTTPS API and website URL in `background.js`, update the cookie domain checks, website bridge origins and content-script matches, replace localhost host permission with the production host, update website links in `popup.html`, remove the local-test name and setup text, and configure the published extension ID on the server. Review the included blue basket icon (the Retailer Reader has an orange tag icon), add screenshots, a public privacy policy, support/contact URLs, a store description, and accurate privacy/permission disclosures. Verify production sign-in, expiry, imports, list selection and accessibility in an installed Chrome build. Package only runtime files (manifest, background, content.js, website-session.js, retailer-panel.js, popup and compact HTML/JS/CSS and icons), excluding tests and this README. Publish through the owner's Chrome Web Store developer account after review. Replace the website's installation instructions link with the published listing when available.
 
 Chrome references: https://developer.chrome.com/docs/extensions/develop/concepts/activeTab and https://developer.chrome.com/docs/extensions/develop/concepts/network-requests
 

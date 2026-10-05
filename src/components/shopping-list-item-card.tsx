@@ -59,8 +59,35 @@ function PriceDetail({
           <span className="ml-2 text-amber-800">— {price.status}</span>
         )}
       </p>
-      {price.specialDescription && (
-        <p className="mt-1 text-xs">{price.specialDescription}</p>
+      {price.multibuy ? (
+        <aside
+          aria-label={`${price.shopName} multibuy offer`}
+          className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-amber-950"
+        >
+          <p className="text-base font-bold">
+            Buy {price.multibuy.quantity} for {money(price.multibuy.total)}
+          </p>
+          <p className="mt-1 font-medium">
+            {money(price.multibuy.unitPrice)} each when buying{" "}
+            {price.multibuy.quantity}
+          </p>
+          <p className="mt-1 text-sm">
+            Save {money(price.multibuy.savings)} compared with buying{" "}
+            {price.multibuy.quantity} individually.
+          </p>
+          <p className="mt-2 text-xs">
+            {price.specialDescription}. Eligible products only; see retailer for
+            offer terms.
+          </p>
+          <p className="mt-1 text-xs font-medium">
+            Your total uses the single-item price. This deal is not applied
+            automatically.
+          </p>
+        </aside>
+      ) : (
+        price.specialDescription && (
+          <p className="mt-1 text-xs">{price.specialDescription}</p>
+        )
       )}
       {price.refreshStatus && (
         <p role="status" className="mt-1 text-xs text-sky-700">

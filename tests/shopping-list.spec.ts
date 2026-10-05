@@ -1260,6 +1260,64 @@ function comparable(job: Job): Job {
   };
 }
 
+test("multibuy deal is prominent while totals clearly use single-item prices", async ({
+  page,
+}, info) => {
+  await start(page);
+  await add(page);
+  const list = page.getByRole("region", { name: "Editable shopping list" });
+  const card = list.getByRole("article");
+  await expect(card).toBeVisible({ timeout: 10000 });
+  planningPrices.set(1, [
+    {
+      shopId: 1,
+      shopName: "Coles",
+      price: 30,
+      includedInTotal: true,
+      status: "Fresh",
+      productUrl: "https://www.coles.com.au/product/1115507",
+      checkedDate: new Date().toISOString(),
+      specialDescription: "Pick any 2 for $30",
+      multibuy: { quantity: 2, total: 30, unitPrice: 15, savings: 30 },
+    },
+  ]);
+  await page.reload();
+  const deal = card.getByRole("complementary", {
+    name: "Coles multibuy offer",
+  });
+  await expect(
+    deal.getByText("Buy 2 for $30.00", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    deal.getByText("$15.00 each when buying 2", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    deal.getByText("Save $30.00 compared with buying 2 individually.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    deal.getByText(/This deal is not applied automatically/),
+  ).toBeVisible();
+  await expect(card.getByText("at Coles", { exact: true })).toBeVisible();
+  const summary = list.getByRole("region", { name: "Shopping cost summary" });
+  await expect(summary.getByText("$30.00", { exact: true })).toHaveCount(2);
+  await card.scrollIntoViewIfNeeded();
+  await page.screenshot({
+    path: `test-results/${info.project.name}-multibuy.png`,
+  });
+  await card.getByRole("button", { name: "Increase quantity" }).click();
+  await expect(summary.getByText("$60.00", { exact: true })).toHaveCount(2);
+  await expect(
+    deal.getByText("Buy 2 for $30.00", { exact: true }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+});
+
 test("stale prices update automatically without losing note drafts or requiring a reload", async ({
   page,
 }) => {

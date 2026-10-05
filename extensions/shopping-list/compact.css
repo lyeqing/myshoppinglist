@@ -1,0 +1,91 @@
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  padding: 12px;
+  height: 238px;
+  overflow: auto;
+  background: #fff;
+  color: #163047;
+  font:
+    12px/1.4 system-ui,
+    sans-serif;
+  border: 1px solid #b9d6e6;
+  border-radius: 16px;
+}
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+header strong {
+  font-size: 11px;
+  color: #0369a1;
+}
+header div {
+  display: flex;
+}
+button {
+  cursor: pointer;
+  border: 0;
+  font: inherit;
+  border-radius: 7px;
+  background: #eaf4fa;
+  color: #075985;
+  font-weight: 700;
+  min-height: 30px;
+}
+header button {
+  width: 28px;
+  font-size: 18px;
+  margin-left: 2px;
+}
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid #0284c7;
+  outline-offset: 2px;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+#list {
+  margin: 8px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #536779;
+}
+label {
+  font-weight: 600;
+}
+.controls {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+input {
+  width: 65px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid #b8c9d7;
+  border-radius: 7px;
+  font: inherit;
+}
+#add-button {
+  flex: 1;
+  background: #0369a1;
+  color: white;
+  font-size: 14px;
+}
+#status {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: #536779;
+  overflow-wrap: anywhere;
+}
+#status.error {
+  color: #a11b1b;
+}

@@ -80,8 +80,9 @@ export default function ShoppingListCostSummary({
       <p className="mt-3 text-xs leading-5 text-slate-500">
         Estimated from current observed prices for matching products. Lowest
         total may require visiting more than one shop. Your store’s prices and
-        availability may differ. Older prices and conditional offers are shown
-        on cards but excluded from totals.
+        availability may differ. Totals use single-item prices; multibuy
+        discounts are shown on cards but are not applied automatically. Stale
+        prices and unverified conditional prices are excluded from totals.
       </p>
     </section>
   );
