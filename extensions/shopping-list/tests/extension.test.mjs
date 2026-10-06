@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import vm from "node:vm";
 import { readFile } from "node:fs/promises";
 const source = await readFile(
   new URL("../background.js", import.meta.url),
@@ -15,6 +16,96 @@ const {
   `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`
 );
 const token = "a".repeat(64);
+test("Coles plus slugs work in the customer URL validator and extractor", async () => {
+  const context = vm.createContext({ URL, Date });
+  vm.runInContext(
+    await readFile(new URL("../content.js", import.meta.url), "utf8"),
+    context,
+  );
+  for (const strength of ["50+", "50%2B", "50%2b"]) {
+    const link = `https://www.coles.com.au/product/banana-boat-sport-${strength}-clear-spray-175g-9873098`;
+    assert.equal(productUrl(link), link);
+    assert.equal(context.ColesReader.productUrl(link).id, "9873098");
+  }
+  assert.equal(
+    productUrl("https://www.coles.com.au/product/banana%2fboat-9873098"),
+    null,
+  );
+});
+
+test("compact status belongs to the current product and preserves the busy guard", async () => {
+  const elements = new Map();
+  const element = (id) => {
+    if (!elements.has(id)) elements.set(id, { addEventListener() {} });
+    return elements.get(id);
+  };
+  let changed;
+  const link =
+    "https://www.coles.com.au/product/banana-boat-sport-50+-clear-spray-175g-9873098";
+  const context = vm.createContext({
+    document: { getElementById: element },
+    chrome: {
+      runtime: {
+        sendMessage: async () => ({
+          ok: true,
+          data: {
+            session: {},
+            productUrl: link,
+            lists: [],
+            workflow: {
+              url: "https://www.coles.com.au/product/other-123",
+              status: "Completed",
+              message: "Old success",
+            },
+          },
+        }),
+        onMessage: { addListener() {} },
+      },
+      storage: {
+        onChanged: {
+          addListener(listener) {
+            changed = listener;
+          },
+        },
+      },
+    },
+  });
+  vm.runInContext(
+    await readFile(new URL("../compact.js", import.meta.url), "utf8"),
+    context,
+  );
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(element("status").textContent, "Ready to add to this list.");
+  assert.equal(element("add-button").disabled, false);
+  changed(
+    {
+      workflow: {
+        newValue: {
+          url: link.replace("50+", "50%2B"),
+          status: "Completed",
+          message: "Current success",
+        },
+      },
+    },
+    "session",
+  );
+  assert.equal(element("status").textContent, "Current success");
+  changed(
+    {
+      workflow: {
+        newValue: { url: "other", status: "Reading", message: "Old progress" },
+      },
+    },
+    "session",
+  );
+  assert.equal(element("add-button").disabled, true);
+  assert.equal(
+    element("status").textContent,
+    "Another product is being added. Please wait.",
+  );
+  changed({ workflow: { newValue: null } }, "session");
+  assert.equal(element("add-button").disabled, false);
+});
 function fixture(lists = [{ id: 1, name: "One" }]) {
   let data = { token };
   let cookie = {

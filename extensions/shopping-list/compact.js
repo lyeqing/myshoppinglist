@@ -4,6 +4,7 @@ let active = false;
 let available = false;
 let refreshing = false;
 let tabId;
+let currentProductUrl;
 async function send(message) {
   const reply = await chrome.runtime.sendMessage(message);
   if (!reply?.ok)
@@ -20,7 +21,20 @@ function controls() {
 }
 function progress(workflow) {
   active = workflow?.status === "Reading";
-  if (workflow) status(workflow.message, workflow.status === "Failed");
+  const matches =
+    currentProductUrl &&
+    workflow?.url &&
+    currentProductUrl.replace(/%2b/gi, "+") ===
+      workflow.url.replace(/%2b/gi, "+");
+  if (matches) status(workflow.message, workflow.status === "Failed");
+  else
+    status(
+      active
+        ? "Another product is being added. Please wait."
+        : available
+          ? "Ready to add to this list."
+          : "Open a product page to add.",
+    );
   controls();
 }
 async function refresh() {
@@ -29,6 +43,7 @@ async function refresh() {
   try {
     const data = await send({ type: "state" });
     tabId = data.tabId;
+    currentProductUrl = data.productUrl;
     available = !!data.session && !!data.productUrl;
     const list = data.lists?.find((value) => value.id === data.selectedListId);
     el("list").textContent = list?.name || "New shopping list";

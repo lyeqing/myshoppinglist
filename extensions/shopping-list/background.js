@@ -36,7 +36,7 @@ export function productUrl(value) {
     const host = url.hostname.toLowerCase().replace(/^www\./, "");
     if (
       (host === "coles.com.au" &&
-        /^\/product\/(?:(?:[a-z0-9.'-]|%27)+-)?\d{1,15}\/?$/i.test(
+        /^\/product\/(?:(?:[a-z0-9.'+-]|%27|%2b)+-)?\d{1,15}\/?$/i.test(
           url.pathname,
         )) ||
       (host === "woolworths.com.au" &&
