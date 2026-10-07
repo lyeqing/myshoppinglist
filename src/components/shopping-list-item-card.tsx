@@ -21,6 +21,12 @@ function safeLink(value: string | null) {
   }
 }
 
+function lineTotal(price: PlanningPrice, quantity: number) {
+  return price.includedInTotal && price.quantityPrice?.quantity === quantity
+    ? price.quantityPrice.total
+    : (price.price ?? 0) * quantity;
+}
+
 function PriceDetail({
   price,
   quantity,
@@ -50,7 +56,8 @@ function PriceDetail({
         {!primary &&
           (price.price !== null ? (
             <>
-              {money(price.price * quantity)} total · {money(price.price)} each
+              {money(lineTotal(price, quantity))} total · {money(price.price)}{" "}
+              single-item price
             </>
           ) : (
             "No price available"
@@ -80,8 +87,10 @@ function PriceDetail({
             offer terms.
           </p>
           <p className="mt-1 text-xs font-medium">
-            Your total uses the single-item price. This deal is not applied
-            automatically.
+            {price.quantityPrice?.quantity === quantity &&
+            price.quantityPrice.appliedBundles > 0
+              ? `Deal applied ${price.quantityPrice.appliedBundles} time(s). Save ${money(price.quantityPrice.savings)} on your quantity (normally ${money(price.quantityPrice.ordinaryTotal)}).${price.quantityPrice.remainingQuantity ? ` ${price.quantityPrice.remainingQuantity} remaining at the single-item price.` : ""}`
+              : `Single-item price used. Buy ${price.multibuy.quantity} of this product to qualify.`}
           </p>
         </aside>
       ) : (
@@ -120,6 +129,7 @@ export default function ShoppingListItemCard({
   save,
   remove,
   reload,
+  retryComparison,
 }: {
   row: PlanningItem;
   disabled: boolean;
@@ -127,6 +137,7 @@ export default function ShoppingListItemCard({
   save: (id: number, edit: ListItemUpdate) => Promise<ListItem>;
   remove: (id: number, expectedUpdatedDate: string) => Promise<void>;
   reload: (id: number) => Promise<ListItem | null>;
+  retryComparison: (id: number) => Promise<void>;
 }) {
   const { item, prices } = row;
   const [draft, setDraft] = useState<{ notes: string; version: string } | null>(
@@ -140,9 +151,16 @@ export default function ShoppingListItemCard({
   const locked = busy || disabled;
   const best = prices
     .filter((p) => p.includedInTotal && p.price !== null)
-    .sort((a, b) => a.price! - b.price!)[0];
+    .sort(
+      (a, b) => lineTotal(a, item.quantity) - lineTotal(b, item.quantity),
+    )[0];
   const ties = best
-    ? prices.filter((p) => p.includedInTotal && p.price === best.price)
+    ? prices.filter(
+        (p) =>
+          p.includedInTotal &&
+          p.price !== null &&
+          lineTotal(p, item.quantity) === lineTotal(best, item.quantity),
+      )
     : [];
   const title = item.product.name.replace(/\s*\|\s*/g, " · ");
   const pack =
@@ -246,14 +264,14 @@ export default function ShoppingListItemCard({
         {best ? (
           <div className="rounded-xl bg-emerald-50 p-4">
             <p className="text-xl font-bold text-emerald-900">
-              {money(best.price! * item.quantity)}{" "}
+              {money(lineTotal(best, item.quantity))}{" "}
               <span className="text-base font-semibold">
                 at {ties.map((p) => p.shopName).join(" & ")}
               </span>
             </p>
             <p className="mt-1 text-sm text-emerald-800">
-              {money(best.price!)} each · Total for {item.quantity} · Lowest
-              observed price
+              {money(best.price!)} single-item price · Total for {item.quantity}{" "}
+              · Lowest observed price
             </p>
             <div className="mt-2">
               <PriceDetail price={best} quantity={item.quantity} primary />
@@ -275,7 +293,58 @@ export default function ShoppingListItemCard({
               />
             ))}
         </div>
-        {checking && (
+        {row.comparison && row.comparison.status !== "Completed" && (
+          <aside
+            aria-label="Price comparison progress"
+            className="mt-3 rounded-xl bg-sky-50 p-3 text-sm"
+          >
+            <p role="status">
+              {row.comparison.status === "Checking"
+                ? `Checking ${
+                    row.comparison.retailers
+                      .filter(
+                        (r) =>
+                          r.status === "Pending" ||
+                          r.status === "Checking" ||
+                          r.status === "CheckFailed",
+                      )
+                      .map((r) => r.name)
+                      .join(" and ") || "other shops"
+                  }… Prices will update here.`
+                : row.comparison.errorCode === "retailer_access_restricted"
+                  ? "Comparison paused: the retailer blocked access. Your product is saved."
+                  : row.comparison.errorCode === "read_timeout"
+                    ? "Comparison check timed out. Your product is saved."
+                    : "Comparison check failed. Your product is saved."}
+            </p>
+            {row.comparison.retryAfter && (
+              <p className="mt-1 text-xs text-slate-600">
+                {row.comparison.status === "Checking"
+                  ? "Next check after "
+                  : "Retry available after "}
+                {new Date(row.comparison.retryAfter).toLocaleString("en-AU")}
+              </p>
+            )}
+            {row.comparison.status === "Failed" && (
+              <button
+                type="button"
+                disabled={locked || !row.comparison.canRetry}
+                className="mt-2 rounded-lg border border-sky-300 px-3 py-2 font-semibold text-sky-800 disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={() =>
+                  void act(async () => {
+                    await retryComparison(item.id);
+                    setNotice(
+                      "Comparison queued. An online extension will check prices.",
+                    );
+                  })
+                }
+              >
+                {busy ? "Queuing comparison…" : "Retry comparison"}
+              </button>
+            )}
+          </aside>
+        )}
+        {!row.comparison && checking && (
           <p role="status" className="mt-3 text-sm text-sky-700">
             Checking other shops… Prices will update here.
           </p>

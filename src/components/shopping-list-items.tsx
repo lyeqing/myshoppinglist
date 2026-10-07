@@ -8,6 +8,7 @@ import {
   type ListItem,
   type ListItemUpdate,
   type ShoppingListPlan,
+  type ItemComparison,
 } from "@/lib/api-types";
 import ShoppingListItemCard from "./shopping-list-item-card";
 import ShoppingListCostSummary from "./shopping-list-cost-summary";
@@ -103,12 +104,14 @@ export default function ShoppingListItems({
     return () => controller.abort();
   }, [listId, load, handle]);
   const refreshing =
-    plan?.items.some((row) =>
-      row.prices.some(
-        (price) =>
-          price.refreshStatus === "Waiting" ||
-          price.refreshStatus === "Updating",
-      ),
+    plan?.items.some(
+      (row) =>
+        row.comparison?.status === "Checking" ||
+        row.prices.some(
+          (price) =>
+            price.refreshStatus === "Waiting" ||
+            price.refreshStatus === "Updating",
+        ),
     ) ?? false;
   useEffect(() => {
     let stopped = false;
@@ -209,6 +212,49 @@ export default function ShoppingListItems({
   const remove = (id: number, expectedUpdatedDate: string) =>
     change<void>(id, "DELETE", { expectedUpdatedDate });
 
+  async function retryComparison(id: number) {
+    if (mutation.current)
+      throw new Error("Please wait for the current change to finish.");
+    const signal = lifetime.current!.signal;
+    const owner = store.getState().session?.account.id;
+    const current = () =>
+      !signal.aborted &&
+      store.getState().session?.account.id === owner &&
+      store.getState().session?.shoppingListId === listId;
+    mutation.current = true;
+    setSaving(true);
+    readVersion.current++;
+    try {
+      const comparison = await api<ItemComparison>(
+        `/shopping-lists/${listId}/items/${id}/retry-comparison`,
+        {
+          method: "POST",
+          body: "{}",
+          signal,
+        },
+      );
+      if (!current()) throw new DOMException("Aborted", "AbortError");
+      const latest = store.getState().plan;
+      if (latest)
+        setPlan({
+          ...latest,
+          items: latest.items.map((row) =>
+            row.item.id === id ? { ...row, comparison } : row,
+          ),
+        });
+    } catch (e) {
+      if (current() && e instanceof ApiError && e.status === 401)
+        onExpired(e.message);
+      throw e;
+    } finally {
+      mutation.current = false;
+      if (current()) {
+        setSaving(false);
+        void load().catch(() => {});
+      }
+    }
+  }
+
   return (
     <section aria-label="Editable shopping list" className="mb-10">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
@@ -247,6 +293,7 @@ export default function ShoppingListItems({
             )}
             save={save}
             remove={remove}
+            retryComparison={retryComparison}
             reload={async (id) =>
               (await load())?.items.find((row) => row.item.id === id)?.item ??
               null

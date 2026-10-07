@@ -4,7 +4,30 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import AccountForm from "./account-form";
 import { useStore } from "zustand";
-import { createInStoreStore, itemGroup } from "@/stores/in-store-store";
+import {
+  createInStoreStore,
+  itemGroup as groupByPrice,
+} from "@/stores/in-store-store";
+import type { InStoreItem, InStorePrice } from "@/lib/api-types";
+
+function lineTotal(price: InStorePrice, quantity: number) {
+  return price.quantityPrice?.quantity === quantity
+    ? price.quantityPrice.total
+    : price.price! * quantity;
+}
+
+function itemGroup(row: InStoreItem, shopId: number | null) {
+  return groupByPrice(
+    {
+      ...row,
+      prices: row.prices.map((p) => ({
+        ...p,
+        price: p.price === null ? null : lineTotal(p, row.item.quantity),
+      })),
+    },
+    shopId,
+  );
+}
 
 const money = (value: number) =>
   new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD" }).format(
@@ -434,7 +457,11 @@ export default function InStoreApp() {
                 const group = selected ? itemGroup(row, selected.id) : 4;
                 const prices = row.prices
                   .filter((p) => p.price !== null)
-                  .sort((a, b) => a.price! - b.price!);
+                  .sort(
+                    (a, b) =>
+                      lineTotal(a, row.item.quantity) -
+                      lineTotal(b, row.item.quantity),
+                  );
                 const best = prices[0];
                 const second = prices[1];
                 const current = row.prices.find(
@@ -502,20 +529,24 @@ export default function InStoreApp() {
                           {current?.price != null ? (
                             <>
                               <p className="text-2xl font-semibold">
-                                {money(current.price)}{" "}
+                                {money(lineTotal(current, row.item.quantity))}{" "}
                                 <span className="text-xs font-normal">
-                                  each ·{" "}
-                                  {money(current.price * row.item.quantity)} for
-                                  your quantity
+                                  for your quantity · {money(current.price)}{" "}
+                                  single-item price
                                 </span>
                               </p>
                               {alternative && (
                                 <p className="mt-2 text-sm">
-                                  {alternative.price! < current.price
-                                    ? `Best price at ${alternative.shopName}: ${money(alternative.price!)} — ${money(current.price - alternative.price!)} cheaper each. Save ${money((current.price - alternative.price!) * row.item.quantity)} on your quantity.`
-                                    : alternative.price === current.price
+                                  {lineTotal(alternative, row.item.quantity) <
+                                  lineTotal(current, row.item.quantity)
+                                    ? `Best price at ${alternative.shopName}: ${money(lineTotal(alternative, row.item.quantity))} for your quantity. Save ${money(lineTotal(current, row.item.quantity) - lineTotal(alternative, row.item.quantity))} on your quantity.`
+                                    : lineTotal(
+                                          alternative,
+                                          row.item.quantity,
+                                        ) ===
+                                        lineTotal(current, row.item.quantity)
                                       ? `Same price at ${alternative.shopName}.`
-                                      : `${alternative.shopName}: ${money(alternative.price!)} each. Save ${money((alternative.price! - current.price) * row.item.quantity)} at ${selected.name}.`}
+                                      : `${alternative.shopName}: ${money(lineTotal(alternative, row.item.quantity))} for your quantity. Save ${money(lineTotal(alternative, row.item.quantity) - lineTotal(current, row.item.quantity))} at ${selected.name}.`}
                                 </p>
                               )}
                             </>
@@ -538,7 +569,7 @@ export default function InStoreApp() {
                                   Available price at {alternative.shopName}:{" "}
                                   {money(alternative.price!)} each ·{" "}
                                   {money(
-                                    alternative.price! * row.item.quantity,
+                                    lineTotal(alternative, row.item.quantity),
                                   )}{" "}
                                   for your quantity
                                 </p>
@@ -549,27 +580,34 @@ export default function InStoreApp() {
                       ) : best ? (
                         <div className="mt-4">
                           <p className="text-sm">
-                            {second?.price === best.price
+                            {second &&
+                            lineTotal(second, row.item.quantity) ===
+                              lineTotal(best, row.item.quantity)
                               ? `Equal best: ${prices
-                                  .filter((p) => p.price === best.price)
+                                  .filter(
+                                    (p) =>
+                                      lineTotal(p, row.item.quantity) ===
+                                      lineTotal(best, row.item.quantity),
+                                  )
                                   .map((p) => p.shopName)
                                   .join(" & ")}`
                               : `Best price: ${best.shopName}`}
                           </p>
                           <p className="text-2xl font-semibold">
-                            {money(best.price!)}{" "}
+                            {money(lineTotal(best, row.item.quantity))}{" "}
                             <span className="text-xs font-normal">
-                              each · {money(best.price! * row.item.quantity)}{" "}
-                              for your quantity
+                              for your quantity · {money(best.price!)}{" "}
+                              single-item price
                             </span>
                           </p>
                           {second && (
                             <p className="mt-2 text-sm">
                               Second price: {second.shopName}{" "}
-                              {money(second.price!)} · Save{" "}
+                              {money(lineTotal(second, row.item.quantity))} ·
+                              Save{" "}
                               {money(
-                                (second.price! - best.price!) *
-                                  row.item.quantity,
+                                lineTotal(second, row.item.quantity) -
+                                  lineTotal(best, row.item.quantity),
                               )}{" "}
                               on your quantity
                             </p>
@@ -584,7 +622,20 @@ export default function InStoreApp() {
                         {row.prices.map((p) => (
                           <p key={p.shopId}>
                             {p.shopName}:{" "}
-                            {p.price === null ? p.status : money(p.price)}
+                            {p.price === null
+                              ? p.status
+                              : `${money(p.price)} single-item price`}
+                            {p.multibuy && (
+                              <span className="mt-1 block font-semibold">
+                                Buy {p.multibuy.quantity} for{" "}
+                                {money(p.multibuy.total)}.
+                                {p.quantityPrice?.quantity ===
+                                  row.item.quantity &&
+                                p.quantityPrice.appliedBundles > 0
+                                  ? ` Deal applied ${p.quantityPrice.appliedBundles} time(s): ${money(p.quantityPrice.total)} total; save ${money(p.quantityPrice.savings)} (normally ${money(p.quantityPrice.ordinaryTotal)}).${p.quantityPrice.remainingQuantity ? ` ${p.quantityPrice.remainingQuantity} remaining at the single-item price.` : ""}`
+                                  : " Single-item price used; quantity does not qualify."}
+                              </span>
+                            )}
                             {p.checkedDate && (
                               <span className="block opacity-70">
                                 Checked{" "}

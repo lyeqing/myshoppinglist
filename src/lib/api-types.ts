@@ -70,7 +70,16 @@ export interface ListItemPage {
   items: ListItem[];
   nextBeforeId: number | null;
 }
+export interface QuantityPrice {
+  quantity: number;
+  total: number;
+  ordinaryTotal: number;
+  savings: number;
+  appliedBundles: number;
+  remainingQuantity: number;
+}
 export interface PlanningPrice {
+  quantityPrice?: QuantityPrice | null;
   multibuy?: {
     quantity: number;
     total: number;
@@ -90,6 +99,15 @@ export interface PlanningPrice {
 export interface PlanningItem {
   item: ListItem;
   prices: PlanningPrice[];
+  comparison?: ItemComparison | null;
+}
+export interface ItemComparison {
+  jobId: number;
+  status: "Checking" | "Failed" | "Completed";
+  errorCode: string | null;
+  retryAfter: string | null;
+  canRetry: boolean;
+  retailers: { name: string; status: string; errorCode: string | null }[];
 }
 export interface PlanningBasket {
   shopId: number | null;
@@ -116,6 +134,8 @@ export interface InStoreList {
   retailers: InStoreRetailer[];
 }
 export interface InStorePrice {
+  multibuy?: PlanningPrice["multibuy"];
+  quantityPrice?: QuantityPrice | null;
   shopId: number;
   shopName: string;
   price: number | null;

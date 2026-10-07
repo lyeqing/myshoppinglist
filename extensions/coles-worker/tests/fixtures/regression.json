@@ -1,0 +1,537 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "banana-plus",
+      "kind": "product",
+      "reason": "Preserve the requested product identity and its single-item price.",
+      "provenance": "Reconstructed from reported behaviour; synthetic prices and reduced page data, not a live capture.",
+      "url": "https://www.coles.com.au/product/banana-boat-sport-50+-clear-spray-175g-9873098",
+      "scripts": [
+        {
+          "id": "",
+          "type": "application/ld+json",
+          "text": "{\"@type\": \"Product\", \"sku\": \"9873098\", \"name\": \"Banana Boat Sport 50+ Clear Spray 175g\", \"brand\": \"Banana Boat\", \"offers\": {\"price\": 24, \"priceCurrency\": \"AUD\", \"url\": \"https://www.coles.com.au/product/banana-boat-sport-50+-clear-spray-175g-9873098\"}}"
+        }
+      ],
+      "blocked": false,
+      "expected": {
+        "code": "9873098",
+        "price": 24
+      }
+    },
+    {
+      "id": "four-twenty-apostrophe",
+      "kind": "product",
+      "reason": "Preserve the requested product identity and its single-item price.",
+      "provenance": "Reconstructed from reported behaviour; synthetic prices and reduced page data, not a live capture.",
+      "url": "https://www.coles.com.au/product/four'n-twenty-frozen-meat-pies-4-pack-700g-5112318",
+      "scripts": [
+        {
+          "id": "",
+          "type": "application/ld+json",
+          "text": "{\"@type\": \"Product\", \"sku\": \"5112318\", \"name\": \"Four'n Twenty Frozen Meat Pies 4 Pack 700g\", \"brand\": \"Four'n Twenty\", \"offers\": {\"price\": 8, \"priceCurrency\": \"AUD\", \"url\": \"https://www.coles.com.au/product/four'n-twenty-frozen-meat-pies-4-pack-700g-5112318\"}}"
+        }
+      ],
+      "blocked": false,
+      "expected": {
+        "code": "5112318",
+        "price": 8
+      }
+    },
+    {
+      "id": "coke-decimal",
+      "kind": "product",
+      "reason": "Preserve the requested product identity and its single-item price.",
+      "provenance": "Reconstructed from reported behaviour; synthetic prices and reduced page data, not a live capture.",
+      "url": "https://www.coles.com.au/product/coca-cola-classic-1.25l-123011",
+      "scripts": [
+        {
+          "id": "",
+          "type": "application/ld+json",
+          "text": "{\"@type\": \"Product\", \"sku\": \"123011\", \"name\": \"Coca-Cola Classic Bottle 1.25L\", \"brand\": \"Coca-Cola\", \"offers\": {\"price\": 3, \"priceCurrency\": \"AUD\", \"url\": \"https://www.coles.com.au/product/coca-cola-classic-1.25l-123011\"}}"
+        }
+      ],
+      "blocked": false,
+      "expected": {
+        "code": "123011",
+        "price": 3
+      }
+    },
+    {
+      "id": "yopro-coles",
+      "kind": "product",
+      "reason": "Preserve the requested product identity and its single-item price.",
+      "provenance": "Reconstructed from reported behaviour; synthetic prices and reduced page data, not a live capture.",
+      "url": "https://www.coles.com.au/product/yopro-mango-150g-5312306",
+      "scripts": [
+        {
+          "id": "",
+          "type": "application/ld+json",
+          "text": "{\"@type\": \"Product\", \"sku\": \"5312306\", \"name\": \"YoPro High Protein Yoghurt Pouch Mango 150g\", \"brand\": \"YoPro\", \"offers\": {\"price\": 2, \"priceCurrency\": \"AUD\", \"url\": \"https://www.coles.com.au/product/yopro-mango-150g-5312306\"}}"
+        }
+      ],
+      "blocked": false,
+      "expected": {
+        "code": "5312306",
+        "price": 2
+      }
+    },
+    {
+      "id": "yopro-woolworths",
+      "kind": "product",
+      "reason": "Preserve the requested product identity and its single-item price.",
+      "provenance": "Reconstructed from reported behaviour; synthetic prices and reduced page data, not a live capture.",
+      "url": "https://www.woolworths.com.au/shop/productdetails/794937",
+      "scripts": [
+        {
+          "id": "",
+          "type": "application/ld+json",
+          "text": "{\"@type\": \"Product\", \"sku\": \"794937\", \"name\": \"YoPro Protein Yoghurt Pouch Mango 150g\", \"brand\": \"YoPro\", \"offers\": {\"price\": 2, \"priceCurrency\": \"AUD\", \"url\": \"https://www.woolworths.com.au/shop/productdetails/794937\"}}"
+        }
+      ],
+      "blocked": false,
+      "expected": {
+        "code": "794937"
+      }
+    },
+    {
+      "id": "mccain-900",
+      "kind": "product",
+      "reason": "Preserve the requested product identity and its single-item price.",
+      "provenance": "Reconstructed from reported behaviour; synthetic prices and reduced page data, not a live capture.",
+      "url": "https://www.woolworths.com.au/shop/productdetails/662937",
+      "scripts": [
+        {
+          "id": "",
+          "type": "application/ld+json",
+          "text": "{\"@type\": \"Product\", \"sku\": \"662937\", \"name\": \"McCain Superfries Shoestring 900g\", \"brand\": \"McCain\", \"offers\": {\"price\": 4, \"priceCurrency\": \"AUD\", \"url\": \"https://www.woolworths.com.au/shop/productdetails/662937\"}}"
+        }
+      ],
+      "blocked": false,
+      "expected": {
+        "code": "662937"
+      }
+    },
+    {
+      "id": "olive-oil",
+      "kind": "product",
+      "reason": "Preserve the requested product identity and its single-item price.",
+      "provenance": "Reconstructed from reported behaviour; synthetic prices and reduced page data, not a live capture.",
+      "url": "https://www.woolworths.com.au/shop/productdetails/257879",
+      "scripts": [
+        {
+          "id": "",
+          "type": "application/ld+json",
+          "text": "{\"@type\": \"Product\", \"sku\": \"257879\", \"name\": \"Red Island Extra Virgin Olive Oil 1L\", \"brand\": \"Red Island\", \"offers\": {\"price\": 25, \"priceCurrency\": \"AUD\", \"url\": \"https://www.woolworths.com.au/shop/productdetails/257879\"}}"
+        }
+      ],
+      "blocked": false,
+      "expected": {
+        "code": "257879"
+      }
+    },
+    {
+      "id": "hans-sticks",
+      "kind": "product",
+      "reason": "Preserve the requested product identity and its single-item price.",
+      "provenance": "Reconstructed from reported behaviour; synthetic prices and reduced page data, not a live capture.",
+      "url": "https://www.woolworths.com.au/shop/productdetails/6008517",
+      "scripts": [
+        {
+          "id": "",
+          "type": "application/ld+json",
+          "text": "{\"@type\": \"Product\", \"sku\": \"6008517\", \"name\": \"Hans Twiggy Sticks Mild 500g\", \"brand\": \"Hans\", \"offers\": {\"price\": 10, \"priceCurrency\": \"AUD\", \"url\": \"https://www.woolworths.com.au/shop/productdetails/6008517\"}}"
+        }
+      ],
+      "blocked": false,
+      "expected": {
+        "code": "6008517"
+      }
+    },
+    {
+      "id": "cadbury-ultimate",
+      "kind": "product",
+      "reason": "Preserve the requested product identity and its single-item price.",
+      "provenance": "Reconstructed from reported behaviour; synthetic prices and reduced page data, not a live capture.",
+      "url": "https://www.coles.com.au/product/1115507",
+      "scripts": [
+        {
+          "id": "",
+          "type": "application/ld+json",
+          "text": "{\"@type\": \"Product\", \"sku\": \"1115507\", \"name\": \"Cadbury Favourites Ultimate Share Chocolate Gift Box 700g\", \"brand\": \"Cadbury\", \"offers\": {\"price\": 30, \"priceCurrency\": \"AUD\", \"url\": \"https://www.coles.com.au/product/1115507\"}}"
+        }
+      ],
+      "blocked": false,
+      "expected": {
+        "code": "1115507",
+        "price": 30
+      }
+    },
+    {
+      "id": "pickers-dippers",
+      "kind": "product",
+      "reason": "Preserve the requested product identity and its single-item price.",
+      "provenance": "Reconstructed from reported behaviour; synthetic prices and reduced page data, not a live capture.",
+      "url": "https://www.coles.com.au/product/1839540",
+      "scripts": [
+        {
+          "id": "",
+          "type": "application/ld+json",
+          "text": "{\"@type\": \"Product\", \"sku\": \"1839540\", \"name\": \"Pickers Cheesy Garlic Bread Dippers 230g\", \"brand\": \"Pickers\", \"offers\": {\"price\": 5, \"priceCurrency\": \"AUD\", \"url\": \"https://www.coles.com.au/product/1839540\"}}"
+        }
+      ],
+      "blocked": false,
+      "expected": {
+        "code": "1839540",
+        "price": 5
+      }
+    },
+    {
+      "id": "coles-blocked",
+      "kind": "product",
+      "reason": "Do not convert an unavailable page into a valid product or zero price.",
+      "provenance": "Reconstructed from reported behaviour; synthetic prices and reduced page data, not a live capture.",
+      "url": "https://www.coles.com.au/product/banana-boat-sport-50+-clear-spray-175g-9873098",
+      "scripts": [],
+      "blocked": true,
+      "expected": {
+        "error": "retailer_access_restricted"
+      }
+    },
+    {
+      "id": "coles-loading",
+      "kind": "product",
+      "reason": "Do not convert an unavailable page into a valid product or zero price.",
+      "provenance": "Reconstructed from reported behaviour; synthetic prices and reduced page data, not a live capture.",
+      "url": "https://www.coles.com.au/product/banana-boat-sport-50+-clear-spray-175g-9873098",
+      "scripts": [],
+      "blocked": false,
+      "expected": {
+        "error": "product_not_identified"
+      }
+    },
+    {
+      "id": "coles-embedded-layout",
+      "kind": "product",
+      "reason": "Read embedded product state when JSON-LD is absent.",
+      "provenance": "Reconstructed from reported behaviour; synthetic prices and reduced page data, not a live capture.",
+      "url": "https://www.coles.com.au/product/5312306",
+      "scripts": [
+        {
+          "id": "__NEXT_DATA__",
+          "type": "",
+          "text": "{\"props\": {\"pageProps\": {\"product\": {\"id\": 5312306, \"name\": \"YoPro Mango Yoghurt Pouch\", \"brand\": \"YoPro\", \"size\": \"150g\", \"pricing\": {\"now\": 2}}}}}"
+        }
+      ],
+      "blocked": false,
+      "expected": {
+        "code": "5312306",
+        "price": 2
+      }
+    },
+    {
+      "id": "coles-stale-navigation",
+      "kind": "product",
+      "reason": "Reject embedded data left over from another product after navigation.",
+      "provenance": "Reconstructed from reported behaviour; synthetic prices and reduced page data, not a live capture.",
+      "url": "https://www.coles.com.au/product/5312306",
+      "scripts": [
+        {
+          "id": "__NEXT_DATA__",
+          "type": "",
+          "text": "{\"props\": {\"pageProps\": {\"product\": {\"id\": 999, \"name\": \"YoPro Mango Yoghurt Pouch\", \"brand\": \"YoPro\", \"size\": \"150g\", \"pricing\": {\"now\": 2}}}}}"
+        }
+      ],
+      "blocked": false,
+      "expected": {
+        "error": "product_identity_conflict"
+      }
+    },
+    {
+      "id": "coles-missing-price",
+      "kind": "product",
+      "reason": "Keep known identity without inventing an offer.",
+      "provenance": "Reconstructed from reported behaviour; synthetic prices and reduced page data, not a live capture.",
+      "url": "https://www.coles.com.au/product/5312306",
+      "scripts": [
+        {
+          "id": "",
+          "type": "application/ld+json",
+          "text": "{\"@type\": \"Product\", \"sku\": \"5312306\", \"name\": \"YoPro Mango Yoghurt Pouch 150g\", \"brand\": \"YoPro\"}"
+        }
+      ],
+      "blocked": false,
+      "expected": {
+        "code": "5312306",
+        "priceMissing": true
+      }
+    },
+    {
+      "id": "woolworths-blocked",
+      "kind": "product",
+      "reason": "Do not convert an unavailable page into a valid product or zero price.",
+      "provenance": "Reconstructed from reported behaviour; synthetic prices and reduced page data, not a live capture.",
+      "url": "https://www.woolworths.com.au/shop/productdetails/794937",
+      "scripts": [],
+      "blocked": true,
+      "expected": {
+        "error": "retailer_access_restricted"
+      }
+    },
+    {
+      "id": "woolworths-loading",
+      "kind": "product",
+      "reason": "Do not convert an unavailable page into a valid product or zero price.",
+      "provenance": "Reconstructed from reported behaviour; synthetic prices and reduced page data, not a live capture.",
+      "url": "https://www.woolworths.com.au/shop/productdetails/794937",
+      "scripts": [],
+      "blocked": false,
+      "expected": {
+        "error": "product_not_identified"
+      }
+    },
+    {
+      "id": "woolworths-embedded-layout",
+      "kind": "product",
+      "reason": "Read embedded product state when JSON-LD is absent.",
+      "provenance": "Reconstructed from reported behaviour; synthetic prices and reduced page data, not a live capture.",
+      "url": "https://www.woolworths.com.au/shop/productdetails/794937",
+      "scripts": [
+        {
+          "id": "__NEXT_DATA__",
+          "type": "",
+          "text": "{\"props\": {\"pageProps\": {\"pdDetails\": {\"Product\": {\"Stockcode\": 794937, \"DisplayName\": \"YoPro Mango Yoghurt Pouch 150g\", \"Brand\": \"YoPro\", \"PackageSize\": \"150g\", \"Price\": 2, \"Unit\": \"Each\", \"IsMarketProduct\": false}}}}}"
+        }
+      ],
+      "blocked": false,
+      "expected": {
+        "code": "794937"
+      }
+    },
+    {
+      "id": "woolworths-stale-navigation",
+      "kind": "product",
+      "reason": "Reject embedded data left over from another product after navigation.",
+      "provenance": "Reconstructed from reported behaviour; synthetic prices and reduced page data, not a live capture.",
+      "url": "https://www.woolworths.com.au/shop/productdetails/794937",
+      "scripts": [
+        {
+          "id": "__NEXT_DATA__",
+          "type": "",
+          "text": "{\"props\": {\"pageProps\": {\"pdDetails\": {\"Product\": {\"Stockcode\": 999, \"DisplayName\": \"YoPro Mango Yoghurt Pouch 150g\", \"Brand\": \"YoPro\", \"PackageSize\": \"150g\", \"Price\": 2, \"Unit\": \"Each\", \"IsMarketProduct\": false}}}}}"
+        }
+      ],
+      "blocked": false,
+      "expected": {
+        "error": "product_identity_conflict"
+      }
+    },
+    {
+      "id": "woolworths-missing-price",
+      "kind": "product",
+      "reason": "Keep known identity without inventing an offer.",
+      "provenance": "Reconstructed from reported behaviour; synthetic prices and reduced page data, not a live capture.",
+      "url": "https://www.woolworths.com.au/shop/productdetails/794937",
+      "scripts": [
+        {
+          "id": "",
+          "type": "application/ld+json",
+          "text": "{\"@type\": \"Product\", \"sku\": \"794937\", \"name\": \"YoPro Mango Yoghurt Pouch 150g\", \"brand\": \"YoPro\"}"
+        }
+      ],
+      "blocked": false,
+      "expected": {
+        "code": "794937"
+      }
+    },
+    {
+      "id": "coles-size-candidates",
+      "kind": "search",
+      "reason": "Read only candidate links; empty results require evidence.",
+      "provenance": "Reconstructed DOM shape; synthetic IDs except the reported Panadol example.",
+      "retailer": "coles",
+      "query": "mccain shoestring 900g",
+      "links": [
+        "/product/mccain-2kg-111",
+        "/product/mccain-900g-222",
+        "/product/222?pid=duplicate"
+      ],
+      "heading": "Results for \"mccain shoestring 900g\"",
+      "empty": false,
+      "expected": {
+        "count": 2,
+        "codes": ["111", "222"]
+      }
+    },
+    {
+      "id": "coles-suggestions",
+      "kind": "search",
+      "reason": "Read only candidate links; empty results require evidence.",
+      "provenance": "Reconstructed DOM shape; synthetic IDs except the reported Panadol example.",
+      "retailer": "coles",
+      "query": "red island olive oil 1l",
+      "links": ["/product/red-island-1l-333"],
+      "heading": "No results for \"red island olive oil 1l\"",
+      "empty": false,
+      "expected": {
+        "count": 1,
+        "codes": ["333"]
+      }
+    },
+    {
+      "id": "coles-empty",
+      "kind": "search",
+      "reason": "Read only candidate links; empty results require evidence.",
+      "provenance": "Reconstructed DOM shape; synthetic IDs except the reported Panadol example.",
+      "retailer": "coles",
+      "query": "absent",
+      "links": [],
+      "heading": "No results for \"absent\"",
+      "empty": true,
+      "expected": {
+        "count": 0,
+        "codes": []
+      }
+    },
+    {
+      "id": "woolworths-shadow-tiles",
+      "kind": "search",
+      "reason": "Read only candidate links; empty results require evidence.",
+      "provenance": "Reconstructed DOM shape; synthetic IDs except the reported Panadol example.",
+      "retailer": "woolworths",
+      "query": "panadol",
+      "links": [
+        "/shop/productdetails/916772",
+        "https://evil.example/shop/productdetails/123"
+      ],
+      "heading": "Showing results for panadol",
+      "empty": false,
+      "expected": {
+        "count": 1,
+        "codes": ["916772"]
+      }
+    },
+    {
+      "id": "woolworths-empty",
+      "kind": "search",
+      "reason": "Read only candidate links; empty results require evidence.",
+      "provenance": "Reconstructed DOM shape; synthetic IDs except the reported Panadol example.",
+      "retailer": "woolworths",
+      "query": "absent",
+      "links": [],
+      "heading": "Showing results for absent",
+      "empty": true,
+      "expected": {
+        "count": 0,
+        "codes": []
+      }
+    },
+    {
+      "id": "woolworths-combined-layout",
+      "kind": "product",
+      "reason": "Require consistent prices across embedded state and JSON-LD with explicit AUD.",
+      "provenance": "Reconstructed from reported behaviour; synthetic prices and reduced page data, not a live capture.",
+      "url": "https://www.woolworths.com.au/shop/productdetails/794937",
+      "scripts": [
+        {
+          "id": "__NEXT_DATA__",
+          "type": "",
+          "text": "{\"props\": {\"pageProps\": {\"pdDetails\": {\"Product\": {\"Stockcode\": 794937, \"DisplayName\": \"YoPro Mango Yoghurt Pouch 150g\", \"Brand\": \"YoPro\", \"PackageSize\": \"150g\", \"Price\": 2, \"Unit\": \"Each\", \"IsMarketProduct\": false}}}}}"
+        },
+        {
+          "type": "application/ld+json",
+          "text": "{\"@type\": \"Product\", \"sku\": \"794937\", \"name\": \"YoPro Mango Yoghurt Pouch 150g\", \"offers\": {\"price\": 2, \"priceCurrency\": \"AUD\"}}"
+        }
+      ],
+      "blocked": false,
+      "expected": {
+        "code": "794937"
+      }
+    },
+    {
+      "id": "woolworths-conflicting-prices",
+      "kind": "product",
+      "reason": "Require consistent prices across embedded state and JSON-LD with explicit AUD.",
+      "provenance": "Reconstructed from reported behaviour; synthetic prices and reduced page data, not a live capture.",
+      "url": "https://www.woolworths.com.au/shop/productdetails/794937",
+      "scripts": [
+        {
+          "id": "__NEXT_DATA__",
+          "type": "",
+          "text": "{\"props\": {\"pageProps\": {\"pdDetails\": {\"Product\": {\"Stockcode\": 794937, \"DisplayName\": \"YoPro Mango Yoghurt Pouch 150g\", \"Brand\": \"YoPro\", \"PackageSize\": \"150g\", \"Price\": 2, \"Unit\": \"Each\", \"IsMarketProduct\": false}}}}}"
+        },
+        {
+          "type": "application/ld+json",
+          "text": "{\"@type\": \"Product\", \"sku\": \"794937\", \"name\": \"YoPro Mango Yoghurt Pouch 150g\", \"offers\": {\"price\": 3, \"priceCurrency\": \"AUD\"}}"
+        }
+      ],
+      "blocked": false,
+      "expected": {
+        "code": "794937"
+      }
+    },
+    {
+      "id": "banana-encoded-B",
+      "kind": "product",
+      "reason": "Preserve the requested product identity and its single-item price.",
+      "provenance": "Reconstructed from reported behaviour; synthetic prices and reduced page data, not a live capture.",
+      "url": "https://www.coles.com.au/product/banana-boat-sport-50%2B-clear-spray-175g-9873098",
+      "scripts": [
+        {
+          "id": "",
+          "type": "application/ld+json",
+          "text": "{\"@type\": \"Product\", \"sku\": \"9873098\", \"name\": \"Banana Boat Sport 50+ Clear Spray 175g\", \"brand\": \"Banana Boat\", \"offers\": {\"price\": 24, \"priceCurrency\": \"AUD\", \"url\": \"https://www.coles.com.au/product/banana-boat-sport-50+-clear-spray-175g-9873098\"}}"
+        }
+      ],
+      "blocked": false,
+      "expected": {
+        "code": "9873098",
+        "price": 24
+      }
+    },
+    {
+      "id": "banana-encoded-b",
+      "kind": "product",
+      "reason": "Preserve the requested product identity and its single-item price.",
+      "provenance": "Reconstructed from reported behaviour; synthetic prices and reduced page data, not a live capture.",
+      "url": "https://www.coles.com.au/product/banana-boat-sport-50%2b-clear-spray-175g-9873098",
+      "scripts": [
+        {
+          "id": "",
+          "type": "application/ld+json",
+          "text": "{\"@type\": \"Product\", \"sku\": \"9873098\", \"name\": \"Banana Boat Sport 50+ Clear Spray 175g\", \"brand\": \"Banana Boat\", \"offers\": {\"price\": 24, \"priceCurrency\": \"AUD\", \"url\": \"https://www.coles.com.au/product/banana-boat-sport-50+-clear-spray-175g-9873098\"}}"
+        }
+      ],
+      "blocked": false,
+      "expected": {
+        "code": "9873098",
+        "price": 24
+      }
+    },
+    {
+      "id": "cadbury-neighbouring-variant",
+      "kind": "product",
+      "reason": "Use the main product price, never a cheaper neighbouring variant.",
+      "provenance": "Reconstructed from reported behaviour; synthetic prices and reduced page data, not a live capture.",
+      "url": "https://www.coles.com.au/product/1115507",
+      "scripts": [
+        {
+          "id": "",
+          "type": "application/ld+json",
+          "text": "{\"@type\": \"Product\", \"sku\": \"1115507\", \"name\": \"Cadbury Favourites Ultimate Share Chocolate Gift Box 700g\", \"brand\": \"Cadbury\", \"offers\": {\"price\": 30, \"priceCurrency\": \"AUD\", \"url\": \"https://www.coles.com.au/product/1115507\"}}"
+        },
+        {
+          "id": "__NEXT_DATA__",
+          "text": "{\"props\": {\"pageProps\": {\"product\": {\"id\": 1115507, \"name\": \"Favourites Ultimate Share Chocolate Gift Box\", \"brand\": \"Cadbury\", \"size\": \"700g\", \"pricing\": {\"now\": 30, \"specialType\": \"MULTI_SAVE\", \"offerDescription\": \"Pick any 2 for $30\", \"multiBuyPromotion\": {\"reward\": 15}}, \"variations\": {\"bySizes\": [{\"id\": 999, \"size\": \"686g\", \"pricing\": {\"now\": 1}}]}}}}}"
+        }
+      ],
+      "blocked": false,
+      "expected": {
+        "code": "1115507",
+        "price": 30,
+        "promotion": "Pick any 2 for $30"
+      }
+    }
+  ]
+}

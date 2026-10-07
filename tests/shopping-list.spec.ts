@@ -152,7 +152,7 @@ function mockPlan(listId: number): ShoppingListPlan {
       const job = [...jobs.values()].find(
         (j) => j.product?.id === item.product.id && j.shoppingListId === listId,
       );
-      const prices =
+      const prices: PlanningPrice[] =
         planningPrices.get(item.id) ??
         job?.retailers
           .filter((r) => r.prices.length > 0)
@@ -186,7 +186,13 @@ function mockPlan(listId: number): ShoppingListPlan {
         (sum, { row, prices }) =>
           sum +
           (prices.length
-            ? Math.min(...prices.map((p) => p.price!)) * row.item.quantity
+            ? Math.min(
+                ...prices.map((p) =>
+                  p.quantityPrice?.quantity === row.item.quantity
+                    ? p.quantityPrice.total
+                    : p.price! * row.item.quantity,
+                ),
+              )
             : 0),
         0,
       ),
@@ -1352,7 +1358,7 @@ function comparable(job: Job): Job {
   };
 }
 
-test("multibuy deal is prominent while totals clearly use single-item prices", async ({
+test("multibuy deal updates quantity totals and retailer ranking", async ({
   page,
 }, info) => {
   await start(page);
@@ -1371,6 +1377,14 @@ test("multibuy deal is prominent while totals clearly use single-item prices", a
       checkedDate: new Date().toISOString(),
       specialDescription: "Pick any 2 for $30",
       multibuy: { quantity: 2, total: 30, unitPrice: 15, savings: 30 },
+      quantityPrice: {
+        quantity: 1,
+        total: 30,
+        ordinaryTotal: 30,
+        savings: 0,
+        appliedBundles: 0,
+        remainingQuantity: 1,
+      },
     },
   ]);
   await page.reload();
@@ -1389,7 +1403,7 @@ test("multibuy deal is prominent while totals clearly use single-item prices", a
     }),
   ).toBeVisible();
   await expect(
-    deal.getByText(/This deal is not applied automatically/),
+    deal.getByText(/Buy 2 of this product to qualify/),
   ).toBeVisible();
   await expect(card.getByText("at Coles", { exact: true })).toBeVisible();
   const summary = list.getByRole("region", { name: "Shopping cost summary" });
@@ -1398,8 +1412,40 @@ test("multibuy deal is prominent while totals clearly use single-item prices", a
   await page.screenshot({
     path: `test-results/${info.project.name}-multibuy.png`,
   });
-  await card.getByRole("button", { name: "Increase quantity" }).click();
-  await expect(summary.getByText("$60.00", { exact: true })).toHaveCount(2);
+  for (const [quantity, total, bundles, remaining] of [
+    [2, 30, 1, 0],
+    [3, 60, 1, 1],
+    [4, 60, 2, 0],
+  ]) {
+    planningPrices.get(1)![0].quantityPrice = {
+      quantity,
+      total,
+      ordinaryTotal: 30 * quantity,
+      savings: 30 * quantity - total,
+      appliedBundles: bundles,
+      remainingQuantity: remaining,
+    };
+    await card.getByRole("button", { name: "Increase quantity" }).click();
+    await expect(
+      summary.getByText(`$${total.toFixed(2)}`, { exact: true }),
+    ).toHaveCount(2);
+    await expect(deal).toContainText(`Deal applied ${bundles} time(s)`);
+    if (remaining)
+      await expect(deal).toContainText("1 remaining at the single-item price");
+  }
+  planningPrices.get(1)!.push({
+    shopId: 2,
+    shopName: "Woolworths",
+    price: 20,
+    includedInTotal: true,
+    status: "Fresh",
+    productUrl: null,
+    checkedDate: null,
+    specialDescription: null,
+  });
+  await page.reload();
+  await expect(card.getByText("at Coles", { exact: true })).toBeVisible();
+  await expect(card).toContainText("$80.00 total");
   await expect(
     deal.getByText("Buy 2 for $30.00", { exact: true }),
   ).toBeVisible();
@@ -1760,6 +1806,92 @@ for (const [code, explanation] of [
     ).toBeVisible();
   });
 }
+
+test("product card shows cooldown, retries once, and updates without opening history", async ({
+  page,
+  request,
+}) => {
+  let retries = 0;
+  let checking = false;
+  let cooling = true;
+  let done = false;
+  await page.route("**/api/shopping-lists/*/plan", async (route) => {
+    const response = await route.fetch();
+    const plan = await response.json();
+    for (const row of plan.items)
+      row.comparison = {
+        jobId: 1,
+        status: done ? "Completed" : checking ? "Checking" : "Failed",
+        errorCode: "retailer_access_restricted",
+        canRetry: !checking && !cooling,
+        retryAfter: cooling
+          ? new Date(Date.now() + 900000).toISOString()
+          : null,
+        retailers: [
+          {
+            name: "Woolworths",
+            status: checking ? "Pending" : "CheckFailed",
+            errorCode: "retailer_access_restricted",
+          },
+        ],
+      };
+    await route.fulfill({ json: plan });
+  });
+  await page.route(
+    "**/api/shopping-lists/*/items/*/retry-comparison",
+    async (route) => {
+      retries++;
+      checking = true;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      await route.fulfill({
+        json: {
+          jobId: 1,
+          status: "Checking",
+          canRetry: false,
+          retryAfter: null,
+          errorCode: null,
+          retailers: [
+            { name: "Woolworths", status: "Pending", errorCode: null },
+          ],
+        },
+      });
+    },
+  );
+  await start(page);
+  await add(page);
+  await page.locator("summary").filter({ hasText: "Import activity" }).click();
+  const card = page
+    .getByRole("region", { name: "Editable shopping list" })
+    .getByRole("article");
+  await expect(card.getByText(/Comparison paused/)).toBeVisible();
+  await expect(
+    card.getByRole("button", { name: "Retry comparison" }),
+  ).toBeDisabled();
+  cooling = false;
+  await page
+    .getByRole("button", { name: "Refresh items", exact: true })
+    .click();
+  const retry = card.getByRole("button", { name: "Retry comparison" });
+  await expect(retry).toBeEnabled();
+  await retry.click();
+  await expect(card.getByText(/Checking Woolworths/)).toBeVisible();
+  expect(retries).toBe(1);
+  await expect(
+    card.getByRole("button", { name: "Retry comparison" }),
+  ).toHaveCount(0);
+  done = true;
+  await expect(card.getByLabel("Price comparison progress")).toHaveCount(0, {
+    timeout: 10000,
+  });
+  // Browser protection still applies to the newly allowed route.
+  expect(
+    (
+      await request.post("/api/shopping-lists/1/items/1/retry-comparison", {
+        data: {},
+      })
+    ).status(),
+  ).toBe(403);
+});
 
 test("blocked source imports explain retailer access and survive refresh", async ({
   page,

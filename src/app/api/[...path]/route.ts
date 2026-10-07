@@ -25,6 +25,11 @@ async function forward(
   const adminEdit =
     request.method === "PUT" && /^admin\/accounts\/[1-9]\d{0,18}$/.test(route);
   const allowed =
+    (get && route === "admin/health") ||
+    (request.method === "POST" &&
+      /^shopping-lists\/[1-9]\d{0,18}\/items\/[1-9]\d{0,18}\/retry-comparison$/.test(
+        route,
+      )) ||
     (get &&
       /^shopping-lists\/(manage|history|[1-9]\d{0,18}\/history)$/.test(
         route,

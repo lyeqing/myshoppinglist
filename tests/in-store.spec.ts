@@ -52,6 +52,69 @@ const shops = [
   { id: 1, name: "Coles" },
   { id: 2, name: "Woolworths" },
 ];
+
+test("verified multibuy ranks by quantity total and shows applied savings in store", async ({
+  page,
+}) => {
+  const promoted = row(1, "Bundle product", 30, 20);
+  promoted.prices[0].multibuy = {
+    quantity: 2,
+    total: 30,
+    unitPrice: 15,
+    savings: 30,
+  };
+  promoted.prices[0].quantityPrice = {
+    quantity: 2,
+    total: 30,
+    ordinaryTotal: 60,
+    savings: 30,
+    appliedBundles: 1,
+    remainingQuantity: 0,
+  };
+  const items = [row(2, "Other cheaper", 5, 3), promoted];
+  await page.route("**/api/shopping-lists**", (route) =>
+    route.fulfill({
+      json: route.request().url().endsWith("in-store")
+        ? {
+            id: 1,
+            name: "Promotion shop",
+            retailers: shops,
+            items,
+            remainingCount: 2,
+            baskets: [],
+            splitSubtotal: 36,
+            splitPricedCount: 2,
+            comparableCount: 2,
+            comparableSplitSubtotal: 36,
+          }
+        : [
+            {
+              id: 1,
+              name: "Promotion shop",
+              remainingCount: 2,
+              retailers: shops,
+            },
+          ],
+    }),
+  );
+  await page.goto("/in-store");
+  await page.getByLabel("Where are you shopping?").selectOption("1");
+  await page.getByRole("button", { name: /Promotion shop/ }).click();
+  await expect(page.locator("article h4")).toHaveText([
+    "Bundle product",
+    "Other cheaper",
+  ]);
+  const card = page.locator("article").filter({ hasText: "Bundle product" });
+  await expect(card.locator("p.text-2xl")).toContainText("$30.00");
+  await expect(card).toContainText("Buy 2 for $30.00. Deal applied 1 time(s)");
+  await expect(card).toContainText("save $30.00 (normally $60.00)");
+  await expect(card).toContainText("Save $10.00 at Coles");
+  await page.getByLabel("Where are you shopping?").selectOption("2");
+  await expect(card.locator("p.text-2xl")).toContainText("$40.00");
+  await expect(card).toContainText(
+    "Best price at Coles: $30.00 for your quantity. Save $10.00",
+  );
+});
 const session = {
   account: {
     id: 1,
@@ -318,7 +381,7 @@ test("selected retailer leads pricing and missing products are distinct from mis
   const card = page.locator("article").filter({ hasText: "Compare product" });
   await expect(card.locator("p.text-2xl")).toContainText("$5.00");
   await expect(card).toContainText(
-    "Best price at Coles: $2.00 — $3.00 cheaper each. Save $6.00 on your quantity.",
+    "Best price at Coles: $4.00 for your quantity. Save $6.00 on your quantity.",
   );
   await expect(page.locator("article h4")).toHaveText([
     "Compare product",

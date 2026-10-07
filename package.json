@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start -p 3001",
     "lint": "eslint",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:regression": "node --test extensions/coles-worker/tests/extraction.test.mjs extensions/coles-worker/tests/regression.test.mjs extensions/shopping-list/tests/extension.test.mjs"
   },
   "dependencies": {
     "next": "16.3.1",
