@@ -1722,6 +1722,45 @@ test("verified comparison highlights the best price and retains cache context", 
   ).toBeVisible();
 });
 
+for (const [code, explanation] of [
+  ["retailer_access_restricted", "The retailer blocked this check."],
+  ["read_timeout", "The retailer took too long to respond."],
+  ["search_read_failed", "We couldn’t finish this retailer’s check."],
+]) {
+  test(`comparison failure ${code} explains the check without reporting no match`, async ({
+    page,
+  }) => {
+    comparison = (job) => {
+      const saved = completed(job);
+      return {
+        ...saved,
+        retailers: saved.retailers.map((retailer) =>
+          retailer.shopId === 2
+            ? { ...retailer, status: "CheckFailed", errorCode: code }
+            : retailer,
+        ),
+      };
+    };
+    await start(page);
+    await add(page);
+    const activity = page.getByRole("region", {
+      name: "Import history and price comparisons",
+    });
+    await expect(
+      activity.getByText(explanation, { exact: false }),
+    ).toBeVisible();
+    await expect(
+      activity.getByText("No match found", { exact: true }),
+    ).toHaveCount(0);
+    expect(listItems.size).toBe(1);
+    await page.reload();
+    await openActivity(page);
+    await expect(
+      activity.getByText(explanation, { exact: false }),
+    ).toBeVisible();
+  });
+}
+
 test("blocked source imports explain retailer access and survive refresh", async ({
   page,
 }) => {

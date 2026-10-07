@@ -290,7 +290,15 @@ export function createWorker(browser, fetcher = fetch) {
         workflow,
         work.status === "Completed"
           ? "Product saved. Comparison finished; open your list to see the result."
-          : `Product ${work.sourceSaved ? "saved; comparison" : "read"} needs retry (${work.errorCode || "interrupted"}).`,
+          : `${work.sourceSaved ? "Product added. " : ""}${
+              work.errorCode === "retailer_access_restricted"
+                ? "We couldn’t check the other retailer because access was blocked. Please try the comparison again later."
+                : work.errorCode === "read_timeout"
+                  ? "The other retailer took too long to respond. Please try the comparison again later."
+                  : work.errorCode === "tab_closed"
+                    ? "The comparison tab was closed before the check finished. Please retry the comparison."
+                    : "We couldn’t finish checking the other retailer. Please retry the comparison later."
+            }`,
         work.status !== "Completed",
       );
       return;
@@ -343,13 +351,14 @@ export function createWorker(browser, fetcher = fetch) {
       }
       if (!workflow.outbox) {
         let result;
-        if (Date.now() >= workflow.deadline) result = { ok: false };
+        if (Date.now() >= workflow.deadline)
+          result = { ok: false, code: "read_timeout" };
         else {
           let tab;
           try {
             tab = await browser.tabs.get(workflow.tabId);
           } catch {
-            result = { ok: false };
+            result = { ok: false, code: "tab_closed" };
           }
           if (tab) {
             if (tab.pendingUrl) {
@@ -457,6 +466,7 @@ export function createWorker(browser, fetcher = fetch) {
               evidence: result?.evidence || null,
               links: result?.links || null,
               emptyConfirmed: !!result?.emptyConfirmed,
+              errorCode: result?.ok ? null : result?.code || null,
             },
           };
         await storage.set({ workflow });

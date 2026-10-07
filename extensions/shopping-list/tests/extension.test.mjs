@@ -663,45 +663,70 @@ test("lost response keeps identical outbox and request ID for retry", async () =
   assert.equal(bodies[0], bodies[1]);
 });
 
-test("comparison read failure closes only the temporary tab", async () => {
-  const f = fixture();
-  const handle = createWorker(f.browser, async (address, options) => {
-    if (address.endsWith("/imports/"))
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({
-          jobId: 5,
-          status: "Waiting",
-          stage: "product",
-          stepToken: "p",
-          url: "https://www.woolworths.com.au/shop/productdetails/123",
-        }),
+for (const code of [
+  "retailer_access_restricted",
+  "read_timeout",
+  "tab_closed",
+  "unknown_failure",
+]) {
+  test(`comparison ${code} preserves the reason and closes only the temporary tab`, async () => {
+    const f = fixture();
+    const handle = createWorker(f.browser, async (address, options) => {
+      if (address.endsWith("/imports/"))
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            jobId: 5,
+            status: "Waiting",
+            stage: "product",
+            stepToken: "p",
+            url: "https://www.woolworths.com.au/shop/productdetails/123",
+          }),
+        };
+      if (address.endsWith("/result")) {
+        assert.equal(JSON.parse(options.body).ok, false);
+        assert.equal(JSON.parse(options.body).errorCode, code);
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            jobId: 5,
+            status: "Failed",
+            sourceSaved: true,
+            errorCode: code,
+          }),
+        };
+      }
+      return f.fetcher(address, options);
+    });
+    await handle({ type: "add", url, tabId: 7, quantity: 2, listId: 1 });
+    await handle.pump();
+    f.browser.scripting.executeScript = async () => [
+      { result: { ok: false, code } },
+    ];
+    if (code === "read_timeout") f.data().workflow.deadline = 0;
+    if (code === "tab_closed")
+      f.browser.tabs.get = async () => {
+        throw new Error("Closed");
       };
-    if (address.endsWith("/result")) {
-      assert.equal(JSON.parse(options.body).ok, false);
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({
-          jobId: 5,
-          status: "Failed",
-          sourceSaved: true,
-          errorCode: "read_failed",
-        }),
-      };
-    }
-    return f.fetcher(address, options);
+    await handle.pump();
+    assert.deepEqual(f.removed, [100]);
+    assert.equal(f.data().workflow.status, "Failed");
+    assert.match(f.data().workflow.message, /Product added\./);
+    assert.match(
+      f.data().workflow.message,
+      code === "retailer_access_restricted"
+        ? /access was blocked/
+        : code === "read_timeout"
+          ? /too long to respond/
+          : code === "tab_closed"
+            ? /tab was closed/
+            : /couldn’t finish/,
+    );
+    assert.ok(!f.data().workflow.message.includes(code));
   });
-  await handle({ type: "add", url, tabId: 7, quantity: 2, listId: 1 });
-  await handle.pump();
-  f.browser.scripting.executeScript = async () => [
-    { result: { ok: false, code: "access_restricted" } },
-  ];
-  await handle.pump();
-  assert.deepEqual(f.removed, [100]);
-  assert.equal(f.data().workflow.status, "Failed");
-});
+}
 
 test("idle sharing claims only one task, survives worker suspension, submits and closes its own tab", async () => {
   const f = fixture();
