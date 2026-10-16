@@ -1,4 +1,6 @@
 import { createStore } from "zustand/vanilla";
+import { refreshNotice } from "@/lib/price-age";
+import type { PriceRefreshResult } from "@/lib/api-types";
 import { api, ApiError } from "@/lib/api-client";
 import type {
   InStoreDetail,
@@ -43,6 +45,8 @@ export function createInStoreStore() {
     load: (listId?: number | null) => Promise<void>;
     selectShop: (id: number | null) => void;
     togglePurchasedVisibility: () => void;
+    refreshPrices: (itemId?: number) => Promise<void>;
+    refreshBusy: boolean;
     purchase: (row: InStoreItem) => Promise<void>;
     dispose: () => void;
   }>((set, get) => ({
@@ -53,6 +57,7 @@ export function createInStoreStore() {
     showPurchased: false,
     loading: true,
     saving: false,
+    refreshBusy: false,
     error: "",
     unauthorized: false,
     session: null,
@@ -63,13 +68,19 @@ export function createInStoreStore() {
         generation++;
         controller?.abort();
       }
-      set({ authBusy, ...(authBusy ? { loading: false } : {}) });
+      set({
+        refreshBusy: false,
+        authBusy,
+        ...(authBusy ? { loading: false } : {}),
+      });
     },
     accountReady: (session) => {
       generation++;
       controller?.abort();
       set({
         session,
+        refreshBusy: false,
+        notice: "",
         lists: [],
         detail: null,
         selectedList: null,
@@ -110,6 +121,7 @@ export function createInStoreStore() {
     dispose: () => {
       generation++;
       controller?.abort();
+      set({ refreshBusy: false });
     },
     load: async (listId = get().selectedList) => {
       if (get().saving || get().authBusy) return;
@@ -118,7 +130,9 @@ export function createInStoreStore() {
       controller = new AbortController();
       set({
         loading: true,
+        refreshBusy: false,
         error: "",
+        ...(listId !== get().selectedList ? { notice: "" } : {}),
         selectedList: listId,
         ...(listId !== get().selectedList ? { detail: null } : {}),
       });
@@ -182,6 +196,55 @@ export function createInStoreStore() {
         });
       } finally {
         if (version === generation) set({ loading: false });
+      }
+    },
+    refreshPrices: async (itemId) => {
+      const listId = get().selectedList;
+      if (!listId || get().refreshBusy || get().saving || get().authBusy)
+        return;
+      const version = generation;
+      const owner = get().session?.account.id;
+      set({ refreshBusy: true, error: "", notice: "" });
+      try {
+        const result = await api<PriceRefreshResult>(
+          `/shopping-lists/${listId}${itemId ? `/items/${itemId}` : ""}/refresh-prices`,
+          { method: "POST", body: "{}" },
+        );
+        if (
+          version !== generation ||
+          owner !== get().session?.account.id ||
+          listId !== get().selectedList
+        )
+          return;
+        set({ notice: refreshNotice(result) });
+        await get().load(listId);
+      } catch (e) {
+        if (
+          version !== generation ||
+          owner !== get().session?.account.id ||
+          listId !== get().selectedList
+        )
+          return;
+        const unauthorized = e instanceof ApiError && e.status === 401;
+        set({
+          error: e instanceof Error ? e.message : "Could not refresh prices.",
+          unauthorized,
+          ...(unauthorized
+            ? {
+                session: null,
+                lists: [],
+                detail: null,
+                selectedList: null,
+                shopId: null,
+              }
+            : {}),
+        });
+      } finally {
+        if (
+          owner === get().session?.account.id &&
+          listId === get().selectedList
+        )
+          set({ refreshBusy: false });
       }
     },
     purchase: async (row) => {

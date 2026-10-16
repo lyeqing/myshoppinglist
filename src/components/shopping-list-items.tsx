@@ -10,6 +10,8 @@ import {
   type ShoppingListPlan,
   type ItemComparison,
 } from "@/lib/api-types";
+import { refreshNotice, refreshProgress, usePriceNow } from "@/lib/price-age";
+import type { PriceRefreshResult } from "@/lib/api-types";
 import ShoppingListItemCard from "./shopping-list-item-card";
 import ShoppingListCostSummary from "./shopping-list-cost-summary";
 import {
@@ -41,6 +43,12 @@ export default function ShoppingListItems({
     setItemsError: setError,
     setJobs,
   } = useShoppingStore((state) => state.actions);
+  const now = usePriceNow(plan);
+  const [refreshMessage, setRefreshMessage] = useState<{
+    listId: number;
+    text: string;
+  } | null>(null);
+  const [requestingRefresh, setRequestingRefresh] = useState(false);
   const [saving, setSaving] = useState(false);
   const mutation = useRef(false);
   const lifetime = useRef<AbortController | null>(null);
@@ -88,21 +96,6 @@ export default function ShoppingListItems({
   useEffect(() => {
     void load().catch(() => {});
   }, [load, refreshKey]);
-  useEffect(() => {
-    const controller = new AbortController();
-    void api(`/shopping-lists/${listId}/refresh-prices`, {
-      method: "POST",
-      body: "{}",
-      signal: controller.signal,
-    })
-      .then(() => {
-        if (!controller.signal.aborted) return load();
-      })
-      .catch((e) => {
-        if (!controller.signal.aborted) handle(e);
-      });
-    return () => controller.abort();
-  }, [listId, load, handle]);
   const refreshing =
     plan?.items.some(
       (row) =>
@@ -110,7 +103,8 @@ export default function ShoppingListItems({
         row.prices.some(
           (price) =>
             price.refreshStatus === "Waiting" ||
-            price.refreshStatus === "Updating",
+            price.refreshStatus === "Updating" ||
+            price.refreshStatus === "Paused",
         ),
     ) ?? false;
   useEffect(() => {
@@ -255,6 +249,36 @@ export default function ShoppingListItems({
     }
   }
 
+  async function refreshPrices(itemId?: number) {
+    if (requestingRefresh || mutation.current) return;
+    const signal = lifetime.current?.signal;
+    const owner = store.getState().session?.account.id;
+    setRequestingRefresh(true);
+    try {
+      const result = await api<PriceRefreshResult>(
+        `/shopping-lists/${listId}${itemId ? `/items/${itemId}` : ""}/refresh-prices`,
+        { method: "POST", body: "{}", signal },
+      );
+      if (
+        signal?.aborted ||
+        store.getState().session?.account.id !== owner ||
+        store.getState().session?.shoppingListId !== listId
+      )
+        return;
+      setRefreshMessage({ listId, text: refreshNotice(result) });
+      await load();
+    } catch (e) {
+      if (
+        !signal?.aborted &&
+        store.getState().session?.account.id === owner &&
+        store.getState().session?.shoppingListId === listId
+      )
+        handle(e);
+    } finally {
+      setRequestingRefresh(false);
+    }
+  }
+
   return (
     <section aria-label="Editable shopping list" className="mb-10">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
@@ -267,14 +291,44 @@ export default function ShoppingListItems({
             </p>
           )}
         </div>
-        <button
-          disabled={loading || saving}
-          className="text-sm font-semibold text-sky-700 disabled:opacity-50"
-          onClick={() => void load().catch(() => {})}
-        >
-          Refresh items
-        </button>
+        <div className="flex flex-wrap gap-4">
+          <button
+            disabled={
+              loading ||
+              saving ||
+              requestingRefresh ||
+              !plan?.items.some((r) => !r.item.isPurchased && !r.item.isHidden)
+            }
+            className="min-h-11 rounded-lg border border-sky-700 px-3 py-2 text-sm font-semibold text-sky-700 disabled:opacity-50"
+            onClick={() => void refreshPrices()}
+          >
+            Refresh list prices
+          </button>
+          <button
+            disabled={loading || saving}
+            className="text-sm font-semibold text-sky-700 disabled:opacity-50"
+            onClick={() => void load().catch(() => {})}
+          >
+            Refresh items
+          </button>
+        </div>
       </div>
+      {plan && (
+        <p role="status" className="mb-3 text-sm text-slate-600">
+          {refreshProgress(
+            plan.items,
+            plan.retailers.flatMap((r) =>
+              r.shopId === null ? [] : [r.shopId],
+            ),
+            now,
+          )}
+        </p>
+      )}
+      {refreshMessage?.listId === listId && (
+        <p role="status" className="mb-3 text-sm text-sky-700">
+          {refreshMessage.text}
+        </p>
+      )}
       {error && (
         <p role="alert" className="mb-3 text-sm text-amber-800">
           {error} Use Refresh items to try again.
@@ -294,6 +348,8 @@ export default function ShoppingListItems({
             save={save}
             remove={remove}
             retryComparison={retryComparison}
+            refreshPrices={() => refreshPrices(row.item.id)}
+            refreshBusy={requestingRefresh}
             reload={async (id) =>
               (await load())?.items.find((row) => row.item.id === id)?.item ??
               null

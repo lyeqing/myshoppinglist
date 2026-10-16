@@ -27,7 +27,7 @@ async function forward(
   const allowed =
     (get && route === "admin/health") ||
     (request.method === "POST" &&
-      /^shopping-lists\/[1-9]\d{0,18}\/items\/[1-9]\d{0,18}\/retry-comparison$/.test(
+      /^shopping-lists\/[1-9]\d{0,18}\/items\/[1-9]\d{0,18}\/(retry-comparison|refresh-prices)$/.test(
         route,
       )) ||
     (get &&

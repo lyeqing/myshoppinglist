@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import type { Job, Price, RetailerState } from "@/lib/api-types";
+import { checkedToday, priceAge } from "@/lib/price-age";
 import { isActive } from "@/lib/api-types";
 import {
   bestKnownPrices,
@@ -280,9 +281,21 @@ export default function ImportCard({
                   </p>
                   {now !== null && (
                     <p
-                      className={`mt-1 text-xs font-medium ${freshness(price.checkedDate, now) === "Fresh" ? "text-slate-600" : "text-amber-800"}`}
+                      className={`mt-1 text-xs font-medium ${checkedToday(price.checkedDate, now) ? "text-slate-600" : "text-amber-800"}`}
                     >
-                      {freshness(price.checkedDate, now)}
+                      {priceAge(
+                        price.checkedDate,
+                        retailer.status === "Exact" &&
+                          price.inStock !== false &&
+                          promotionWarning(price, now) === null,
+                        now,
+                      )}
+                      {!checkedToday(price.checkedDate, now) &&
+                        freshness(price.checkedDate, now) !== "Fresh" && (
+                          <span className="block">
+                            {freshness(price.checkedDate, now)}
+                          </span>
+                        )}
                     </p>
                   )}
                   {price.specialDescription && (

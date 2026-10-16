@@ -7,6 +7,13 @@ import type {
   PlanningItem,
   PlanningPrice,
 } from "@/lib/api-types";
+import {
+  priceAge,
+  priceCurrent,
+  pricePending,
+  refreshLabel,
+  usePriceNow,
+} from "@/lib/price-age";
 import { ApiError } from "@/lib/api-client";
 import { money } from "./shopping-list-cost-summary";
 
@@ -36,6 +43,7 @@ function PriceDetail({
   quantity: number;
   primary?: boolean;
 }) {
+  const now = usePriceNow(price.checkedDate);
   const link = safeLink(price.productUrl);
   return (
     <div className="text-sm text-slate-500">
@@ -98,26 +106,18 @@ function PriceDetail({
           <p className="mt-1 text-xs">{price.specialDescription}</p>
         )
       )}
-      {price.refreshStatus && (
+      {refreshLabel(price.refreshStatus) && (
         <p role="status" className="mt-1 text-xs text-sky-700">
-          {price.refreshStatus === "Waiting"
-            ? "Waiting for price update — an online extension will check this product."
-            : price.refreshStatus === "Updating"
-              ? "Updating price…"
-              : "Price update unsuccessful. We’ll retry later."}
+          {refreshLabel(price.refreshStatus)}
         </p>
       )}
-      {price.checkedDate && (
-        <p className="mt-1 text-xs">
-          Checked{" "}
-          {new Date(price.checkedDate).toLocaleString("en-AU", {
-            day: "numeric",
-            month: "short",
-            hour: "numeric",
-            minute: "2-digit",
-          })}
-        </p>
-      )}
+      <p className="mt-1 text-xs">
+        {priceAge(
+          price.checkedDate,
+          price.includedInTotal && price.price !== null,
+          now,
+        )}
+      </p>
     </div>
   );
 }
@@ -130,6 +130,8 @@ export default function ShoppingListItemCard({
   remove,
   reload,
   retryComparison,
+  refreshPrices,
+  refreshBusy,
 }: {
   row: PlanningItem;
   disabled: boolean;
@@ -138,8 +140,11 @@ export default function ShoppingListItemCard({
   remove: (id: number, expectedUpdatedDate: string) => Promise<void>;
   reload: (id: number) => Promise<ListItem | null>;
   retryComparison: (id: number) => Promise<void>;
+  refreshPrices: () => Promise<void>;
+  refreshBusy: boolean;
 }) {
   const { item, prices } = row;
+  const now = usePriceNow(prices);
   const [draft, setDraft] = useState<{ notes: string; version: string } | null>(
     null,
   );
@@ -239,6 +244,19 @@ export default function ShoppingListItemCard({
       aria-label={title}
       className="scroll-mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
     >
+      {!item.isPurchased && !item.isHidden && prices.length > 0 && (
+        <button
+          className={`${button} mb-3`}
+          disabled={
+            locked ||
+            refreshBusy ||
+            prices.every((p) => pricePending(p) || priceCurrent(p, now))
+          }
+          onClick={() => void refreshPrices()}
+        >
+          Refresh price
+        </button>
+      )}
       <div className="flex items-start gap-4">
         {safeLink(item.product.imageUrl) && (
           // Retailer image URLs are stored externally; avoid requiring an image proxy.

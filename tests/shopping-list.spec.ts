@@ -414,12 +414,22 @@ test.beforeAll(async () => {
       send(204);
       return;
     }
-    const refreshRoute = /^\/api\/shopping-lists\/(\d+)\/refresh-prices$/.exec(
-      path.pathname,
-    );
+    const refreshRoute =
+      /^\/api\/shopping-lists\/(\d+)(?:\/items\/(\d+))?\/refresh-prices$/.exec(
+        path.pathname,
+      );
     if (refreshRoute && request.method === "POST") {
-      send(Number(refreshRoute[1]) === current.shoppingListId ? 200 : 404, {
+      const item = refreshRoute[2]
+        ? listItems.get(Number(refreshRoute[2]))
+        : null;
+      const allowed =
+        Number(refreshRoute[1]) === current.shoppingListId &&
+        (!refreshRoute[2] || item?.shoppingListId === current.shoppingListId);
+      send(allowed ? 200 : 404, {
         queued: 0,
+        alreadyRunning: 0,
+        current: 1,
+        deferred: 0,
       });
       return;
     }
@@ -1634,6 +1644,7 @@ test("planning includes the whole list, highlights missing prices and preserves 
   await list.getByRole("button", { name: "Refresh items" }).click();
   await expect(list.getByText("Loading list items…")).toHaveCount(0);
   await expect(card.getByLabel("Notes")).toHaveValue("Keep my draft");
+
   expire = true;
   await card.getByRole("button", { name: "Save note" }).click();
   await expect(
@@ -1748,7 +1759,11 @@ test("verified comparison highlights the best price and retains cache context", 
       .getByText("at Woolworths", { exact: true }),
   ).toBeVisible();
   await expect(page.getByText(/Saved observation/)).toBeVisible();
-  await expect(page.getByText("Fresh", { exact: true })).toHaveCount(2);
+  await expect(
+    page
+      .getByRole("region", { name: "Import history and price comparisons" })
+      .getByText("Price up to date", { exact: true }),
+  ).toHaveCount(2);
   await expect(page.getByText(/among 2 retailers/)).toBeVisible();
   await page.screenshot({
     path: `test-results/${info.project.name}-comparison.png`,
@@ -2028,9 +2043,16 @@ test("freshness updates after polling stops without another network request", as
   ).toBeVisible();
   const polled = counts.get(1);
   await page.clock.fastForward(61000);
+  const date = new Date(now - 6 * 3600000 + 30000).toISOString();
   await expect(
-    page.getByText("Refresh recommended", { exact: true }),
+    page
+      .getByRole("region", { name: "Import history and price comparisons" })
+      .getByText(priceAge(date, true, now + 61000), { exact: true }),
   ).toHaveCount(2);
+  if (checkedToday(date, now + 61000))
+    await expect(
+      page.getByText("Refresh recommended", { exact: true }),
+    ).toHaveCount(0);
   await expect(page.getByText(/^Best known price ·/)).toHaveCount(0);
   expect(counts.get(1)).toBe(polled);
 });
@@ -2100,4 +2122,186 @@ test("comparison rules preserve freshness boundaries, ties and separate price co
     "National",
     "Online",
   ]);
+});
+
+import { checkedToday, priceAge, refreshProgress } from "../src/lib/price-age";
+
+test("price dates distinguish local midnight, missing dates, future checks and incomplete coverage", () => {
+  const now = new Date(2026, 9, 17, 0, 1).getTime();
+  const yesterday = new Date(2026, 9, 16, 23, 59).toISOString();
+  const today = new Date(2026, 9, 17, 0, 0).toISOString();
+  expect(checkedToday(yesterday, now)).toBe(false);
+  expect(checkedToday(today, now)).toBe(true);
+  expect(priceAge(today, true, now)).toBe("Price up to date");
+  expect(priceAge(yesterday, true, now)).toContain("16 Oct 2026");
+  expect(priceAge(today, false, now)).not.toBe("Price up to date");
+  expect(priceAge(null, true, now)).toContain("unavailable");
+  expect(priceAge(new Date(now + 1).toISOString(), true, now)).toContain(
+    "unverified",
+  );
+  const rows = [
+    {
+      item: { isPurchased: false, isHidden: false },
+      prices: [{ checkedDate: today, price: 2, status: "Fresh" }],
+    },
+  ];
+  expect(refreshProgress(rows, [1], now)).toBe("All prices up to date");
+  expect(refreshProgress(rows, [1, 2], now)).toContain("matches are missing");
+});
+
+test("product and list price refresh preserve drafts and display partial failures", async ({
+  page,
+}) => {
+  comparison = comparable;
+  await start(page);
+  await add(page);
+  const list = page.getByRole("region", { name: "Editable shopping list" });
+  const card = list.getByRole("article");
+  await expect(card).toBeVisible();
+  const oldDate = new Date(Date.now() - 48 * 3600000).toISOString();
+  const old: PlanningPrice = {
+    shopId: 1,
+    shopName: "Coles",
+    price: 23,
+    includedInTotal: true,
+    status: "Fresh",
+    productUrl: "https://www.coles.com.au/product/123456",
+    checkedDate: oldDate,
+    specialDescription: null,
+  };
+  planningPrices.set(1, [
+    old,
+    { ...old, shopId: 2, shopName: "Woolworths", price: 25 },
+  ]);
+  await list
+    .getByRole("button", { name: "Refresh items", exact: true })
+    .click();
+  await expect(card.getByText(/Price last checked/)).toHaveCount(2);
+  await card.getByRole("button", { name: "Add note" }).click();
+  await card.getByLabel("Notes").fill("Keep my draft");
+  const requested: string[] = [];
+  await page.route("**/api/shopping-lists/**/refresh-prices", async (route) => {
+    requested.push(new URL(route.request().url()).pathname);
+    planningPrices.set(1, [
+      { ...old, refreshStatus: "Waiting" },
+      {
+        ...old,
+        shopId: 2,
+        shopName: "Woolworths",
+        refreshStatus: "RetryLater",
+      },
+    ]);
+    await route.fulfill({
+      json: { queued: 1, alreadyRunning: 0, current: 0, deferred: 1 },
+    });
+  });
+  await card
+    .getByRole("button", { name: "Refresh price", exact: true })
+    .click();
+  expect(requested[0]).toMatch(/items\/1\/refresh-prices$/);
+  await expect(card.getByText(/Waiting for price update/)).toBeVisible();
+  await expect(list.getByText(/1 deferred/)).toBeVisible();
+  await expect(card.getByLabel("Notes")).toHaveValue("Keep my draft");
+  await list
+    .getByRole("button", { name: "Refresh list prices", exact: true })
+    .click();
+  expect(requested.at(-1)).toMatch(/shopping-lists\/\d+\/refresh-prices$/);
+
+  planningPrices.set(1, [
+    { ...old, checkedDate: new Date().toISOString() },
+    { ...old, shopId: 2, shopName: "Woolworths", refreshStatus: "RetryLater" },
+  ]);
+  await list
+    .getByRole("button", { name: "Refresh items", exact: true })
+    .click();
+  await expect(
+    card.getByText("Price up to date", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    list.getByText("All prices up to date", { exact: true }),
+  ).toHaveCount(0);
+  await expect(card.getByText(/Price update unsuccessful/)).toBeVisible();
+  await list
+    .getByRole("button", { name: "Refresh list prices", exact: true })
+    .click();
+  expect(requested.at(-1)).toMatch(/shopping-lists\/\d+\/refresh-prices$/);
+});
+
+test("manual price refresh reports HTTP failure without changing the observation date", async ({
+  page,
+}) => {
+  comparison = comparable;
+  await start(page);
+  await add(page);
+  const list = page.getByRole("region", { name: "Editable shopping list" });
+  const card = list.getByRole("article");
+  await expect(card).toBeVisible();
+  planningPrices.set(1, [
+    {
+      shopId: 1,
+      shopName: "Coles",
+      price: 23,
+      includedInTotal: true,
+      status: "Fresh",
+      productUrl: "https://www.coles.com.au/product/123456",
+      checkedDate: "2026-01-01T00:00:00Z",
+      specialDescription: null,
+    },
+  ]);
+  await list
+    .getByRole("button", { name: "Refresh items", exact: true })
+    .click();
+  await page.route("**/api/shopping-lists/**/refresh-prices", (route) =>
+    route.fulfill({ status: 503, json: { title: "Unavailable" } }),
+  );
+  await card
+    .getByRole("button", { name: "Refresh price", exact: true })
+    .click();
+  await expect(list.getByRole("alert")).toContainText(
+    "temporarily unavailable",
+  );
+  await expect(card.getByText(/Price last checked/)).toContainText("2026");
+  await expect(card.getByText("Price up to date", { exact: true })).toHaveCount(
+    0,
+  );
+});
+
+test("product refresh passes through the proxy with browser protection and item ownership", async ({
+  page,
+}) => {
+  comparison = comparable;
+  await start(page);
+  await add(page);
+  await expect(
+    page
+      .getByRole("region", { name: "Editable shopping list" })
+      .getByRole("article"),
+  ).toBeVisible();
+  const item = listItems.get(1)!;
+  const path = `/api/shopping-lists/${item.shoppingListId}/items/${item.id}/refresh-prices`;
+  expect((await page.request.post(path, { data: {} })).status()).toBe(403);
+  const headers = {
+    "X-MyShoppingList-Request": "1",
+    "X-Client-Timezone": "Australia/Adelaide",
+  };
+  const response = await page.request.post(path, { headers, data: {} });
+  expect(response.status()).toBe(200);
+  expect(await response.json()).toMatchObject({ queued: 0, current: 1 });
+  expect(response.headers()["cache-control"]).toBe("no-store");
+  expect(
+    (
+      await page.request.post(path, {
+        headers: { ...headers, Origin: "https://evil.example" },
+        data: {},
+      })
+    ).status(),
+  ).toBe(403);
+  expect(
+    (
+      await page.request.post(
+        `/api/shopping-lists/${item.shoppingListId}/items/99999/refresh-prices`,
+        { headers, data: {} },
+      )
+    ).status(),
+  ).toBe(404);
 });

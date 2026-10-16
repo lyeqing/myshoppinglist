@@ -78,6 +78,12 @@ export interface QuantityPrice {
   appliedBundles: number;
   remainingQuantity: number;
 }
+export interface PriceRefreshResult {
+  queued: number;
+  alreadyRunning: number;
+  current: number;
+  deferred: number;
+}
 export interface PlanningPrice {
   quantityPrice?: QuantityPrice | null;
   multibuy?: {
@@ -86,7 +92,7 @@ export interface PlanningPrice {
     unitPrice: number;
     savings: number;
   } | null;
-  refreshStatus?: "Waiting" | "Updating" | "RetryLater" | null;
+  refreshStatus?: "Waiting" | "Updating" | "Paused" | "RetryLater" | null;
   shopId: number;
   shopName: string;
   price: number | null;
@@ -134,6 +140,8 @@ export interface InStoreList {
   retailers: InStoreRetailer[];
 }
 export interface InStorePrice {
+  refreshStatus?: PlanningPrice["refreshStatus"];
+  previousPrice?: number | null;
   multibuy?: PlanningPrice["multibuy"];
   quantityPrice?: QuantityPrice | null;
   shopId: number;

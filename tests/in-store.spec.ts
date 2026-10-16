@@ -404,3 +404,69 @@ test("selected retailer leads pricing and missing products are distinct from mis
   await page.getByLabel("Where are you shopping?").selectOption("1");
   await expect(card.locator("p.text-2xl")).toContainText("$2.00");
 });
+
+test("in-store product and list price refresh show previous prices and partial results", async ({
+  page,
+}) => {
+  const product = row(1, "Refresh coffee", 23, null);
+  product.prices[1].previousPrice = 25;
+  let pending = false;
+  const requested: string[] = [];
+  await page.route("**/api/shopping-lists**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/refresh-prices")) {
+      requested.push(path);
+      pending = true;
+      return route.fulfill({
+        json: { queued: 1, alreadyRunning: 0, current: 0, deferred: 1 },
+      });
+    }
+    if (path.endsWith("/in-store"))
+      return route.fulfill({
+        json: {
+          id: 1,
+          name: "Refresh shop",
+          retailers: shops,
+          remainingCount: 1,
+          items: [
+            {
+              ...product,
+              prices: product.prices.map((p, i) => ({
+                ...p,
+                refreshStatus: pending ? (i ? "RetryLater" : "Waiting") : null,
+              })),
+            },
+          ],
+          baskets: [],
+          splitSubtotal: 46,
+          splitPricedCount: 1,
+          comparableCount: 0,
+          comparableSplitSubtotal: 0,
+        },
+      });
+    return route.fulfill({
+      json: [
+        { id: 1, name: "Refresh shop", remainingCount: 1, retailers: shops },
+      ],
+    });
+  });
+  await page.goto("/in-store");
+  await page.getByRole("button", { name: /Refresh shop/ }).click();
+  const card = page.locator("article").filter({ hasText: "Refresh coffee" });
+  await expect(card.getByText(/Previous observed price/)).toContainText(
+    "$25.00",
+  );
+  await card
+    .getByRole("button", { name: "Refresh price", exact: true })
+    .click();
+  expect(requested[0]).toBe("/api/shopping-lists/1/items/1/refresh-prices");
+  await expect(card.getByText(/Waiting for price update/)).toBeVisible();
+  await expect(card.getByText(/Price update unsuccessful/)).toBeVisible();
+  await expect(
+    page.getByText("All prices up to date", { exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Refresh list prices", exact: true })
+    .click();
+  expect(requested.at(-1)).toBe("/api/shopping-lists/1/refresh-prices");
+});
