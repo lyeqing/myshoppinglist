@@ -1,4 +1,6 @@
 "use client";
+
+import PriceObservationContextPanel from "./price-observation-context";
 import Link from "next/link";
 import type { PackAlternative, PackComparisonPrice } from "@/lib/api-types";
 import { priceAge, usePriceNow } from "@/lib/price-age";
@@ -43,6 +45,11 @@ function Price({
         {priceAge(value.checkedDate, value.status === "Fresh", now)}
         {value.status !== "Fresh" && <> · {value.status}</>}
       </p>
+      <PriceObservationContextPanel
+        observation={value.observation}
+        hasPrice={value.price !== null || value.checkedDate !== null}
+        shopName={value.shopName}
+      />
     </div>
   );
 }

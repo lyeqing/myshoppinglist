@@ -1,5 +1,7 @@
 "use client";
 
+import PriceObservationContextPanel from "./price-observation-context";
+
 import { useState } from "react";
 import PackAlternatives from "./pack-alternatives";
 import BrandAlternatives from "./brand-alternatives";
@@ -121,6 +123,11 @@ function PriceDetail({
           now,
         )}
       </p>
+      <PriceObservationContextPanel
+        observation={price.observation}
+        hasPrice={price.price !== null || price.checkedDate !== null}
+        shopName={price.shopName}
+      />
     </div>
   );
 }

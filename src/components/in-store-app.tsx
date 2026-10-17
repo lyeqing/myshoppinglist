@@ -1,5 +1,7 @@
 "use client";
 
+import PriceObservationContextPanel from "./price-observation-context";
+
 import { useEffect, useState } from "react";
 import {
   priceAge,
@@ -757,6 +759,15 @@ export default function InStoreApp() {
                                 now,
                               )}
                             </span>
+                            <PriceObservationContextPanel
+                              observation={p.observation}
+                              hasPrice={
+                                p.price !== null ||
+                                p.previousPrice != null ||
+                                p.checkedDate !== null
+                              }
+                              shopName={p.shopName}
+                            />
                             {refreshLabel(p.refreshStatus) && (
                               <span
                                 role="status"

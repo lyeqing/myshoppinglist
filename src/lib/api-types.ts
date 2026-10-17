@@ -84,7 +84,13 @@ export interface PriceRefreshResult {
   current: number;
   deferred: number;
 }
+export interface PriceObservationContext {
+  sourceType: string;
+  priceScope: string;
+  sourceUrl: string | null;
+}
 export interface PlanningPrice {
+  observation?: PriceObservationContext | null;
   quantityPrice?: QuantityPrice | null;
   multibuy?: {
     quantity: number;
@@ -103,6 +109,7 @@ export interface PlanningPrice {
   specialDescription: string | null;
 }
 export interface PackComparisonPrice {
+  observation?: PriceObservationContext | null;
   shopId: number;
   shopName: string;
   price: number | null;
@@ -195,6 +202,7 @@ export interface InStoreList {
   retailers: InStoreRetailer[];
 }
 export interface InStorePrice {
+  observation?: PriceObservationContext | null;
   refreshStatus?: PlanningPrice["refreshStatus"];
   previousPrice?: number | null;
   multibuy?: PlanningPrice["multibuy"];
