@@ -11,6 +11,7 @@ import {
 } from "@/lib/price-age";
 import Link from "next/link";
 import ComparisonStoreContextPanel from "./comparison-store-context";
+import ComparisonPreferences from "./comparison-preferences";
 import AccountForm from "./account-form";
 import PackAlternatives from "./pack-alternatives";
 import BrandAlternatives from "./brand-alternatives";
@@ -375,6 +376,24 @@ export default function InStoreApp() {
             {detail.storeContext && (
               <ComparisonStoreContextPanel context={detail.storeContext} />
             )}
+            <ComparisonPreferences
+              key={`${accountId}-${detail.id}`}
+              accountId={accountId}
+              disabled={disabled || state.refreshBusy}
+              onChanged={async () => {
+                await load(detail.id);
+                const latest = store.getState();
+                if (
+                  latest.error ||
+                  latest.loading ||
+                  latest.saving ||
+                  latest.authBusy ||
+                  latest.detail?.id !== detail.id ||
+                  latest.session?.account.id !== accountId
+                )
+                  throw new Error("Comparison reload is unavailable.");
+              }}
+            />
             <div className="mb-4 space-y-2">
               <button
                 className={button}

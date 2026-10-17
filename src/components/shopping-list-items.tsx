@@ -13,6 +13,7 @@ import {
 import { refreshNotice, refreshProgress, usePriceNow } from "@/lib/price-age";
 import type { PriceRefreshResult } from "@/lib/api-types";
 import ComparisonStoreContextPanel from "./comparison-store-context";
+import ComparisonPreferences from "./comparison-preferences";
 import ShoppingListItemCard from "./shopping-list-item-card";
 import PackDiscoveryControls from "./pack-discovery-controls";
 import ShoppingListCostSummary from "./shopping-list-cost-summary";
@@ -317,6 +318,17 @@ export default function ShoppingListItems({
       </div>
       {plan?.storeContext && (
         <ComparisonStoreContextPanel context={plan.storeContext} />
+      )}
+      {plan && (
+        <ComparisonPreferences
+          key={`${store.getState().session?.account.id}-${listId}`}
+          accountId={store.getState().session?.account.id}
+          disabled={saving || loading || requestingRefresh}
+          onChanged={async () => {
+            if (!(await load()))
+              throw new Error("Comparison reload is unavailable.");
+          }}
+        />
       )}
       {plan && (
         <p role="status" className="mb-3 text-sm text-slate-600">
