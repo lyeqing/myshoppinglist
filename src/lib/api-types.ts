@@ -79,6 +79,7 @@ export interface QuantityPrice {
   remainingQuantity: number;
 }
 export interface PriceRefreshResult {
+  checkedUnavailable?: number;
   queued: number;
   alreadyRunning: number;
   current: number;

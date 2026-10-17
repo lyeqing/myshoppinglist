@@ -100,7 +100,12 @@ export function refreshNotice(result: PriceRefreshResult): string {
       result.deferred
         ? `${result.deferred} deferred. Refresh is unavailable or a retry limit applies; please try later.`
         : "",
-      result.current ? `${result.current} already checked today.` : "",
+      result.current
+        ? `${result.current} current price${result.current === 1 ? "" : "s"} already checked today.`
+        : "",
+      result.checkedUnavailable
+        ? `${result.checkedUnavailable} checked today, but no current comparable ${result.checkedUnavailable === 1 ? "price is" : "prices are"} available.`
+        : "",
     ]
       .filter(Boolean)
       .join(" ") ||
