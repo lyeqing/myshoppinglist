@@ -102,7 +102,28 @@ export interface PlanningPrice {
   checkedDate: string | null;
   specialDescription: string | null;
 }
+export interface PackComparisonPrice {
+  shopId: number;
+  shopName: string;
+  price: number | null;
+  unitPrice: number | null;
+  status: string;
+  checkedDate: string | null;
+  productUrl: string | null;
+}
+export interface PackAlternative {
+  relationship: "SameProductDifferentSize";
+  product: ListItem["product"];
+  totalQuantity: number;
+  unit: "g" | "mL";
+  quantityRatio: number;
+  offer: PackComparisonPrice;
+  original: PackComparisonPrice | null;
+  unitPriceDifferencePercent: number | null;
+  packagePriceDifference: number | null;
+}
 export interface PlanningItem {
+  packAlternatives?: PackAlternative[] | null;
   item: ListItem;
   prices: PlanningPrice[];
   comparison?: ItemComparison | null;
@@ -122,7 +143,26 @@ export interface PlanningBasket {
   pricedCount: number;
   missingItems: { itemId: number; name: string; reason: string }[];
 }
+export interface ShoppingPreferences {
+  accountId: number;
+  compareOnlyPreferredShops: boolean;
+  includeDifferentPackSizes: boolean;
+  includeDifferentBrands: boolean;
+  shops: { shopId: number; isEnabled: boolean }[];
+  availableShops: {
+    id: number;
+    name: string;
+    code: string;
+    comparisonSupported: boolean;
+  }[];
+  updatedDate: string;
+}
+export interface ComparisonStoreContext {
+  preferredOnly: boolean;
+  shopNames: string[];
+}
 export interface ShoppingListPlan {
+  storeContext?: ComparisonStoreContext | null;
   id: number;
   name: string;
   items: PlanningItem[];
@@ -151,10 +191,12 @@ export interface InStorePrice {
   checkedDate: string | null;
 }
 export interface InStoreItem {
+  packAlternatives?: PackAlternative[] | null;
   item: ListItem;
   prices: InStorePrice[];
 }
 export interface InStoreDetail {
+  storeContext?: ComparisonStoreContext | null;
   id: number;
   name: string;
   retailers: InStoreRetailer[];

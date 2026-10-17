@@ -12,6 +12,7 @@ import {
 } from "@/lib/api-types";
 import { refreshNotice, refreshProgress, usePriceNow } from "@/lib/price-age";
 import type { PriceRefreshResult } from "@/lib/api-types";
+import Link from "next/link";
 import ShoppingListItemCard from "./shopping-list-item-card";
 import ShoppingListCostSummary from "./shopping-list-cost-summary";
 import {
@@ -313,6 +314,20 @@ export default function ShoppingListItems({
           </button>
         </div>
       </div>
+      {plan?.storeContext && (
+        <p className="mb-3 text-sm text-slate-600">
+          {plan.storeContext.preferredOnly
+            ? `Comparing My Stores: ${plan.storeContext.shopNames.join(", ") || "No active stores"}`
+            : "Comparing all supported stores"}
+          .{" "}
+          <Link
+            href="/settings"
+            className="font-semibold text-sky-700 underline"
+          >
+            Manage My Stores
+          </Link>
+        </p>
+      )}
       {plan && (
         <p role="status" className="mb-3 text-sm text-slate-600">
           {refreshProgress(

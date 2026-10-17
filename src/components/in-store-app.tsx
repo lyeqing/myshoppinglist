@@ -11,6 +11,7 @@ import {
 } from "@/lib/price-age";
 import Link from "next/link";
 import AccountForm from "./account-form";
+import PackAlternatives from "./pack-alternatives";
 import { useStore } from "zustand";
 import {
   createInStoreStore,
@@ -155,6 +156,7 @@ export default function InStoreApp() {
             <Link href="/in-store" aria-current="page" className="text-sky-700">
               Shop in store
             </Link>
+            {state.session && <Link href="/settings">My Stores</Link>}
             {state.session?.account.isPaid && (
               <Link href="/history">History</Link>
             )}
@@ -367,6 +369,20 @@ export default function InStoreApp() {
                 {state.showPurchased ? "Hide purchased" : "Show purchased"}
               </button>
             </div>
+            {detail.storeContext && (
+              <p className="mb-3 text-sm text-slate-600">
+                {detail.storeContext.preferredOnly
+                  ? `Comparing My Stores: ${detail.storeContext.shopNames.join(", ") || "No active stores"}`
+                  : "Comparing all supported stores"}
+                .{" "}
+                <Link
+                  href="/settings"
+                  className="font-semibold text-sky-700 underline"
+                >
+                  Manage My Stores
+                </Link>
+              </p>
+            )}
             <div className="mb-4 space-y-2">
               <button
                 className={button}
@@ -733,6 +749,7 @@ export default function InStoreApp() {
                           </p>
                         ))}
                       </div>
+                      <PackAlternatives alternatives={row.packAlternatives} />
                     </article>
                   </div>
                 );

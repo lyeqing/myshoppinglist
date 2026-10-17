@@ -24,7 +24,9 @@ async function forward(
     get && /^admin\/accounts(?:\/[1-9]\d{0,18}\/review)?$/.test(route);
   const adminEdit =
     request.method === "PUT" && /^admin\/accounts\/[1-9]\d{0,18}$/.test(route);
+  const preferences = route === "account/shopping-preferences";
   const allowed =
+    (preferences && (get || request.method === "PUT")) ||
     (get && route === "admin/health") ||
     (request.method === "POST" &&
       /^shopping-lists\/[1-9]\d{0,18}\/items\/[1-9]\d{0,18}\/(retry-comparison|refresh-prices)$/.test(
@@ -111,7 +113,11 @@ async function forward(
     let body: string | undefined;
     if (!get) {
       if (
-        (account || edit || remove || route.endsWith("/products/url")) &&
+        (account ||
+          preferences ||
+          edit ||
+          remove ||
+          route.endsWith("/products/url")) &&
         request.headers.get("Content-Type")?.split(";")[0] !==
           "application/json"
       )

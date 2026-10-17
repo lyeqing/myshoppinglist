@@ -548,6 +548,7 @@ export default function ShoppingListApp() {
             My lists
           </Link>
           <Link href="/in-store">Shop in store</Link>
+          {session && <Link href="/settings">My Stores</Link>}
         </nav>
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-5 py-5 sm:gap-4 sm:px-8">
           <Link

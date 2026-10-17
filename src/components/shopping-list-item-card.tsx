@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import PackAlternatives from "./pack-alternatives";
 import type {
   ListItem,
   ListItemUpdate,
@@ -368,6 +369,7 @@ export default function ShoppingListItemCard({
           </p>
         )}
       </div>
+      <PackAlternatives alternatives={row.packAlternatives} />
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
         <div
           className="flex items-center gap-3"
