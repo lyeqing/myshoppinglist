@@ -203,6 +203,27 @@ export default function ShoppingPreferences() {
                     Compare package cost and price per unit before choosing.
                     Your list and totals stay as they are.
                   </p>
+                  <label className="flex min-h-11 cursor-pointer items-center gap-3 border-t border-slate-200 pt-5">
+                    <input
+                      type="checkbox"
+                      className="size-5 shrink-0 accent-sky-700"
+                      checked={draft.includeDifferentBrands}
+                      onChange={(e) =>
+                        state.setDifferentBrands(e.target.checked)
+                      }
+                      aria-describedby="alternative-brands-help"
+                    />
+                    Show alternative brands
+                  </label>
+                  <p
+                    id="alternative-brands-help"
+                    className="text-sm text-slate-500"
+                  >
+                    Show reviewed alternatives from other brands when saved
+                    prices are available. Taste, ingredients and quality may
+                    differ. Check the product details for your needs. Your list
+                    and totals stay as they are.
+                  </p>
                   <button
                     type="submit"
                     disabled={

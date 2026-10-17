@@ -122,8 +122,16 @@ export interface PackAlternative {
   unitPriceDifferencePercent: number | null;
   packagePriceDifference: number | null;
 }
+export interface BrandAlternative extends Omit<
+  PackAlternative,
+  "relationship"
+> {
+  relationship: "EquivalentDifferentBrand";
+  label: string;
+}
 export interface PlanningItem {
   packAlternatives?: PackAlternative[] | null;
+  brandAlternatives?: BrandAlternative[] | null;
   item: ListItem;
   prices: PlanningPrice[];
   comparison?: ItemComparison | null;
@@ -194,6 +202,7 @@ export interface InStorePrice {
 }
 export interface InStoreItem {
   packAlternatives?: PackAlternative[] | null;
+  brandAlternatives?: BrandAlternative[] | null;
   item: ListItem;
   prices: InStorePrice[];
 }

@@ -524,3 +524,79 @@ test("ALDI restriction is clear while the preference remains selectable", async 
     fullPage: true,
   });
 });
+
+test("alternative brands persist independently across all comparison preference combinations", async ({
+  page,
+}, info) => {
+  await page.goto("/settings");
+  const brands = page.getByRole("checkbox", {
+    name: "Show alternative brands",
+    exact: true,
+  });
+  const sizes = page.getByRole("checkbox", {
+    name: "Show different package sizes",
+    exact: true,
+  });
+  await expect(brands).not.toBeChecked();
+  await expect(brands).toHaveAccessibleDescription(
+    /Taste, ingredients and quality may differ/,
+  );
+  for (const [differentBrands, differentSizes] of [
+    [true, true],
+    [true, false],
+    [false, false],
+    [false, true],
+  ]) {
+    await brands.setChecked(differentBrands);
+    await sizes.setChecked(differentSizes);
+    await page
+      .getByRole("button", { name: "Save My Stores", exact: true })
+      .click();
+    await expect(page.getByText(/My Stores saved/)).toBeVisible();
+    expect(profiles.get(1)).toMatchObject({
+      includeDifferentBrands: differentBrands,
+      includeDifferentPackSizes: differentSizes,
+      shops: [],
+      compareOnlyPreferredShops: false,
+    });
+    await page.reload();
+    await expect(brands).toBeChecked({ checked: differentBrands });
+    await expect(sizes).toBeChecked({ checked: differentSizes });
+  }
+  await page.screenshot({
+    path: `test-results/${info.project.name}-brand-settings.png`,
+    fullPage: true,
+  });
+});
+
+test("alternative brands retain an unsaved draft on failure and lock after conflicting edits", async ({
+  page,
+}) => {
+  await page.goto("/settings");
+  const brands = page.getByRole("checkbox", {
+    name: "Show alternative brands",
+    exact: true,
+  });
+  await brands.focus();
+  await page.keyboard.press("Space");
+  await expect(brands).toBeChecked();
+  putFailure = 503;
+  await page
+    .getByRole("button", { name: "Save My Stores", exact: true })
+    .click();
+  await expect(page.getByRole("main").getByRole("alert")).toContainText(
+    "The service is temporarily unavailable. Please try again.",
+  );
+  await expect(brands).toBeChecked();
+  expect(profiles.get(1)!.includeDifferentBrands).toBe(false);
+  putFailure = 409;
+  await page
+    .getByRole("button", { name: "Save My Stores", exact: true })
+    .click();
+  await expect(brands).toBeDisabled();
+  await page
+    .getByRole("button", { name: "Reload settings", exact: true })
+    .click();
+  await expect(brands).toBeEnabled();
+  await expect(brands).not.toBeChecked();
+});

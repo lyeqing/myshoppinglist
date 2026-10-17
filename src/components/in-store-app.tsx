@@ -12,6 +12,7 @@ import {
 import Link from "next/link";
 import AccountForm from "./account-form";
 import PackAlternatives from "./pack-alternatives";
+import BrandAlternatives from "./brand-alternatives";
 import PackDiscoveryControls from "./pack-discovery-controls";
 import { useStore } from "zustand";
 import {
@@ -768,6 +769,7 @@ export default function InStoreApp() {
                         />
                       )}
                       <PackAlternatives alternatives={row.packAlternatives} />
+                      <BrandAlternatives alternatives={row.brandAlternatives} />
                     </article>
                   </div>
                 );

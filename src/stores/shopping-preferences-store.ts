@@ -20,6 +20,7 @@ export function createShoppingPreferencesStore() {
     toggleShop: (id: number, enabled: boolean) => void;
     setPreferredOnly: (enabled: boolean) => void;
     setDifferentPackSizes: (enabled: boolean) => void;
+    setDifferentBrands: (enabled: boolean) => void;
     dispose: () => void;
   }>((set, get) => ({
     session: null,
@@ -117,6 +118,12 @@ export function createShoppingPreferencesStore() {
       set((s) =>
         s.draft && !s.saving && !s.loading
           ? { draft: { ...s.draft, includeDifferentPackSizes }, notice: "" }
+          : {},
+      ),
+    setDifferentBrands: (includeDifferentBrands) =>
+      set((s) =>
+        s.draft && !s.saving && !s.loading && !s.conflict
+          ? { draft: { ...s.draft, includeDifferentBrands }, notice: "" }
           : {},
       ),
     save: async () => {

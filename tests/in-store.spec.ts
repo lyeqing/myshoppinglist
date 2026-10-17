@@ -470,3 +470,119 @@ test("in-store product and list price refresh show previous prices and partial r
     .click();
   expect(requested.at(-1)).toBe("/api/shopping-lists/1/refresh-prices");
 });
+
+test("alternative brands stay separate in store with keyboard access and honest stale pricing", async ({
+  page,
+}, info) => {
+  const product = row(1, "Original coffee", 10, 12);
+  const date = new Date().toISOString();
+  product.brandAlternatives = [
+    {
+      relationship: "EquivalentDifferentBrand",
+      label: "Similar product — different brand",
+      product: {
+        ...product.item.product,
+        id: 999,
+        name: "Other brand coffee 1kg",
+        brand: "Other brand",
+        packSize: 1,
+        packUnit: "kg",
+      },
+      totalQuantity: 1000,
+      unit: "g",
+      quantityRatio: 2,
+      offer: {
+        shopId: 2,
+        shopName: "Woolworths",
+        price: 13,
+        unitPrice: 1.3,
+        status: "Fresh",
+        checkedDate: date,
+        productUrl: "https://www.woolworths.com.au/shop/productdetails/123456",
+      },
+      original: {
+        shopId: 1,
+        shopName: "Coles",
+        price: 10,
+        unitPrice: 2,
+        status: "Fresh",
+        checkedDate: date,
+        productUrl: null,
+      },
+      unitPriceDifferencePercent: -35,
+      packagePriceDifference: 3,
+    },
+  ];
+  const before = structuredClone(product.item);
+  await page.route("**/api/shopping-lists**", (route) =>
+    route.fulfill({
+      json: new URL(route.request().url()).pathname.endsWith("/in-store")
+        ? {
+            id: 1,
+            name: "Brand comparison shop",
+            retailers: shops,
+            items: [product],
+            remainingCount: 1,
+            baskets: [],
+            splitSubtotal: 20,
+            splitPricedCount: 1,
+            comparableCount: 1,
+            comparableSplitSubtotal: 20,
+          }
+        : [
+            {
+              id: 1,
+              name: "Brand comparison shop",
+              remainingCount: 1,
+              retailers: shops,
+            },
+          ],
+    }),
+  );
+  await page.goto("/in-store");
+  await page.getByRole("button", { name: /Brand comparison shop/ }).click();
+  const section = page.getByRole("region", {
+    name: "Alternative brands",
+    exact: true,
+  });
+  await expect(section).toContainText(
+    "35% less per 100 g; costs $3.00 more per package.",
+  );
+  await expect(section).toContainText("Similar product — different brand");
+  const card = page.locator("article").filter({ hasText: "Original coffee" });
+  await expect(card.locator("p.text-2xl")).toContainText("$20.00");
+  const link = section.getByRole("link", {
+    name: "Check this alternative at Woolworths",
+    exact: true,
+  });
+  await link.focus();
+  await expect(link).toBeFocused();
+  await expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  await page.keyboard.press("Tab");
+  await expect(
+    section.getByRole("link", { name: "Manage alternative-brand comparisons" }),
+  ).toBeFocused();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await section.screenshot({
+    path: `test-results/${info.project.name}-brand-in-store.png`,
+  });
+  product.brandAlternatives[0].offer.status = "Stale price";
+  product.brandAlternatives[0].offer.checkedDate = "2026-01-01T00:00:00Z";
+  await page.reload();
+  await page.getByRole("button", { name: /Brand comparison shop/ }).click();
+  await expect(section).toContainText("Stale price");
+  await expect(section.getByText(/35% less/)).toHaveCount(0);
+  await expect(section).toContainText(
+    "A unit-price difference needs current comparable prices for both products.",
+  );
+  await expect(card.locator("p.text-2xl")).toContainText("$20.00");
+  expect(product.item).toEqual(before);
+  await section
+    .getByRole("link", { name: "Manage alternative-brand comparisons" })
+    .click();
+  await expect(page).toHaveURL(/\/settings$/);
+});

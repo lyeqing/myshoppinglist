@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import PackAlternatives from "./pack-alternatives";
+import BrandAlternatives from "./brand-alternatives";
 import PackDiscoveryControls from "./pack-discovery-controls";
 import type {
   ListItem,
@@ -384,6 +385,7 @@ export default function ShoppingListItemCard({
         />
       )}
       <PackAlternatives alternatives={row.packAlternatives} />
+      <BrandAlternatives alternatives={row.brandAlternatives} />
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
         <div
           className="flex items-center gap-3"

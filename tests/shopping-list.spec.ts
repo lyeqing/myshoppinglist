@@ -2342,3 +2342,128 @@ test("ALDI support is labelled unavailable and rejected imports never create job
   await page.getByRole("button", { name: "Add product", exact: true }).click();
   await expect.poll(() => jobs.size).toBe(1);
 });
+
+test("alternative brands show honest price differences and leave the shopping list unchanged", async ({
+  page,
+}, info) => {
+  let mode = "fresh";
+  await page.route("**/api/shopping-lists/*/plan", async (route) => {
+    const response = await route.fetch();
+    const plan = await response.json();
+    for (const row of plan.items) {
+      const date = new Date().toISOString();
+      row.brandAlternatives =
+        mode === "empty"
+          ? []
+          : [
+              {
+                relationship: "EquivalentDifferentBrand",
+                label: "Similar product — different brand",
+                product: {
+                  ...row.item.product,
+                  id: 999,
+                  name: "Other brand coffee 1kg",
+                  brand: "Other brand",
+                  packSize: 1,
+                  packUnit: "kg",
+                },
+                totalQuantity: 1000,
+                unit: "g",
+                quantityRatio: 2,
+                offer: {
+                  shopId: 2,
+                  shopName: "Woolworths",
+                  price: mode === "missing" ? null : 13,
+                  unitPrice: mode === "missing" ? null : 1.3,
+                  status:
+                    mode === "stale"
+                      ? "Stale price"
+                      : mode === "missing"
+                        ? "No price"
+                        : "Fresh",
+                  checkedDate: mode === "stale" ? "2026-01-01T00:00:00Z" : date,
+                  productUrl:
+                    mode === "unsafe"
+                      ? "https://www.woolworths.com.au.evil.test/product"
+                      : "https://www.woolworths.com.au/shop/productdetails/123456",
+                },
+                original: {
+                  shopId: 1,
+                  shopName: "Coles",
+                  price: 10,
+                  unitPrice: 2,
+                  status: "Fresh",
+                  checkedDate: date,
+                  productUrl: null,
+                },
+                unitPriceDifferencePercent: -35,
+                packagePriceDifference: 3,
+              },
+            ];
+    }
+    await route.fulfill({ json: plan });
+  });
+  await start(page);
+  await add(page);
+  const section = page.getByRole("region", {
+    name: "Alternative brands",
+    exact: true,
+  });
+  await expect(section).toBeVisible();
+  await expect(section).toContainText("Similar product — different brand");
+  await expect(section).toContainText(
+    "35% less per 100 g; costs $3.00 more per package.",
+  );
+  await expect(section).toContainText(
+    "Taste, ingredients and quality may differ",
+  );
+  await expect(
+    section.getByText("Price up to date", { exact: true }),
+  ).toHaveCount(2);
+  const baseline = [...listItems.values()].map((item) => structuredClone(item));
+  const summary = page.getByRole("region", { name: "Shopping cost summary" });
+  const totalBefore = await summary.innerText();
+  const link = section.getByRole("link", {
+    name: "Check this alternative at Woolworths",
+    exact: true,
+  });
+  await expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  await expect(link).toHaveAttribute(
+    "href",
+    "https://www.woolworths.com.au/shop/productdetails/123456",
+  );
+  await link.focus();
+  await expect(link).toBeFocused();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await section.screenshot({
+    path: `test-results/${info.project.name}-brand-planning.png`,
+  });
+  for (mode of ["stale", "missing", "unsafe", "empty"]) {
+    await page.reload();
+    if (mode === "empty") await expect(section).toHaveCount(0);
+    else {
+      await expect(section).toBeVisible();
+      if (mode === "stale" || mode === "missing") {
+        await expect(section).toContainText(
+          "A unit-price difference needs current comparable prices for both products.",
+        );
+        await expect(section.getByText(/35% less/)).toHaveCount(0);
+        await expect(section.getByText(/costs \$3.00/)).toHaveCount(0);
+        if (mode === "stale")
+          await expect(section).toContainText("Stale price");
+        else await expect(section).toContainText("Price unavailable");
+      } else
+        await expect(
+          section.getByRole("link", {
+            name: "Check this alternative at Woolworths",
+          }),
+        ).toHaveCount(0);
+    }
+    await expect(summary).toHaveText(totalBefore, { useInnerText: true });
+    expect([...listItems.values()]).toEqual(baseline);
+  }
+});
