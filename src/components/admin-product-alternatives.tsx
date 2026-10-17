@@ -97,6 +97,7 @@ export default function AdminProductAlternatives() {
         className="flex flex-wrap gap-5 text-sm font-semibold text-sky-700 underline"
       >
         <Link href="/admin">Account administration</Link>
+        <Link href="/admin/shop-locations">Branch administration</Link>
         <Link href="/admin/health">Retailer health</Link>
         <Link href="/">MyShoppingList / sign in</Link>
       </nav>

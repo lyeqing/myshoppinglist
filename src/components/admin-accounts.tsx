@@ -109,6 +109,12 @@ export function AdminAccounts() {
       </Link>
       <h1 className="text-3xl font-bold">Account administration</h1>
       <Link
+        href="/admin/shop-locations"
+        className="inline-block min-h-11 py-2 text-sky-700 underline"
+      >
+        Branch administration
+      </Link>
+      <Link
         href="/admin/product-alternatives"
         className="inline-block min-h-11 py-2 text-sky-700 underline"
       >

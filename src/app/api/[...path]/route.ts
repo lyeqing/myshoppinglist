@@ -29,12 +29,21 @@ async function forward(
   const alternativeReview =
     (get || request.method === "PUT") &&
     /^admin\/product-alternatives\/[1-9]\d{0,18}\/[1-9]\d{0,18}$/.test(route);
+  const branchCollection = route === "admin/shop-locations";
+  const branchDetail = /^admin\/shop-locations\/[1-9]\d{0,18}$/.test(route);
+  const branchWrite =
+    (branchCollection && request.method === "POST") ||
+    (branchDetail && request.method === "PUT");
+  const branchSearch = branchCollection && get;
   const preferences = route === "account/shopping-preferences";
   const discovery =
     /^shopping-lists\/[1-9]\d{0,18}(?:\/items\/[1-9]\d{0,18})?\/pack-discovery$/.test(
       route,
     );
   const allowed =
+    branchWrite ||
+    branchSearch ||
+    (branchDetail && get) ||
     alternativeSearch ||
     alternativeReview ||
     (discovery && (get || request.method === "POST")) ||
@@ -125,6 +134,27 @@ async function forward(
         );
       target.searchParams.set("search", values[0]);
     }
+    if (branchSearch) {
+      const query = request.nextUrl.searchParams;
+      if (
+        [...query.keys()].some((key) => key !== "shopId" && key !== "search") ||
+        query.getAll("shopId").length > 1 ||
+        query.getAll("search").length > 1
+      )
+        return reply(400, "Send each branch search filter once.");
+      const shopId = query.get("shopId");
+      const search = query.get("search") ?? "";
+      if (
+        (shopId !== null && !/^[1-9]\d{0,18}$/.test(shopId)) ||
+        search.length > 100
+      )
+        return reply(
+          400,
+          "Send a valid retailer and a search of at most 100 characters.",
+        );
+      if (shopId !== null) target.searchParams.set("shopId", shopId);
+      if (query.has("search")) target.searchParams.set("search", search);
+    }
     const headers = new Headers({
       Accept: "application/json",
       "X-MyShoppingList-Request": "1",
@@ -141,6 +171,7 @@ async function forward(
         (account ||
           preferences ||
           alternativeReview ||
+          branchWrite ||
           discovery ||
           edit ||
           remove ||
@@ -159,7 +190,12 @@ async function forward(
           if (part.done) break;
           size += part.value.length;
           if (
-            size > (edit ? 32768 : alternativeReview || account ? 16384 : 4096)
+            size >
+            (edit
+              ? 32768
+              : alternativeReview || branchWrite || account
+                ? 16384
+                : 4096)
           ) {
             await reader.cancel();
             return reply(413, "The request is too large.");

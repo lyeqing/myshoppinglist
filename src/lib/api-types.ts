@@ -380,3 +380,63 @@ export interface BrandAlternativeReviewRequest {
   expectedProductFingerprint: string;
   expectedAlternativeFingerprint: string;
 }
+
+export interface ShopLocationDetails {
+  shopId: number;
+  storeCode: string | null;
+  name: string | null;
+  address1: string | null;
+  address2: string | null;
+  suburb: string | null;
+  state: string | null;
+  postcode: string | null;
+  isActive: boolean;
+}
+export interface ShopLocationSummary {
+  id: number;
+  shopId: number;
+  shopName: string;
+  storeCode: string | null;
+  name: string;
+  address1: string | null;
+  address2: string | null;
+  suburb: string | null;
+  state: string | null;
+  postcode: string | null;
+  verifiedAt: string | null;
+  branchPricesSupported: boolean;
+}
+export interface ShopLocationAdminSummary {
+  location: ShopLocationSummary;
+  isActive: boolean;
+  sourceReference: string | null;
+  verifiedByAccountId: number | null;
+  createdDate: string;
+  updatedDate: string;
+}
+export interface ShopLocationAdminSearchResult {
+  items: ShopLocationAdminSummary[];
+  hasMore: boolean;
+}
+export interface ShopLocationReviewResponse {
+  id: number;
+  action: "Created" | "Updated" | "Retired" | "Reactivated";
+  evidence: string;
+  sourceReference: string;
+  reviewerAccountId: number;
+  reviewedAt: string;
+  beforeJson: string | null;
+  afterJson: string;
+}
+export interface ShopLocationAdminDetail {
+  branch: ShopLocationAdminSummary;
+  reviews: ShopLocationReviewResponse[];
+}
+export interface ShopLocationCreateRequest {
+  details: ShopLocationDetails;
+  sourceReference: string;
+  evidence: string;
+}
+export interface ShopLocationUpdateRequest extends ShopLocationCreateRequest {
+  expectedUpdatedDate: string;
+}
