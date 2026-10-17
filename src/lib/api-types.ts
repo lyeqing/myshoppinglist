@@ -334,3 +334,49 @@ export interface PackDiscoveryView {
   alreadyRunning: number;
   recent: number;
 }
+
+export interface AdminAlternativeProductSearchItem {
+  product: ListItem["product"];
+  category: string | null;
+  subCategory: string | null;
+  isDeleted: boolean;
+}
+export interface AdminAlternativeProductSearchResult {
+  items: AdminAlternativeProductSearchItem[];
+  hasMore: boolean;
+}
+export interface BrandAlternativeReviewProduct extends AdminAlternativeProductSearchItem {
+  description: string | null;
+  itemDetail: string | null;
+  gtin: string | null;
+  manufacturerPartNumber: string | null;
+  modelNumber: string | null;
+  fingerprint: string;
+}
+export interface BrandAlternativeReviewResponse {
+  id: number;
+  productId: number;
+  alternativeProductId: number;
+  previousReviewId: number | null;
+  approved: boolean;
+  evidence: string;
+  sameUseAndFormatConfirmed: boolean;
+  dietaryAndCompositionChecked: boolean;
+  reviewerAccountId: number;
+  reviewedAt: string;
+  needsReview: boolean;
+}
+export interface BrandAlternativeReviewContext {
+  product: BrandAlternativeReviewProduct;
+  alternativeProduct: BrandAlternativeReviewProduct;
+  reviews: BrandAlternativeReviewResponse[];
+}
+export interface BrandAlternativeReviewRequest {
+  approved: boolean;
+  evidence: string;
+  expectedReviewId: number;
+  sameUseAndFormatConfirmed: boolean;
+  dietaryAndCompositionChecked: boolean;
+  expectedProductFingerprint: string;
+  expectedAlternativeFingerprint: string;
+}

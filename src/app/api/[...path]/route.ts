@@ -24,12 +24,19 @@ async function forward(
     get && /^admin\/accounts(?:\/[1-9]\d{0,18}\/review)?$/.test(route);
   const adminEdit =
     request.method === "PUT" && /^admin\/accounts\/[1-9]\d{0,18}$/.test(route);
+  const alternativeSearch =
+    get && route === "admin/product-alternatives/products";
+  const alternativeReview =
+    (get || request.method === "PUT") &&
+    /^admin\/product-alternatives\/[1-9]\d{0,18}\/[1-9]\d{0,18}$/.test(route);
   const preferences = route === "account/shopping-preferences";
   const discovery =
     /^shopping-lists\/[1-9]\d{0,18}(?:\/items\/[1-9]\d{0,18})?\/pack-discovery$/.test(
       route,
     );
   const allowed =
+    alternativeSearch ||
+    alternativeReview ||
     (discovery && (get || request.method === "POST")) ||
     (preferences && (get || request.method === "PUT")) ||
     (get && route === "admin/health") ||
@@ -105,6 +112,19 @@ async function forward(
       if (search.length > 320) return reply(400, "Search is too long.");
       target.searchParams.set("search", search);
     }
+    if (alternativeSearch) {
+      const values = request.nextUrl.searchParams.getAll("search");
+      if (
+        values.length !== 1 ||
+        values[0].length > 100 ||
+        [...request.nextUrl.searchParams.keys()].some((key) => key !== "search")
+      )
+        return reply(
+          400,
+          "Send one product search value of at most 100 characters.",
+        );
+      target.searchParams.set("search", values[0]);
+    }
     const headers = new Headers({
       Accept: "application/json",
       "X-MyShoppingList-Request": "1",
@@ -120,6 +140,7 @@ async function forward(
       if (
         (account ||
           preferences ||
+          alternativeReview ||
           discovery ||
           edit ||
           remove ||
@@ -137,7 +158,9 @@ async function forward(
           const part = await reader.read();
           if (part.done) break;
           size += part.value.length;
-          if (size > (edit ? 32768 : account ? 16384 : 4096)) {
+          if (
+            size > (edit ? 32768 : alternativeReview || account ? 16384 : 4096)
+          ) {
             await reader.cancel();
             return reply(413, "The request is too large.");
           }

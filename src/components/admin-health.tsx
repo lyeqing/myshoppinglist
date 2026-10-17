@@ -59,6 +59,9 @@ export default function AdminHealth() {
         className="flex flex-wrap gap-5 text-sm text-sky-700 underline"
       >
         <Link href="/admin">Account administration</Link>
+        <Link href="/admin/product-alternatives">
+          Product alternative reviews
+        </Link>
         <Link href="/">MyShoppingList / sign in</Link>
       </nav>
       <div className="flex flex-wrap items-center justify-between gap-4">
