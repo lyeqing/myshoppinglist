@@ -14,6 +14,7 @@ import { refreshNotice, refreshProgress, usePriceNow } from "@/lib/price-age";
 import type { PriceRefreshResult } from "@/lib/api-types";
 import Link from "next/link";
 import ShoppingListItemCard from "./shopping-list-item-card";
+import PackDiscoveryControls from "./pack-discovery-controls";
 import ShoppingListCostSummary from "./shopping-list-cost-summary";
 import {
   useShoppingStore,
@@ -349,12 +350,22 @@ export default function ShoppingListItems({
           {error} Use Refresh items to try again.
         </p>
       )}
+      {plan?.items.some((r) => !r.item.isPurchased && !r.item.isHidden) && (
+        <PackDiscoveryControls
+          accountId={store.getState().session?.account.id}
+          listId={listId}
+          disabled={saving}
+          onDiscovered={load}
+        />
+      )}
       {plan && !saving && !error && <ShoppingListCostSummary plan={plan} />}
       <div className="space-y-4">
         {plan?.items.map((row) => (
           <ShoppingListItemCard
             key={row.item.id}
             row={row}
+            accountId={store.getState().session?.account.id}
+            onDiscovered={load}
             disabled={saving}
             checking={Object.values(jobs).some(
               (job) =>

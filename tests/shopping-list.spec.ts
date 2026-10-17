@@ -553,6 +553,14 @@ test.beforeAll(async () => {
       let body = "";
       for await (const chunk of request) body += chunk;
       const value = JSON.parse(body);
+      if (value.url.startsWith("https://www.aldi.com.au/")) {
+        send(400, {
+          title:
+            "Automatic product imports and price checks are unavailable for ALDI.",
+          errorCode: "source_restricted",
+        });
+        return;
+      }
       if (
         !value.url.startsWith("https://www.coles.com.au/product/") &&
         !value.url.startsWith(
@@ -2304,4 +2312,33 @@ test("product refresh passes through the proxy with browser protection and item 
       )
     ).status(),
   ).toBe(404);
+});
+
+test("ALDI support is labelled unavailable and rejected imports never create jobs", async ({
+  page,
+}) => {
+  await start(page);
+  const footer = page.getByRole("region", { name: "Retailer support" });
+  await expect(
+    footer.getByText("ALDI: automatic checks unavailable", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    footer.getByText("ALDI · IGA · Foodland Coming later", { exact: true }),
+  ).toHaveCount(0);
+  await page
+    .getByLabel("Product URL", { exact: true })
+    .fill("https://www.aldi.com.au/product/example");
+  await page.getByRole("button", { name: "Add product", exact: true }).click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "unavailable for ALDI" }),
+  ).toBeVisible();
+  expect(jobs.size).toBe(0);
+  await expect(
+    page.getByRole("button", { name: "Add product", exact: true }),
+  ).toBeEnabled();
+  await page
+    .getByLabel("Product URL", { exact: true })
+    .fill("https://www.coles.com.au/product/test");
+  await page.getByRole("button", { name: "Add product", exact: true }).click();
+  await expect.poll(() => jobs.size).toBe(1);
 });

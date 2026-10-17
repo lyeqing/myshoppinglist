@@ -1122,8 +1122,10 @@ export default function ShoppingListApp() {
               </span>
             </span>
             <span className="text-slate-400">
-              ALDI · IGA · Foodland{" "}
-              <span className="ml-1 text-xs">Coming later</span>
+              ALDI: automatic checks unavailable
+            </span>
+            <span className="text-slate-400">
+              IGA · Foodland <span className="ml-1 text-xs">Coming later</span>
             </span>
           </div>
           <p className="mt-4 text-xs leading-6 text-slate-400">

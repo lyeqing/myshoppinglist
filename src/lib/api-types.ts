@@ -154,6 +154,8 @@ export interface ShoppingPreferences {
     name: string;
     code: string;
     comparisonSupported: boolean;
+    capabilityStatus?: "Supported" | "Restricted" | "NotImplemented" | null;
+    capabilityMessage?: string | null;
   }[];
   updatedDate: string;
 }
@@ -292,4 +294,34 @@ export function placeholder(jobId: number, listId: number, quantity = 1): Job {
     errorCode: null,
     retailers: [],
   };
+}
+
+export interface PackDiscoveryProgress {
+  id: number;
+  itemId: number;
+  productName: string;
+  shopName: string;
+  status:
+    | "Queued"
+    | "Processing"
+    | "WaitingForExtension"
+    | "Completed"
+    | "Failed"
+    | "Cancelled";
+  foundCount: number;
+  errorCode: string | null;
+  updatedDate: string;
+  retryAfter: string | null;
+}
+export interface PackDiscoveryView {
+  accountId: number;
+  listId: number;
+  itemId: number | null;
+  enabled: boolean;
+  canStart: boolean;
+  reason: string | null;
+  jobs: PackDiscoveryProgress[];
+  queued: number;
+  alreadyRunning: number;
+  recent: number;
 }

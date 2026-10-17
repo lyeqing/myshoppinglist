@@ -108,28 +108,53 @@ export default function ShoppingPreferences() {
                     Preferred supermarkets
                   </legend>
                   {draft.availableShops.map((shop) => (
-                    <label
+                    <div
                       key={shop.id}
-                      className="flex min-h-14 cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-4"
+                      className="rounded-xl border border-slate-200 p-4"
                     >
-                      <input
-                        type="checkbox"
-                        className="mt-1 size-5 shrink-0 accent-sky-700"
-                        checked={selected.some((s) => s.shopId === shop.id)}
-                        onChange={(e) =>
-                          state.toggleShop(shop.id, e.target.checked)
-                        }
-                        aria-label={shop.name}
-                      />
-                      <span>
-                        <span className="block font-semibold">{shop.name}</span>
-                        <span className="mt-1 block text-xs text-slate-500">
-                          {shop.comparisonSupported
-                            ? "Product comparisons supported"
-                            : "Comparison not available yet. You can save this preference for later."}
+                      <label className="flex min-h-11 cursor-pointer items-start gap-3">
+                        <input
+                          type="checkbox"
+                          className="mt-1 size-5 shrink-0 accent-sky-700"
+                          checked={selected.some((s) => s.shopId === shop.id)}
+                          onChange={(e) =>
+                            state.toggleShop(shop.id, e.target.checked)
+                          }
+                          aria-label={shop.name}
+                          aria-describedby={`shop-capability-${shop.id}`}
+                        />
+                        <span>
+                          <span className="block font-semibold">
+                            {shop.name}
+                          </span>
+                          <span
+                            id={`shop-capability-${shop.id}`}
+                            className="mt-1 block text-xs text-slate-500"
+                          >
+                            {shop.capabilityMessage ??
+                              (shop.comparisonSupported
+                                ? "Product comparisons supported"
+                                : "Comparison not available yet. You can save this preference for later.")}
+                          </span>
                         </span>
-                      </span>
-                    </label>
+                      </label>
+                      {shop.code === "aldi" && !shop.comparisonSupported && (
+                        <div className="ml-8 text-xs">
+                          <p className="mt-1 text-slate-600">
+                            You can still save ALDI as a preferred store and
+                            check its website yourself.
+                          </p>
+                          <a
+                            href="https://www.aldi.com.au/"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-1 inline-block min-h-11 py-3 font-semibold text-sky-700 underline"
+                          >
+                            Visit ALDI’s website
+                          </a>
+                        </div>
+                      )}
+                    </div>
                   ))}
                   <label className="mt-5 flex min-h-11 cursor-pointer items-center gap-3 border-t border-slate-200 pt-5">
                     <input
@@ -142,8 +167,8 @@ export default function ShoppingPreferences() {
                   </label>
                   <p className="text-sm text-slate-500">
                     Turn this off to compare all supported stores. Adding a
-                    product from another store still saves that product to your
-                    list.
+                    product from another supported store still saves that
+                    product to your list.
                   </p>
                   {draft.compareOnlyPreferredShops && !selected.length && (
                     <p className="text-sm text-amber-800">
@@ -156,10 +181,10 @@ export default function ShoppingPreferences() {
                       role="status"
                       className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900"
                     >
-                      Your selected stores do not support comparisons yet. Your
-                      list will still work, but comparison prices will be
-                      unavailable. Add Coles or Woolworths, or compare all
-                      supported stores.
+                      Automatic comparisons are unavailable for your selected
+                      stores. Your list will still work, but comparison prices
+                      will be unavailable. Add Coles or Woolworths, or compare
+                      all supported stores.
                     </p>
                   )}
                   <label className="flex min-h-11 cursor-pointer items-center gap-3 border-t border-slate-200 pt-5">

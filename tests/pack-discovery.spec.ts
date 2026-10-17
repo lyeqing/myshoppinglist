@@ -1,0 +1,531 @@
+import { test, expect, type Page } from "@playwright/test";
+import { createServer, type Server } from "node:http";
+import type {
+  PackAlternative,
+  ListItem,
+  PackDiscoveryView,
+  PackDiscoveryProgress,
+} from "../src/lib/api-types";
+const timestamp = "2026-10-16T01:00:00Z";
+const item: ListItem = {
+  id: 1,
+  shoppingListId: 1,
+  product: {
+    id: 1,
+    name: "Acme Original Coffee 500g",
+    brand: "Acme",
+    variant: null,
+    packQuantity: null,
+    packSize: 500,
+    packUnit: "g",
+    imageUrl: null,
+  },
+  quantity: 2,
+  notes: "Keep my usual size",
+  isPurchased: false,
+  purchasedDate: null,
+  isHidden: false,
+  preferredShopId: null,
+  addedDate: timestamp,
+  updatedDate: timestamp,
+};
+const alternative = (): PackAlternative => ({
+  relationship: "SameProductDifferentSize",
+  product: {
+    ...item.product,
+    id: 2,
+    name: "Acme Original Coffee 1kg",
+    packSize: 1,
+    packUnit: "kg",
+  },
+  totalQuantity: 1000,
+  unit: "g",
+  quantityRatio: 2,
+  offer: {
+    shopId: 2,
+    shopName: "Woolworths",
+    price: 13,
+    unitPrice: 1.3,
+    status: "Fresh",
+    checkedDate: timestamp,
+    productUrl: "https://www.woolworths.com.au/shop/productdetails/123456",
+  },
+  original: {
+    shopId: 1,
+    shopName: "Coles",
+    price: 10,
+    unitPrice: 2,
+    status: "Fresh",
+    checkedDate: timestamp,
+    productUrl: "https://www.coles.com.au/product/123456",
+  },
+  unitPriceDifferencePercent: -35,
+  packagePriceDifference: 3,
+});
+
+const initial = (itemId: number | null): PackDiscoveryView => ({
+  accountId: 1,
+  listId: 1,
+  itemId,
+  enabled: true,
+  canStart: true,
+  reason: null,
+  jobs: [],
+  queued: 0,
+  alreadyRunning: 0,
+  recent: 0,
+});
+async function setup(page: Page) {
+  let state = initial(null);
+  let discovered = false;
+  let posts = 0;
+  let error = 0;
+  let getError = 0;
+  let delayWrite = false;
+  let account = 1;
+  const requests: string[] = [];
+  let release: (() => void) | undefined;
+  await page.route("**/api/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    const send = (json: unknown, status = 200) =>
+      route.fulfill({ status, json });
+    requests.push(`${route.request().method()} ${path}`);
+    if (path.endsWith("/auth/me"))
+      return send({
+        account: {
+          id: account,
+          displayName: "Alex",
+          isTrial: false,
+          isPaid: false,
+        },
+        shoppingListId: 1,
+      });
+    if (path.endsWith("/pack-discovery")) {
+      const itemId = path.includes("/items/") ? 1 : null;
+      if (route.request().method() === "POST") {
+        posts++;
+        expect(route.request().postDataJSON()).toEqual({
+          expectedAccountId: 1,
+        });
+        if (delayWrite)
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+        if (account !== 1)
+          return send(
+            { title: "Your account changed. Reload your list." },
+            409,
+          );
+        if (error)
+          return send(
+            { title: "Discovery unavailable. Please reload and try again." },
+            error,
+          );
+        state = {
+          ...state,
+          canStart: false,
+          queued: 1,
+          jobs: [
+            {
+              id: 10,
+              itemId: 1,
+              productName: item.product.name,
+              shopName: "Woolworths",
+              status: "WaitingForExtension",
+              foundCount: 0,
+              errorCode: null,
+              updatedDate: timestamp,
+              retryAfter: null,
+            },
+          ],
+        };
+      } else if (getError)
+        return send({ title: "Cannot load other-size search" }, getError);
+      return send({ ...state, accountId: account, itemId });
+    }
+    if (path.endsWith("/manage"))
+      return send({
+        isPaid: false,
+        limit: 2,
+        lists: [
+          {
+            id: 1,
+            name: "Weekly",
+            createdDate: timestamp,
+            updatedDate: timestamp,
+          },
+        ],
+      });
+    if (path.endsWith("/imports"))
+      return send({ items: [], nextBeforeId: null });
+    const price = {
+      shopId: 1,
+      shopName: "Coles",
+      price: 10,
+      status: "Fresh",
+      includedInTotal: true,
+      checkedDate: timestamp,
+      productUrl: "https://www.coles.com.au/product/123456",
+      specialDescription: null,
+    };
+    const row = {
+      item,
+      prices: [price],
+      packAlternatives: discovered ? [alternative()] : [],
+    };
+    if (path.endsWith("/plan"))
+      return send({
+        id: 1,
+        name: "Weekly",
+        items: [row],
+        lowest: {
+          shopId: null,
+          name: "Lowest total across shops",
+          subtotal: 20,
+          pricedCount: 1,
+          missingItems: [],
+        },
+        retailers: [],
+      });
+    if (path.endsWith("/items"))
+      return send({ items: [item], nextBeforeId: null });
+    if (path.endsWith("/in-store"))
+      return send({
+        id: 1,
+        name: "Weekly",
+        items: [row],
+        retailers: [{ id: 1, name: "Coles" }],
+        remainingCount: 1,
+        baskets: [
+          {
+            shopId: 1,
+            shopName: "Coles",
+            subtotal: 20,
+            pricedCount: 1,
+            comparableSubtotal: 0,
+            savingsBySplitting: 0,
+          },
+        ],
+        splitSubtotal: 20,
+        splitPricedCount: 1,
+        comparableCount: 0,
+        comparableSplitSubtotal: 0,
+      });
+    if (path === "/api/shopping-lists")
+      return send([
+        {
+          id: 1,
+          name: "Weekly",
+          remainingCount: 1,
+          retailers: [{ id: 1, name: "Coles" }],
+        },
+      ]);
+    return route.fulfill({ status: 404 });
+  });
+  return {
+    posts: () => posts,
+    requests,
+    complete: (
+      status: PackDiscoveryProgress["status"] = "Completed",
+      count = 1,
+    ) => {
+      discovered = count > 0;
+      state = {
+        ...state,
+        queued: 0,
+        canStart: false,
+        jobs: state.jobs.map((j) => ({
+          ...j,
+          status,
+          foundCount: count,
+          updatedDate: new Date().toISOString(),
+          retryAfter: status === "Failed" ? "2099-01-01T00:00:00Z" : null,
+        })),
+      };
+    },
+    disable: () => {
+      state = {
+        ...state,
+        enabled: false,
+        canStart: false,
+        reason: "Enable different package sizes in My Stores to search.",
+        jobs: [],
+      };
+    },
+    fail: (code: number) => {
+      error = code;
+    },
+    failRead: (code: number) => {
+      getError = code;
+    },
+    defer: () => {
+      delayWrite = true;
+    },
+    release: () => release?.(),
+    changeAccount: () => {
+      account = 2;
+      state = initial(null);
+    },
+  };
+}
+async function open(page: Page, view: string) {
+  await page.goto(view === "planning" ? "/" : "/in-store");
+  if (view === "in-store")
+    await page.getByRole("button", { name: /Weekly/ }).click();
+}
+for (const view of ["planning", "in-store"]) {
+  for (const scope of ["product", "list"]) {
+    test(`${view} ${scope} discovery is explicit, survives reload, and displays saved alternatives`, async ({
+      page,
+    }, info) => {
+      const fixture = await setup(page);
+      await open(page, view);
+      const controls = page.getByRole("region", {
+        name:
+          scope === "product"
+            ? "Find other sizes for this product"
+            : "Find other sizes for this list",
+        exact: true,
+      });
+      const button = controls.getByRole("button", {
+        name:
+          scope === "product"
+            ? "Find other sizes"
+            : "Find other sizes for this list",
+        exact: true,
+      });
+      await expect(button).toBeEnabled();
+      expect(fixture.posts()).toBe(0);
+      if (view === "planning") {
+        await page
+          .getByRole("button", { name: "Edit note", exact: true })
+          .click();
+        await page
+          .getByRole("textbox", { name: "Notes", exact: true })
+          .fill("Unsaved note stays here");
+      }
+      await button.focus();
+      await page.keyboard.press("Enter");
+      await expect(
+        controls.getByText(/Waiting for an online reader extension/),
+      ).toBeVisible();
+      await expect(button).toBeDisabled();
+      expect(fixture.posts()).toBe(1);
+      expect(fixture.requests.filter((r) => r.startsWith("POST "))).toEqual([
+        scope === "product"
+          ? "POST /api/shopping-lists/1/items/1/pack-discovery"
+          : "POST /api/shopping-lists/1/pack-discovery",
+      ]);
+      fixture.complete();
+      const alternatives = page.getByRole("region", {
+        name: "Other package sizes",
+        exact: true,
+      });
+      await expect(alternatives).toBeVisible({ timeout: 10000 });
+      await expect(
+        alternatives.getByText(/35% less per 100 g; costs/),
+      ).toBeVisible();
+      if (view === "planning")
+        await expect(
+          page.getByRole("textbox", { name: "Notes", exact: true }),
+        ).toHaveValue("Unsaved note stays here");
+      await page.reload();
+      if (view === "in-store")
+        await page.getByRole("button", { name: /Weekly/ }).click();
+      await expect(alternatives).toBeVisible();
+      await expect(
+        controls.getByText(/1 verified package checked/),
+      ).toBeVisible();
+      expect(fixture.posts()).toBe(1);
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      ).toBe(true);
+      await page.screenshot({
+        path: `test-results/${info.project.name}-discovery-${view}-${scope}.png`,
+        fullPage: true,
+      });
+    });
+  }
+}
+test("disabled preference prevents searches and links to settings", async ({
+  page,
+}) => {
+  const fixture = await setup(page);
+  fixture.disable();
+  await open(page, "planning");
+  const controls = page.getByRole("region", {
+    name: "Find other sizes for this product",
+    exact: true,
+  });
+  await expect(
+    controls.getByRole("button", { name: "Find other sizes", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    controls.getByRole("link", { name: "Manage package comparisons" }),
+  ).toHaveAttribute("href", "/settings");
+  expect(fixture.posts()).toBe(0);
+});
+test("request and load failures recover while existing prices stay visible", async ({
+  page,
+}) => {
+  const fixture = await setup(page);
+  fixture.failRead(503);
+  await open(page, "planning");
+  const controls = page.getByRole("region", {
+    name: "Find other sizes for this product",
+    exact: true,
+  });
+  await expect(controls.getByRole("alert")).toBeVisible();
+  fixture.failRead(0);
+  await controls.getByRole("button", { name: "Reload size search" }).click();
+  const button = controls.getByRole("button", {
+    name: "Find other sizes",
+    exact: true,
+  });
+  await expect(button).toBeEnabled();
+  fixture.fail(503);
+  await button.click();
+  await expect(controls.getByRole("alert")).toBeVisible();
+  await expect(
+    page.getByText("Keep my usual size", { exact: true }),
+  ).toBeVisible();
+  fixture.fail(0);
+  await button.click();
+  await expect(
+    controls.getByText(/Waiting for an online reader extension/),
+  ).toBeVisible();
+  fixture.complete("Failed", 1);
+  await expect(controls.getByText(/some checks could not finish/)).toBeVisible({
+    timeout: 10000,
+  });
+  await expect(controls.getByText(/Retry after/)).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Other package sizes", exact: true }),
+  ).toBeVisible();
+});
+test("completed empty checks are described as a bounded result", async ({
+  page,
+}) => {
+  const fixture = await setup(page);
+  await open(page, "planning");
+  const controls = page.getByRole("region", {
+    name: "Find other sizes for this product",
+    exact: true,
+  });
+  await controls
+    .getByRole("button", { name: "Find other sizes", exact: true })
+    .click();
+  await expect(
+    controls.getByText(/Waiting for an online reader extension/),
+  ).toBeVisible();
+  fixture.complete("Completed", 0);
+  await expect(
+    controls.getByText(/No verified other sizes found in this check/),
+  ).toBeVisible({ timeout: 10000 });
+});
+test("sign-in changes abort an outstanding write and discard its progress", async ({
+  page,
+}) => {
+  const fixture = await setup(page);
+  fixture.defer();
+  await open(page, "planning");
+  const controls = page.getByRole("region", {
+    name: "Find other sizes for this product",
+    exact: true,
+  });
+  await controls
+    .getByRole("button", { name: "Find other sizes", exact: true })
+    .click();
+  await expect.poll(fixture.posts).toBe(1);
+  fixture.changeAccount();
+  await page.evaluate(() =>
+    window.dispatchEvent(new Event("myshoppinglist-session-changed")),
+  );
+  fixture.release();
+  await expect(
+    page.getByText(/Waiting for an online reader extension/),
+  ).toHaveCount(0);
+  await expect(page.getByText(/store checks? queued/)).toHaveCount(0);
+});
+let server: Server;
+let writes = 0;
+test.beforeAll(async () => {
+  server = createServer(async (req, res) => {
+    res.setHeader("Content-Type", "application/json");
+    if (!req.headers.cookie) {
+      res.statusCode = 401;
+      res.end(JSON.stringify({ title: "Sign in" }));
+      return;
+    }
+    const itemId = req.url?.includes("/items/") ? 1 : null;
+    if (req.method === "POST") {
+      writes++;
+      let raw = "";
+      for await (const part of req) raw += part;
+      const data = JSON.parse(raw);
+      if (data.expectedAccountId !== 1) {
+        res.statusCode = 409;
+        res.end(JSON.stringify({ title: "Account changed" }));
+        return;
+      }
+    }
+    res.end(JSON.stringify(initial(itemId)));
+  });
+  await new Promise<void>((resolve) =>
+    server.listen(5499, "127.0.0.1", resolve),
+  );
+});
+test.afterAll(async () => {
+  await new Promise<void>((resolve, reject) =>
+    server.close((e) => (e ? reject(e) : resolve())),
+  );
+});
+test("discovery proxy protects writes, content types, methods and caching", async ({
+  page,
+}) => {
+  writes = 0;
+  await page.context().addCookies([
+    {
+      name: "myshoppinglist_session",
+      value: "a".repeat(64),
+      url: "http://127.0.0.1:3001",
+    },
+  ]);
+  const path = "/api/shopping-lists/1/items/1/pack-discovery";
+  expect(
+    (
+      await page.request.post(path, { data: { expectedAccountId: 1 } })
+    ).status(),
+  ).toBe(403);
+  const headers = { "X-MyShoppingList-Request": "1" };
+  expect(
+    (
+      await page.request.post(path, {
+        headers: { ...headers, "Content-Type": "text/plain" },
+        data: "{}",
+      })
+    ).status(),
+  ).toBe(415);
+  expect(
+    (
+      await page.request.post(path, {
+        headers: { ...headers, Origin: "https://evil.example" },
+        data: {},
+      })
+    ).status(),
+  ).toBe(403);
+  expect(writes).toBe(0);
+  const response = await page.request.post(path, {
+    headers,
+    data: { expectedAccountId: 1 },
+  });
+  expect(response.status()).toBe(200);
+  expect(response.headers()["cache-control"]).toBe("no-store");
+  expect((await page.request.get(path)).status()).toBe(200);
+  expect((await page.request.put(path, { headers, data: {} })).status()).toBe(
+    404,
+  );
+  expect(writes).toBe(1);
+});

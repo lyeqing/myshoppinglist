@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import PackAlternatives from "./pack-alternatives";
+import PackDiscoveryControls from "./pack-discovery-controls";
 import type {
   ListItem,
   ListItemUpdate,
@@ -125,6 +126,8 @@ function PriceDetail({
 
 export default function ShoppingListItemCard({
   row,
+  accountId,
+  onDiscovered,
   disabled,
   checking,
   save,
@@ -135,6 +138,8 @@ export default function ShoppingListItemCard({
   refreshBusy,
 }: {
   row: PlanningItem;
+  accountId?: number;
+  onDiscovered?: () => Promise<unknown>;
   disabled: boolean;
   checking: boolean;
   save: (id: number, edit: ListItemUpdate) => Promise<ListItem>;
@@ -369,6 +374,15 @@ export default function ShoppingListItemCard({
           </p>
         )}
       </div>
+      {!item.isPurchased && !item.isHidden && onDiscovered && (
+        <PackDiscoveryControls
+          accountId={accountId}
+          listId={item.shoppingListId}
+          itemId={item.id}
+          disabled={locked}
+          onDiscovered={onDiscovered}
+        />
+      )}
       <PackAlternatives alternatives={row.packAlternatives} />
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
         <div

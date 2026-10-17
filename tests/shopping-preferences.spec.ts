@@ -2,10 +2,18 @@ import { test, expect } from "@playwright/test";
 import { createServer, type Server } from "node:http";
 import type { ShoppingPreferences } from "../src/lib/api-types";
 
-const availableShops = [
+const availableShops: ShoppingPreferences["availableShops"] = [
   { id: 1, name: "Coles", code: "coles", comparisonSupported: true },
   { id: 2, name: "Woolworths", code: "woolworths", comparisonSupported: true },
-  { id: 3, name: "ALDI", code: "aldi", comparisonSupported: false },
+  {
+    id: 3,
+    name: "ALDI",
+    code: "aldi",
+    comparisonSupported: false,
+    capabilityStatus: "Restricted",
+    capabilityMessage:
+      "Automatic product imports and price checks are unavailable for ALDI.",
+  },
   { id: 4, name: "IGA", code: "iga", comparisonSupported: false },
   { id: 5, name: "Foodland", code: "foodland", comparisonSupported: false },
 ];
@@ -250,7 +258,9 @@ test("My Stores explains empty and unsupported-only selections", async ({
   ).toBeVisible();
   await page.getByRole("checkbox", { name: "ALDI", exact: true }).check();
   await expect(
-    page.getByText(/Your selected stores do not support comparisons yet/),
+    page.getByText(
+      /Automatic comparisons are unavailable for your selected stores/,
+    ),
   ).toBeVisible();
   await page
     .getByRole("button", { name: "Save My Stores", exact: true })
@@ -468,4 +478,49 @@ test("package size preference persists independently of store selection and bran
   await expect(page.getByText(/My Stores saved/)).toBeVisible();
   expect(profiles.get(1)!.includeDifferentBrands).toBe(true);
   expect(profiles.get(1)!.includeDifferentPackSizes).toBe(true);
+});
+
+test("ALDI restriction is clear while the preference remains selectable", async ({
+  page,
+}, info) => {
+  await page.goto("/settings");
+  const aldi = page.getByRole("checkbox", { name: "ALDI", exact: true });
+  await expect(aldi).toHaveAccessibleDescription(
+    "Automatic product imports and price checks are unavailable for ALDI.",
+  );
+  const link = page.getByRole("link", {
+    name: "Visit ALDI’s website",
+    exact: true,
+  });
+  await expect(link).toHaveAttribute("href", "https://www.aldi.com.au/");
+  await expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  await link.focus();
+  await expect(link).toBeFocused();
+  await expect(aldi).not.toBeChecked(); // Visiting/focusing the separate link never toggles a store.
+  await aldi.check();
+  await page
+    .getByRole("button", { name: "Save My Stores", exact: true })
+    .click();
+  await expect(page.getByText(/My Stores saved/)).toBeVisible();
+  await page.reload();
+  await expect(aldi).toBeChecked();
+  expect(profiles.get(1)!.shops).toEqual([{ shopId: 3, isEnabled: true }]);
+  expect(
+    profiles.get(1)!.availableShops.find((s) => s.code === "aldi")!
+      .comparisonSupported,
+  ).toBe(false);
+  await expect(
+    page.getByText(
+      /Automatic comparisons are unavailable for your selected stores/,
+    ),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: `test-results/${info.project.name}-aldi-settings.png`,
+    fullPage: true,
+  });
 });

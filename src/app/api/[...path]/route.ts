@@ -25,7 +25,12 @@ async function forward(
   const adminEdit =
     request.method === "PUT" && /^admin\/accounts\/[1-9]\d{0,18}$/.test(route);
   const preferences = route === "account/shopping-preferences";
+  const discovery =
+    /^shopping-lists\/[1-9]\d{0,18}(?:\/items\/[1-9]\d{0,18})?\/pack-discovery$/.test(
+      route,
+    );
   const allowed =
+    (discovery && (get || request.method === "POST")) ||
     (preferences && (get || request.method === "PUT")) ||
     (get && route === "admin/health") ||
     (request.method === "POST" &&
@@ -115,6 +120,7 @@ async function forward(
       if (
         (account ||
           preferences ||
+          discovery ||
           edit ||
           remove ||
           route.endsWith("/products/url")) &&
