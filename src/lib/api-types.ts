@@ -168,9 +168,13 @@ export interface ShoppingPreferences {
   }[];
   updatedDate: string;
 }
+export interface ComparisonBranchContext extends PreferredShopLocation {
+  supermarketEnabled: boolean;
+}
 export interface ComparisonStoreContext {
   preferredOnly: boolean;
   shopNames: string[];
+  branches?: ComparisonBranchContext[] | null;
 }
 export interface ShoppingListPlan {
   storeContext?: ComparisonStoreContext | null;

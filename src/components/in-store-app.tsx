@@ -10,6 +10,7 @@ import {
   usePriceNow,
 } from "@/lib/price-age";
 import Link from "next/link";
+import ComparisonStoreContextPanel from "./comparison-store-context";
 import AccountForm from "./account-form";
 import PackAlternatives from "./pack-alternatives";
 import BrandAlternatives from "./brand-alternatives";
@@ -372,18 +373,7 @@ export default function InStoreApp() {
               </button>
             </div>
             {detail.storeContext && (
-              <p className="mb-3 text-sm text-slate-600">
-                {detail.storeContext.preferredOnly
-                  ? `Comparing My Stores: ${detail.storeContext.shopNames.join(", ") || "No active stores"}`
-                  : "Comparing all supported stores"}
-                .{" "}
-                <Link
-                  href="/settings"
-                  className="font-semibold text-sky-700 underline"
-                >
-                  Manage My Stores
-                </Link>
-              </p>
+              <ComparisonStoreContextPanel context={detail.storeContext} />
             )}
             <div className="mb-4 space-y-2">
               <button
