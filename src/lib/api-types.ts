@@ -157,6 +157,7 @@ export interface ShoppingPreferences {
   includeDifferentPackSizes: boolean;
   includeDifferentBrands: boolean;
   shops: { shopId: number; isEnabled: boolean }[];
+  branches?: PreferredShopLocation[];
   availableShops: {
     id: number;
     name: string;
@@ -439,4 +440,14 @@ export interface ShopLocationCreateRequest {
 }
 export interface ShopLocationUpdateRequest extends ShopLocationCreateRequest {
   expectedUpdatedDate: string;
+}
+
+export interface PreferredShopLocation {
+  location: ShopLocationSummary;
+  isAvailable: boolean;
+  unavailableReason: string | null;
+}
+export interface ShopLocationSearchResult {
+  items: ShopLocationSummary[];
+  hasMore: boolean;
 }

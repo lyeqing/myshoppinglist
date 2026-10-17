@@ -23,6 +23,7 @@ const defaults = (accountId = 1): ShoppingPreferences => ({
   includeDifferentPackSizes: true,
   includeDifferentBrands: false,
   shops: [],
+  branches: [],
   availableShops,
   updatedDate: "2026-10-17T01:00:00.000Z",
 });
@@ -93,6 +94,19 @@ test.beforeAll(async () => {
           includeDifferentPackSizes: body.includeDifferentPackSizes,
           includeDifferentBrands: body.includeDifferentBrands,
           shops: body.shops,
+          branches:
+            body.branches === undefined
+              ? profiles.get(account)!.branches
+              : (body.branches as { shopLocationId: number }[])
+                  .map((selection) =>
+                    profiles
+                      .get(account)!
+                      .branches?.find(
+                        (branch) =>
+                          branch.location.id === selection.shopLocationId,
+                      ),
+                  )
+                  .filter((branch) => branch !== undefined),
           updatedDate: new Date(
             Date.parse(body.expectedUpdatedDate) + 1,
           ).toISOString(),
@@ -386,7 +400,7 @@ test("My Stores proxy protects writes, content types and response caching", asyn
     (
       await page.request.put(path, {
         headers,
-        data: { payload: "x".repeat(5000) },
+        data: { payload: "x".repeat(16385) },
       })
     ).status(),
   ).toBe(413);
@@ -599,4 +613,53 @@ test("alternative brands retain an unsaved draft on failure and lock after confl
     .click();
   await expect(brands).toBeEnabled();
   await expect(brands).not.toBeChecked();
+});
+
+test("saving existing supermarket options preserves saved branches", async ({
+  page,
+}) => {
+  profiles.get(1)!.branches = [
+    {
+      location: {
+        id: 91,
+        shopId: 1,
+        shopName: "Coles",
+        storeCode: "C91",
+        name: "Saved Marion",
+        address1: "1 Example Street",
+        address2: null,
+        suburb: "Marion",
+        state: "SA",
+        postcode: "5043",
+        verifiedAt: "2026-10-16T00:00:00Z",
+        branchPricesSupported: false,
+      },
+      isAvailable: true,
+      unavailableReason: null,
+    },
+  ];
+  await page.goto("/settings");
+  await expect(
+    page.getByRole("list", { name: "Selected branches" }),
+  ).toContainText("Saved Marion");
+  await page
+    .getByRole("checkbox", {
+      name: "Show different package sizes",
+      exact: true,
+    })
+    .uncheck();
+  await page
+    .getByRole("button", { name: "Save My Stores", exact: true })
+    .click();
+  await expect(page.getByText(/My Stores saved/)).toBeVisible();
+  await page.reload();
+  await expect(
+    page.getByRole("list", { name: "Selected branches" }),
+  ).toContainText("Saved Marion");
+  await expect(
+    page.getByRole("checkbox", {
+      name: "Show different package sizes",
+      exact: true,
+    }),
+  ).not.toBeChecked();
 });

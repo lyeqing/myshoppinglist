@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useStore } from "zustand";
+import PreferredShopBranches from "@/components/preferred-shop-branches";
 import { createShoppingPreferencesStore } from "@/stores/shopping-preferences-store";
 
 export default function ShoppingPreferences() {
@@ -49,8 +50,8 @@ export default function ShoppingPreferences() {
       <main className="mx-auto max-w-3xl px-5 py-8">
         <h1 className="text-3xl font-semibold">My Stores</h1>
         <p className="mt-3 text-sm leading-6 text-slate-600">
-          Choose where you shop. These settings apply to your comparisons and
-          automatic, product and list price refreshes.
+          Choose your supermarkets for comparisons and automatic, product and
+          list price refreshes. You can also save the branches you visit.
         </p>
         {state.session?.account.isTrial && (
           <p className="mt-3 text-sm text-sky-800">
@@ -156,6 +157,7 @@ export default function ShoppingPreferences() {
                       )}
                     </div>
                   ))}
+                  <PreferredShopBranches store={store} />
                   <label className="mt-5 flex min-h-11 cursor-pointer items-center gap-3 border-t border-slate-200 pt-5">
                     <input
                       type="checkbox"

@@ -34,7 +34,8 @@ async function forward(
   const branchWrite =
     (branchCollection && request.method === "POST") ||
     (branchDetail && request.method === "PUT");
-  const branchSearch = branchCollection && get;
+  const customerBranchSearch = get && route === "shop-locations";
+  const branchSearch = (branchCollection && get) || customerBranchSearch;
   const preferences = route === "account/shopping-preferences";
   const discovery =
     /^shopping-lists\/[1-9]\d{0,18}(?:\/items\/[1-9]\d{0,18})?\/pack-discovery$/.test(
@@ -193,7 +194,7 @@ async function forward(
             size >
             (edit
               ? 32768
-              : alternativeReview || branchWrite || account
+              : alternativeReview || branchWrite || account || preferences
                 ? 16384
                 : 4096)
           ) {
