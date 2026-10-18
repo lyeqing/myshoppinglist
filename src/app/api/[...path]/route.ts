@@ -41,7 +41,12 @@ async function forward(
     /^shopping-lists\/[1-9]\d{0,18}(?:\/items\/[1-9]\d{0,18})?\/pack-discovery$/.test(
       route,
     );
+  const productLibrary = get && route === "account/products";
+  const productPreferences = get && route === "account/products/preferences";
+  const productPreferenceWrite = request.method === "PUT" && /^account\/products\/[1-9]\d{0,18}\/preferences$/.test(route);
+  const savedProductAdd = request.method === "POST" && /^shopping-lists\/[1-9]\d{0,18}\/products\/[1-9]\d{0,18}$/.test(route);
   const allowed =
+    productLibrary || productPreferences || productPreferenceWrite || savedProductAdd ||
     branchWrite ||
     branchSearch ||
     (branchDetail && get) ||
@@ -100,6 +105,15 @@ async function forward(
     )
       return reply(403, "The request failed browser request protection.");
     const target = new URL(`/api/${route}`, upstream);
+    if (productLibrary || productPreferences) {
+      const query = request.nextUrl.searchParams;
+      const keys = productLibrary ? ["view", "filter", "search", "offset", "pageSize"] : ["productIds", "expectedAccountId"];
+      if ([...query.keys()].some((key) => !keys.includes(key) || query.getAll(key).length !== 1)) return reply(400, "Invalid product filters.");
+      for (const [key, value] of query) {
+        if (value.length > 1000 || key === "search" && value.length > 100 || ["offset", "pageSize", "expectedAccountId"].includes(key) && !/^\d{1,19}$/.test(value)) return reply(400, "Invalid product filters.");
+        target.searchParams.set(key, value);
+      }
+    }
     if (get && (route.endsWith("/imports") || route.endsWith("/items")))
       for (const key of ["beforeId", "pageSize"]) {
         const values = request.nextUrl.searchParams.getAll(key);
@@ -170,6 +184,7 @@ async function forward(
     if (!get) {
       if (
         (account ||
+          productPreferenceWrite || savedProductAdd ||
           preferences ||
           alternativeReview ||
           branchWrite ||

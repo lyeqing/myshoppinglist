@@ -1,6 +1,7 @@
 "use client";
 
 import PriceObservationContextPanel from "./price-observation-context";
+import ProductBadges from "./product-badges";
 
 import { useState } from "react";
 import PackAlternatives from "./pack-alternatives";
@@ -292,6 +293,7 @@ export default function ShoppingListItemCard({
           </p>
         </div>
       </div>
+      <ProductBadges accountId={accountId} productId={item.product.id} name={item.product.name} />
       <div className="mt-4">
         {best ? (
           <div className="rounded-xl bg-emerald-50 p-4">

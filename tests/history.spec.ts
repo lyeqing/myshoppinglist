@@ -10,8 +10,17 @@ test("paid history shows saved items and permanently deletes an archive", async 
   page,
 }) => {
   let deleted = false;
+  let favorite = false;
+  let essential = false;
   await page.route("**/api/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
+    if (path.endsWith("/account/products/preferences")) return route.fulfill({ json: [{ productId: 1, isFavorite: favorite, isEssential: essential }] });
+    if (path.endsWith("/account/products/1/preferences")) {
+      const body = route.request().postDataJSON();
+      if (body.kind === "favorite") favorite = body.selected;
+      else essential = body.selected;
+      return route.fulfill({ json: { productId: 1, isFavorite: favorite, isEssential: essential } });
+    }
     if (path.endsWith("auth/me"))
       return route.fulfill({
         json: {
@@ -33,7 +42,7 @@ test("paid history shows saved items and permanently deletes an archive", async 
           items: [
             {
               id: 1,
-              product: { name: "Milk" },
+              product: { id: 1, name: "Milk" },
               quantity: 2,
               notes: "For baking",
               isPurchased: true,
@@ -50,6 +59,10 @@ test("paid history shows saved items and permanently deletes an archive", async 
   await expect(page.getByRole("heading", { name: "Milk" })).toBeVisible();
   await expect(page.getByText("Quantity 2 · Purchased")).toBeVisible();
   await expect(page.getByText("For baking")).toBeVisible();
+  await page.getByRole("button", { name: "Add Milk to Favorites" }).click();
+  await expect(page.getByRole("button", { name: "Remove Milk from Favorites" })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Add Milk to Essentials" }).click();
+  await expect(page.getByRole("button", { name: "Remove Milk from Essentials" })).toHaveAttribute("aria-pressed", "true");
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Delete archived list" }).click();
   await expect(page.getByText("No archived lists yet.")).toBeVisible();

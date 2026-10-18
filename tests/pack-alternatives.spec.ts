@@ -185,6 +185,28 @@ for (const view of ["planning", "in-store"]) {
     });
     await settings.focus();
     await expect(settings).toBeFocused();
+    await expect(section.getByText("1 option", { exact: true })).toBeVisible();
+    const toggle = section.getByRole("button", { name: "Hide other sizes", exact: true });
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await toggle.focus();
+    await page.keyboard.press("Enter");
+    const show = section.getByRole("button", { name: "Show other sizes", exact: true });
+    await expect(show).toHaveAttribute("aria-expanded", "false");
+    await expect(section.getByText("Acme Original Coffee 1kg", { exact: true })).toBeHidden();
+    await expect(settings).toBeHidden();
+    await expect(section.getByText("1 option", { exact: true })).toBeVisible();
+    const response = page.waitForResponse((response) =>
+      response.url().endsWith(view === "planning" ? "/plan" : "/in-store"),
+    );
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await response;
+    await expect(show).toHaveAttribute("aria-expanded", "false");
+    await expect(settings).toBeHidden();
+    await show.focus();
+    await page.keyboard.press("Space");
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(section.getByText("Acme Original Coffee 1kg", { exact: true })).toBeVisible();
+    await expect(settings).toBeVisible();
     await expect(
       page.getByText("Keep my usual size", { exact: true }),
     ).toBeVisible();
@@ -239,6 +261,7 @@ test("stale prices have dates and no savings claim; missing baseline remains und
     2,
   );
   await expect(section.getByText(/% less/)).toHaveCount(0);
+  await expect(section.getByText("2 options", { exact: true })).toBeVisible();
   await expect(
     section.getByRole("link", { name: "Check this size at Woolworths" }),
   ).toHaveCount(1);
@@ -262,5 +285,5 @@ test("today's offer is up to date and very large packages remain factual", async
   ).toBeVisible();
   await expect(section.getByText(/2,000 × your original/)).toBeVisible();
   await expect(section.getByText(/possible waste before buying/)).toBeVisible();
-  await expect(section.getByRole("button")).toHaveCount(0);
+  await expect(section.getByRole("button", { name: "Hide other sizes", exact: true })).toHaveCount(1);
 });

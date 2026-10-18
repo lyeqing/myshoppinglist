@@ -59,6 +59,7 @@ for (const paid of [false, true]) {
       return route.fulfill({ status: 404 });
     });
     await page.goto("/");
+    await expect(page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Products", exact: true })).toHaveAttribute("href", "/products/history");
     await page.getByLabel("New list name (optional)").fill("Weekend");
     await page.getByRole("button", { name: "Create new list" }).click();
     await expect(page.getByLabel("Selected list")).toHaveValue("2");

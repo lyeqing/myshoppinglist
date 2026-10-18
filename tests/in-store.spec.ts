@@ -192,6 +192,19 @@ test("shop selection, basket coverage, purchase and undo work without reloading"
     row(1, "Best at Coles", 2, 3),
   ];
   let fail = false;
+  let favorite = false;
+  let essential = false;
+  await page.route("**/api/account/products/**", (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (route.request().method() === "PUT") {
+      const body = route.request().postDataJSON();
+      if (body.kind === "favorite") favorite = body.selected;
+      else essential = body.selected;
+      return route.fulfill({ json: { productId: 1, isFavorite: favorite, isEssential: essential } });
+    }
+    if (path.endsWith("/preferences")) return route.fulfill({ json: items.map((row) => ({ productId: row.item.product.id, isFavorite: row.item.product.id === 1 && favorite, isEssential: row.item.product.id === 1 && essential })) });
+    return route.fulfill({ status: 404 });
+  });
   await page.route("**/api/shopping-lists**", async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (route.request().method() === "PUT") {
@@ -252,6 +265,10 @@ test("shop selection, basket coverage, purchase and undo work without reloading"
     "Other cheaper",
   ]);
   await expect(page.getByText("Subtotal · 3 of 4 items priced")).toBeVisible();
+  await page.getByRole("button", { name: "Add Best at Coles to Favorites", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Remove Best at Coles from Favorites" })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Add Best at Coles to Essentials", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Remove Best at Coles from Essentials" })).toHaveAttribute("aria-pressed", "true");
   await expect(
     page.getByText("Incomplete basket — 3 of 4 items priced"),
   ).toBeVisible();

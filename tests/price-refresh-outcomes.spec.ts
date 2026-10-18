@@ -109,7 +109,14 @@ async function fixture(page: Page, scenario: Scenario) {
           checkedUnavailable: 1,
         }
       : { queued: 0, alreadyRunning: 0, current: 1, deferred: 0 };
-  const state = { requests: [] as string[], prices, result };
+  const state = {
+    requests: [] as string[],
+    prices,
+    result,
+    planRequests: 0,
+    planGate: null as Promise<void> | null,
+    refreshGate: null as Promise<void> | null,
+  };
   await page.route("**/api/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
     const send = (json: unknown) => route.fulfill({ json });
@@ -118,6 +125,7 @@ async function fixture(page: Page, scenario: Scenario) {
       path.endsWith("/refresh-prices")
     ) {
       state.requests.push(path);
+      await state.refreshGate;
       if (scenario === "failure")
         return route.fulfill({ status: 503, json: { title: "Unavailable" } });
       if (scenario === "legacy") available.checkedDate = today;
@@ -146,7 +154,9 @@ async function fixture(page: Page, scenario: Scenario) {
       return send({ items: [], nextBeforeId: null });
     const shops = state.prices.map((p) => ({ id: p.shopId, name: p.shopName }));
     const subtotal = state.prices.some((p) => p.includedInTotal) ? 20 : 0;
-    if (path.endsWith("/plan"))
+    if (path.endsWith("/plan")) {
+      state.planRequests++;
+      await state.planGate;
       return send({
         id: 1,
         name: "Weekly",
@@ -160,6 +170,7 @@ async function fixture(page: Page, scenario: Scenario) {
         },
         retailers: [],
       });
+    }
     if (path.endsWith("/items"))
       return send({ items: [item], nextBeforeId: null });
     if (path.endsWith("/in-store"))
@@ -204,6 +215,83 @@ async function fixture(page: Page, scenario: Scenario) {
   });
   return state;
 }
+
+test("planning background price checks keep controls and prices steady", async ({ page }) => {
+  const state = await fixture(page, "queued");
+  await page.goto("/");
+  const list = page.getByRole("region", { name: "Editable shopping list" });
+  const refresh = list.getByRole("button", { name: "Refresh list prices", exact: true });
+  await expect(refresh).toBeEnabled();
+  await refresh.click();
+  const progress = list.getByRole("status").filter({ hasText: /1 price check pending/ });
+  await expect(progress).toBeVisible();
+  await expect(refresh).toBeEnabled();
+
+  for (let check = 0; check < 2; check++) {
+    let release!: () => void;
+    state.planGate = new Promise<void>((resolve) => { release = resolve; });
+    const previous = state.planRequests;
+    try {
+      await expect.poll(() => state.planRequests, { timeout: 7000 }).toBeGreaterThan(previous);
+      await expect(refresh).toBeEnabled();
+      await expect(list.getByRole("button", { name: "Refresh items", exact: true })).toBeEnabled();
+      await expect(list.getByText("Loading list items…", { exact: true })).toHaveCount(0);
+      await expect(progress).toBeVisible();
+      await expect(list.getByRole("article").getByText(/\$20\.00/).first()).toBeVisible();
+      await expect(list.getByText("Keep my usual coffee", { exact: true })).toBeVisible();
+    } finally {
+      state.planGate = null;
+      release();
+    }
+  }
+
+  state.prices.forEach((price) => {
+    price.checkedDate = today;
+    price.refreshStatus = null;
+    price.status = "Fresh";
+    price.includedInTotal = true;
+  });
+  await expect(list.getByText("All prices up to date", { exact: true })).toBeVisible({ timeout: 7000 });
+  await expect(progress).toHaveCount(0);
+  await expect(refresh).toBeEnabled();
+});
+
+test("planning refresh gives feedback while submitting and preserves manual loading feedback", async ({ page }) => {
+  const state = await fixture(page, "queued");
+  await page.goto("/");
+  const list = page.getByRole("region", { name: "Editable shopping list" });
+  const refresh = list.getByRole("button", { name: "Refresh list prices", exact: true });
+  await expect(refresh).toBeEnabled();
+  let release!: () => void;
+  state.refreshGate = new Promise<void>((resolve) => { release = resolve; });
+  try {
+    await refresh.click();
+    await expect(list.getByRole("button", { name: "Requesting price checks…", exact: true })).toBeDisabled();
+    await expect(list.getByRole("article")).toBeVisible();
+  } finally {
+    state.refreshGate = null;
+    release();
+  }
+  await expect(refresh).toBeEnabled();
+  await expect(list.getByText(/1 price check pending/)).toBeVisible();
+
+  state.planGate = new Promise<void>((resolve) => { release = resolve; });
+  try {
+    await list.getByRole("button", { name: "Refresh items", exact: true }).click();
+    await expect(list.getByText("Loading list items…", { exact: true })).toBeVisible();
+    await expect(refresh).toBeDisabled();
+    // A focus check must not supersede or clear the manual reload's loading state.
+    const requests = state.planRequests;
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    expect(state.planRequests).toBe(requests);
+    await expect(refresh).toBeDisabled();
+  } finally {
+    state.planGate = null;
+    release();
+  }
+  await expect(refresh).toBeEnabled();
+  await expect(list.getByText("Loading list items…", { exact: true })).toHaveCount(0);
+});
 
 for (const view of ["planning", "in-store"]) {
   for (const scope of ["product", "list"]) {

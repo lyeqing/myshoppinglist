@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useStore } from "zustand";
 import { createHistoryStore } from "@/stores/history-store";
+import ProductBadges from "./product-badges";
 
 const button =
   "rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold disabled:opacity-50";
@@ -37,6 +38,7 @@ export default function HistoryApp() {
           >
             <Link href="/">My lists</Link>
             <Link href="/in-store">Shop in store</Link>
+            {state.session && !state.session.account.isTrial && <Link href="/products/history">Products</Link>}
             {canSee && (
               <Link href="/history" aria-current="page">
                 History
@@ -120,6 +122,7 @@ export default function HistoryApp() {
                       className="rounded-2xl border border-slate-200 bg-white p-5"
                     >
                       <h3 className="font-semibold">{item.product.name}</h3>
+                      <ProductBadges accountId={state.session?.account.id} productId={item.product.id} name={item.product.name} />
                       <p className="mt-1 text-sm text-slate-600">
                         Quantity {item.quantity} ·{" "}
                         {item.isPurchased

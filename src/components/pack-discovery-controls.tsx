@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { api, ApiError } from "@/lib/api-client";
 import type { PackDiscoveryProgress, PackDiscoveryView } from "@/lib/api-types";
@@ -49,6 +49,8 @@ function Controls({
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [unavailable, setUnavailable] = useState(false);
+  const [detailsExpanded, setDetailsExpanded] = useState(true);
+  const detailsId = useId();
   const runner = useRef<{
     start: () => Promise<void>;
     read: () => Promise<void>;
@@ -134,6 +136,7 @@ function Controls({
       const version = ++sequence;
       clearTimeout(timer);
       setBusy(true);
+      setDetailsExpanded(true);
       setError("");
       setNotice("");
       try {
@@ -198,6 +201,17 @@ function Controls({
       ? view
       : null;
   if (unavailable || (!current && !error)) return null;
+  const jobs = current?.jobs ?? [];
+  const pending = jobs.filter(active).length;
+  const completed = jobs.filter((job) => job.status === "Completed").length;
+  const failed = jobs.filter((job) => job.status === "Failed").length;
+  const cancelled = jobs.filter((job) => job.status === "Cancelled").length;
+  const summary = [
+    pending ? `${pending} in progress` : "",
+    completed ? `${completed} completed` : "",
+    failed ? `${failed} unsuccessful` : "",
+    cancelled ? `${cancelled} stopped` : "",
+  ].filter(Boolean).join(" · ");
   return (
     <section
       aria-label={
@@ -234,28 +248,46 @@ function Controls({
         </p>
       )}
       {!!current?.jobs.length && (
-        <ul
-          aria-label="Other-size store checks"
-          className="mt-3 max-h-60 space-y-2 overflow-y-auto"
-        >
-          {current.jobs.map((job) => (
-            <li key={job.id}>
-              <p className="wrap-break-word">
-                <span className="font-semibold">
-                  {!itemId && `${job.productName} · `}
-                  {job.shopName}:
-                </span>{" "}
-                {status(job)}
-              </p>
-              <p className="mt-1 text-xs text-slate-600">
-                Search updated{" "}
-                {new Date(job.updatedDate).toLocaleString("en-AU")}
-                {job.retryAfter &&
-                  ` · Retry after ${new Date(job.retryAfter).toLocaleString("en-AU")}`}
-              </p>
-            </li>
-          ))}
-        </ul>
+        <>
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-x-3">
+            <p role="status" className="text-xs text-slate-600">
+              Store checks: {summary}.
+            </p>
+            <button
+              type="button"
+              aria-expanded={detailsExpanded}
+              aria-controls={detailsId}
+              onClick={() => setDetailsExpanded((expanded) => !expanded)}
+              className="min-h-11 py-2 font-semibold text-sky-800 underline"
+            >
+              {detailsExpanded ? "Hide search details" : "Show search details"}
+            </button>
+          </div>
+          <ul
+            id={detailsId}
+            hidden={!detailsExpanded}
+            aria-label="Other-size store checks"
+            className="mt-3 max-h-60 space-y-2 overflow-y-auto"
+          >
+            {current.jobs.map((job) => (
+              <li key={job.id}>
+                <p className="wrap-break-word">
+                  <span className="font-semibold">
+                    {!itemId && `${job.productName} · `}
+                    {job.shopName}:
+                  </span>{" "}
+                  {status(job)}
+                </p>
+                <p className="mt-1 text-xs text-slate-600">
+                  Search updated{" "}
+                  {new Date(job.updatedDate).toLocaleString("en-AU")}
+                  {job.retryAfter &&
+                    ` · Retry after ${new Date(job.retryAfter).toLocaleString("en-AU")}`}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
       {error && (
         <>

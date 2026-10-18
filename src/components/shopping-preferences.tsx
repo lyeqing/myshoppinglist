@@ -42,6 +42,7 @@ export default function ShoppingPreferences() {
         >
           <Link href="/">My lists</Link>
           <Link href="/in-store">Shop in store</Link>
+          {state.session && !state.session.account.isTrial && <Link href="/products/history">Products</Link>}
           <Link href="/settings" aria-current="page" className="text-sky-700">
             My Stores
           </Link>

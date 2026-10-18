@@ -64,9 +64,14 @@ export default function ShoppingListItems({
     },
     [onExpired, setError],
   );
-  const load = useCallback(async (): Promise<ShoppingListPlan | null> => {
+  const load = useCallback(async (
+    options?: { background?: boolean },
+  ): Promise<ShoppingListPlan | null> => {
     const signal = lifetime.current?.signal;
     if (!signal || signal.aborted || mutation.current) return null;
+    // Background checks must not dim controls or interrupt an explicit reload.
+    if (options?.background && store.getState().itemsLoading) return null;
+    const showLoading = !options?.background || !store.getState().plan;
     const version = ++readVersion.current;
     const owner = store.getState().session?.account.id;
     const current = () =>
@@ -74,21 +79,24 @@ export default function ShoppingListItems({
       version === readVersion.current &&
       store.getState().session?.account.id === owner &&
       store.getState().session?.shoppingListId === listId;
-    setLoading(true);
-    setError("");
+    if (showLoading) {
+      setLoading(true);
+      setError("");
+    }
     try {
       const result = await api<ShoppingListPlan>(
         `/shopping-lists/${listId}/plan`,
         { signal },
       );
       if (!current()) throw new DOMException("Read superseded", "AbortError");
+      setError("");
       setPlan(result);
       return result;
     } catch (e) {
       if (current()) handle(e);
       throw e;
     } finally {
-      if (current()) setLoading(false);
+      if (current() && showLoading) setLoading(false);
     }
   }, [listId, handle, store, setPlan, setLoading, setError]);
   useEffect(() => {
@@ -114,7 +122,8 @@ export default function ShoppingListItems({
     let stopped = false;
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
-      if (document.visibilityState === "visible") await load().catch(() => {});
+      if (document.visibilityState === "visible")
+        await load({ background: true }).catch(() => {});
       if (!stopped) timer = setTimeout(poll, refreshing ? 3000 : 30000);
     };
     // Idle checks discover refreshes queued by the server after this list was opened.
@@ -126,7 +135,8 @@ export default function ShoppingListItems({
   }, [load, refreshing]);
   useEffect(() => {
     const refresh = () => {
-      if (document.visibilityState === "visible") void load().catch(() => {});
+      if (document.visibilityState === "visible")
+        void load({ background: true }).catch(() => {});
     };
     window.addEventListener("focus", refresh);
     return () => window.removeEventListener("focus", refresh);
@@ -305,7 +315,7 @@ export default function ShoppingListItems({
             className="min-h-11 rounded-lg border border-sky-700 px-3 py-2 text-sm font-semibold text-sky-700 disabled:opacity-50"
             onClick={() => void refreshPrices()}
           >
-            Refresh list prices
+            {requestingRefresh ? "Requesting price checks…" : "Refresh list prices"}
           </button>
           <button
             disabled={loading || saving}

@@ -66,6 +66,25 @@ export interface ShoppingListHistory {
   list: ShoppingListSummary;
   items: ListItem[];
 }
+export interface ProductPreference {
+  productId: number;
+  isFavorite: boolean;
+  isEssential: boolean;
+}
+export interface ProductLibraryItem {
+  product: ListItem["product"];
+  isFavorite: boolean;
+  isEssential: boolean;
+  lastAddedDate: string | null;
+  lastPurchasedDate: string | null;
+  timesAdded: number;
+}
+export interface ProductLibraryPage {
+  accountId: number;
+  items: ProductLibraryItem[];
+  total: number;
+  nextOffset: number | null;
+}
 export interface ListItemPage {
   items: ListItem[];
   nextBeforeId: number | null;

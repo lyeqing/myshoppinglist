@@ -542,13 +542,14 @@ export default function ShoppingListApp() {
       <header className="border-b border-slate-200 bg-white">
         <nav
           aria-label="Main navigation"
-          className="mx-auto flex max-w-7xl gap-5 px-5 pt-4 text-sm font-semibold sm:px-8"
+          className="mx-auto flex max-w-7xl flex-wrap gap-5 px-5 pt-4 text-sm font-semibold sm:px-8"
         >
           <Link href="/" aria-current="page" className="text-sky-700">
             My lists
           </Link>
           <Link href="/in-store">Shop in store</Link>
           {session && <Link href="/settings">My Stores</Link>}
+          {session && !session.account.isTrial && <Link href="/products/history">Products</Link>}
         </nav>
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-5 py-5 sm:gap-4 sm:px-8">
           <Link

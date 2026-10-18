@@ -225,6 +225,7 @@ async function setup(page: Page) {
   return {
     posts: () => posts,
     requests,
+    allowStart: () => { state = { ...state, canStart: true }; },
     complete: (
       status: PackDiscoveryProgress["status"] = "Completed",
       count = 1,
@@ -316,6 +317,14 @@ for (const view of ["planning", "in-store"]) {
           ? "POST /api/shopping-lists/1/items/1/pack-discovery"
           : "POST /api/shopping-lists/1/pack-discovery",
       ]);
+      const details = controls.getByRole("list", { name: "Other-size store checks" });
+      const toggle = controls.getByRole("button", { name: "Hide search details", exact: true });
+      await expect(toggle).toHaveAttribute("aria-expanded", "true");
+      await toggle.focus();
+      await page.keyboard.press("Space");
+      await expect(details).toBeHidden();
+      await expect(controls.getByRole("button", { name: "Show search details", exact: true })).toHaveAttribute("aria-expanded", "false");
+      await expect(controls.getByText("Store checks: 1 in progress.", { exact: true })).toBeVisible();
       fixture.complete();
       const alternatives = page.getByRole("region", {
         name: "Other package sizes",
@@ -329,6 +338,14 @@ for (const view of ["planning", "in-store"]) {
         await expect(
           page.getByRole("textbox", { name: "Notes", exact: true }),
         ).toHaveValue("Unsaved note stays here");
+      await expect(controls.getByText("Store checks: 1 completed.", { exact: true })).toBeVisible();
+      await expect(details).toBeHidden();
+      expect(fixture.posts()).toBe(1);
+      const show = controls.getByRole("button", { name: "Show search details", exact: true });
+      await show.focus();
+      await page.keyboard.press("Enter");
+      await expect(details).toBeVisible();
+      await expect(controls.getByText(/1 verified package checked/)).toBeVisible();
       await page.reload();
       if (view === "in-store")
         await page.getByRole("button", { name: /Weekly/ }).click();
@@ -349,6 +366,26 @@ for (const view of ["planning", "in-store"]) {
     });
   }
 }
+test("starting another size search expands its hidden details", async ({ page }) => {
+  const fixture = await setup(page);
+  await open(page, "planning");
+  const controls = page.getByRole("region", { name: "Find other sizes for this list", exact: true });
+  const start = controls.getByRole("button", { name: "Find other sizes for this list", exact: true });
+  await start.click();
+  await expect(controls.getByRole("button", { name: "Hide search details" })).toBeVisible();
+  await controls.getByRole("button", { name: "Hide search details" }).click();
+  fixture.complete();
+  await expect(controls.getByText("Store checks: 1 completed.", { exact: true })).toBeVisible({ timeout: 10000 });
+  fixture.allowStart();
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(start).toBeEnabled();
+  await expect(controls.getByRole("button", { name: "Show search details" })).toBeVisible();
+  await start.click();
+  await expect(controls.getByRole("list", { name: "Other-size store checks" })).toBeVisible();
+  await expect(controls.getByRole("button", { name: "Hide search details" })).toHaveAttribute("aria-expanded", "true");
+  expect(fixture.posts()).toBe(2);
+});
+
 test("disabled preference prevents searches and links to settings", async ({
   page,
 }) => {

@@ -1,6 +1,7 @@
 "use client";
 
 import PriceObservationContextPanel from "./price-observation-context";
+import ProductBadges from "./product-badges";
 
 import { useEffect, useState } from "react";
 import {
@@ -156,13 +157,14 @@ export default function InStoreApp() {
           </Link>
           <nav
             aria-label="Main navigation"
-            className="flex gap-4 text-sm font-semibold"
+            className="flex flex-wrap gap-4 text-sm font-semibold"
           >
             <Link href="/">My lists</Link>
             <Link href="/in-store" aria-current="page" className="text-sky-700">
               Shop in store
             </Link>
             {state.session && <Link href="/settings">My Stores</Link>}
+            {state.session && !state.session.account.isTrial && <Link href="/products/history">Products</Link>}
             {state.session?.account.isPaid && (
               <Link href="/history">History</Link>
             )}
@@ -580,6 +582,7 @@ export default function InStoreApp() {
                           <h4 className="break-words text-lg font-semibold">
                             {row.item.product.name}
                           </h4>
+                          <ProductBadges accountId={accountId} productId={row.item.product.id} name={row.item.product.name} />
                           <p className="mt-1 text-sm">
                             {[row.item.product.brand, row.item.product.variant]
                               .filter(Boolean)
