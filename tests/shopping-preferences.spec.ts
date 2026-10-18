@@ -12,7 +12,7 @@ const availableShops: ShoppingPreferences["availableShops"] = [
     comparisonSupported: false,
     capabilityStatus: "Restricted",
     capabilityMessage:
-      "Automatic product imports and price checks are unavailable for ALDI.",
+      "Add ALDI products from an open product page using the extension. Automatic ALDI searches and price refreshes are unavailable.",
   },
   { id: 4, name: "IGA", code: "iga", comparisonSupported: false },
   { id: 5, name: "Foodland", code: "foodland", comparisonSupported: false },
@@ -494,13 +494,13 @@ test("package size preference persists independently of store selection and bran
   expect(profiles.get(1)!.includeDifferentPackSizes).toBe(true);
 });
 
-test("ALDI restriction is clear while the preference remains selectable", async ({
+test("ALDI extension importing is explained while automatic comparisons remain unavailable", async ({
   page,
 }, info) => {
   await page.goto("/settings");
   const aldi = page.getByRole("checkbox", { name: "ALDI", exact: true });
   await expect(aldi).toHaveAccessibleDescription(
-    "Automatic product imports and price checks are unavailable for ALDI.",
+    "Add ALDI products from an open product page using the extension. Automatic ALDI searches and price refreshes are unavailable.",
   );
   const link = page.getByRole("link", {
     name: "Visit ALDI’s website",

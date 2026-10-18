@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "MyShoppingList Retailer Reader",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Process MyShoppingList Coles and Woolworths product and comparison tasks using one browser tab.",
   "minimum_chrome_version": "120",
   "permissions": [

@@ -143,8 +143,9 @@ export default function ShoppingPreferences() {
                       {shop.code === "aldi" && !shop.comparisonSupported && (
                         <div className="ml-8 text-xs">
                           <p className="mt-1 text-slate-600">
-                            You can still save ALDI as a preferred store and
-                            check its website yourself.
+                            Open an ALDI product page and use the extension to
+                            add it to your list. Automatic ALDI searches and
+                            price refreshes are unavailable. Prices may vary by store.
                           </p>
                           <a
                             href="https://www.aldi.com.au/"

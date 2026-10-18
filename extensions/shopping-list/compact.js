@@ -20,13 +20,15 @@ function controls() {
   el("quantity").disabled = busy || active;
 }
 function progress(workflow) {
+  el("open-verification").hidden = !workflow?.verificationRequired || workflow.status !== "Reading";
+  el("cancel-verification").hidden = el("open-verification").hidden;
   active = workflow?.status === "Reading";
   const matches =
     currentProductUrl &&
     workflow?.url &&
     currentProductUrl.replace(/%2b/gi, "+") ===
       workflow.url.replace(/%2b/gi, "+");
-  if (matches) status(workflow.message, workflow.status === "Failed");
+  if (matches || workflow?.verificationRequired) status(workflow.message, workflow.status === "Failed");
   else
     status(
       active
@@ -90,6 +92,15 @@ el("hide").addEventListener("click", () => {
     status(error.message, true),
   );
 });
+for (const [id, type] of [["open-verification", "openVerification"], ["cancel-verification", "cancelVerification"]]) {
+  el(id).addEventListener("click", async () => {
+    if (busy) return;
+    busy = true; controls();
+    try { progress((await send({ type })).workflow); }
+    catch (error) { status(error.message, true); }
+    finally { busy = false; controls(); }
+  });
+}
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "session") return;
   if (changes.workflow) progress(changes.workflow.newValue);

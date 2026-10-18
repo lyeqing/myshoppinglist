@@ -13,6 +13,8 @@ const serial = (work) => {
   return next;
 };
 const failure = (code, message) => ({ ok: false, code, message });
+const retailerOf = url => new URL(url).hostname.includes("woolworths") ? "woolworths" : "coles";
+async function verificationPauses() { return (await chrome.storage.local.get("verificationPauses")).verificationPauses || {}; }
 async function current() { return (await chrome.storage.session.get("task")).task; }
 async function workerTab(url) {
   const { workerTabId } = await chrome.storage.session.get("workerTabId");
@@ -32,6 +34,12 @@ async function workerTab(url) {
 }
 async function finish(task, result) {
   clearTimeout(activeCheck);
+  if (result.code === "human_verification_required") {
+    const pauses = await verificationPauses();
+    pauses[retailerOf(task.url)] = { url: task.url, since: Date.now() };
+    await chrome.storage.local.set({ verificationPauses: pauses });
+    result.message = "Retailer collection paused: human verification required. Other retailers can continue.";
+  }
   if (task.remote) {
     const config = await settings();
     const submission = { workerId: config.workerId, claimToken: task.remote.claimToken,
@@ -90,6 +98,7 @@ async function start(url, remote = null) {
   const isSearch = remote?.kind === "search" && validSearchUrl(url);
   const product = isSearch ? { id: null, url } : READER.retailerProductUrl(url);
   if (!product) return failure("invalid_url", "Paste an HTTPS Coles or Woolworths product URL.");
+  if ((await verificationPauses())[retailerOf(product.url)]) return failure("verification_paused", "Complete retailer verification and select Resume before reading again.");
   await inspect();
   if ((await current())?.status === "reading") return failure("busy", "A product is already being read. Wait for it to finish.");
   const task = { status: "reading", kind: isSearch ? "search" : "product", remote,
@@ -114,6 +123,26 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (sender.id !== chrome.runtime.id || sender.url !== chrome.runtime.getURL("popup.html")) return false;
   serial(async () => {
     if (message?.type === "configure") return configure(message);
+    if (message?.type === "openVerification" || message?.type === "resumeVerification") {
+      if (!["coles", "woolworths"].includes(message.retailer)) return failure("invalid_command", "Unknown retailer.");
+      const pauses = await verificationPauses();
+      const pause = pauses[message.retailer];
+      if (!pause) return failure("not_paused", "This retailer is not paused.");
+      if (message.type === "openVerification") {
+        const verificationTabs = (await chrome.storage.session.get("verificationTabs")).verificationTabs || {};
+        let tab;
+        if (verificationTabs[message.retailer] != null) try { tab = await chrome.tabs.get(verificationTabs[message.retailer]); } catch { /* Closed. */ }
+        if (tab && (READER.retailerProductUrl(tab.url) || validSearchUrl(tab.url)) && retailerOf(tab.url) === message.retailer) await chrome.tabs.update(tab.id, { active: true });
+        else { tab = await chrome.tabs.create({ url: pause.url, active: true }); verificationTabs[message.retailer] = tab.id; }
+        await chrome.storage.session.set({ verificationTabs });
+        if (chrome.windows?.update && Number.isInteger(tab.windowId)) await chrome.windows.update(tab.windowId, { focused: true });
+      } else {
+        delete pauses[message.retailer];
+        await chrome.storage.local.set({ verificationPauses: pauses });
+        void serial(tick);
+      }
+      return { ok: true };
+    }
     if (message?.type === "retry" && Number.isSafeInteger(message.id)) {
       await server("/tasks/" + message.id + "/retry", {}); void serial(tick); return { ok: true };
     }
@@ -210,6 +239,7 @@ async function tick() {
     for (const task of tasks.filter(t => t.status === "Waiting")) {
       if (!Number.isSafeInteger(task.id) || task.id < 1) continue;
       if (task.kind === "product" ? !READER.retailerProductUrl(task.url) : task.kind !== "search" || !validSearchUrl(task.url)) continue;
+      if ((await verificationPauses())[retailerOf(task.url)]) continue;
       let claim;
       try { claim = await server("/tasks/" + task.id + "/claim", { workerId: config.workerId }); }
       catch (error) { if (error.status === 409) continue; throw error; }

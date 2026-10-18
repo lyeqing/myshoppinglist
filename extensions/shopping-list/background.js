@@ -10,7 +10,7 @@ export function retailerPage(value) {
       !url.username &&
       !url.password &&
       !url.port &&
-      ["coles.com.au", "woolworths.com.au"].includes(
+      ["coles.com.au", "woolworths.com.au", "aldi.com.au"].includes(
         url.hostname.replace(/^www\./, ""),
       )
     );
@@ -39,6 +39,7 @@ export function productUrl(value) {
         /^\/product\/(?:(?:[a-z0-9.'+-]|%27|%2b)+-)?\d{1,15}\/?$/i.test(
           url.pathname,
         )) ||
+      (host === "aldi.com.au" && /^\/product\/[a-z0-9]+(?:[a-z0-9-]*[a-z0-9])?-\d{1,20}\/?$/i.test(url.pathname)) ||
       (host === "woolworths.com.au" &&
         /^\/shop\/productdetails\/\d{1,15}(?:\/[a-z0-9%.'_-]+)?\/?$/i.test(
           url.pathname,
@@ -253,7 +254,8 @@ export function createWorker(browser, fetcher = fetch) {
       throw new Error("Invalid import response.");
     if (work.status !== "Waiting") return;
     const uri = new URL(work.url);
-    if (work.stage === "product" && productUrl(work.url)) return;
+    // ALDI is read only in the user's original Add tab, never in background task tabs.
+    if (work.stage === "product" && productUrl(work.url) && !["aldi.com.au", "www.aldi.com.au"].includes(uri.hostname)) return;
     if (
       work.stage === "search" &&
       uri.protocol === "https:" &&
@@ -306,6 +308,8 @@ export function createWorker(browser, fetcher = fetch) {
     workflow.url = work.url;
     workflow.kind = work.stage;
     workflow.status = "Reading";
+    workflow.verificationRequired = false;
+    workflow.verificationExpiresAt = null;
     workflow.deadline = Date.now() + 90000;
     workflow.message =
       work.stage === "search"
@@ -351,7 +355,14 @@ export function createWorker(browser, fetcher = fetch) {
       }
       if (!workflow.outbox) {
         let result;
-        if (Date.now() >= workflow.deadline)
+        if (workflow.verificationRequired && Date.now() >= workflow.verificationExpiresAt) {
+          workflow.temporaryTabId = null;
+          await stop(workflow, workflow.kind === "source"
+            ? "Verification is still needed. Complete it in the retailer tab, then click Add again."
+            : "Verification is still needed. Complete it in the retailer tab, then Retry comparison. Added products remain in your list.");
+          return;
+        }
+        if (!workflow.verificationRequired && Date.now() >= workflow.deadline)
           result = { ok: false, code: "read_timeout" };
         else {
           let tab;
@@ -391,6 +402,7 @@ export function createWorker(browser, fetcher = fetch) {
               if (
                 workflow.kind === "source" &&
                 result?.code === "product_identity_conflict" &&
+                new URL(workflow.url).hostname !== "www.aldi.com.au" &&
                 !workflow.sourceReloadAttempted
               ) {
                 await syncSession();
@@ -420,6 +432,19 @@ export function createWorker(browser, fetcher = fetch) {
                 await storage.set({ workflow });
                 await schedule();
                 return;
+              }
+              if (result?.code === "human_verification_required") {
+                workflow.verificationExpiresAt ??= Date.now() + 5 * 60000;
+                workflow.verificationRequired = true;
+                workflow.message = "Retailer verification required. Open the retailer, complete the check, and this import will resume.";
+                await storage.set({ workflow });
+                await schedule();
+                return;
+              }
+              if (workflow.verificationRequired && result?.ok) {
+                workflow.verificationRequired = false;
+                workflow.verificationExpiresAt = null;
+                workflow.deadline = Date.now() + 90000;
               }
               if (!result || result.code === "product_not_identified") {
                 await schedule();
@@ -513,6 +538,32 @@ export function createWorker(browser, fetcher = fetch) {
       throw new Error("A request is already in progress. Please wait.");
     busy = true;
     try {
+      if (message.type === "openVerification" || message.type === "cancelVerification") {
+        const workflow = (await storage.get("workflow")).workflow;
+        if (!workflow?.verificationRequired || workflow.status !== "Reading")
+          throw new Error("There is no verification waiting.");
+        if (message.type === "openVerification") {
+          const tab = await browser.tabs.get(workflow.tabId);
+          if (!retailerPage(tab.url)) throw new Error("The retailer tab changed. Cancel this import and try again.");
+          await browser.tabs.update(workflow.tabId, { active: true });
+          if (browser.windows?.update) await browser.windows.update(tab.windowId, { focused: true });
+        } else {
+          if (workflow.work?.jobId) {
+            workflow.outbox = {
+              path: `/api/user-extension/imports/${workflow.work.jobId}/result`,
+              body: { stepToken: workflow.work.stepToken, url: workflow.url, ok: false, errorCode: "browser_error" },
+            };
+            try {
+              await request(workflow.outbox.path, { method: "POST", expectedToken: workflow.sessionToken, body: workflow.outbox.body });
+              workflow.outbox = null;
+            } catch { /* Keep the identical failure for an explicit Retry, even while offline. */ }
+          }
+          if ((await syncSession()) !== workflow.sessionToken) return { workflow: null };
+          workflow.verificationRequired = false;
+          await stop(workflow, "Price checks stopped. Products already added remain in your list.");
+        }
+        return { workflow };
+      }
       if (message.type === "contributionPreference") {
         const enabled = message.enabled === true;
         await storage.set({
@@ -584,7 +635,7 @@ export function createWorker(browser, fetcher = fetch) {
           );
         const url = productUrl(message.url);
         if (!url)
-          throw new Error("Open a Coles or Woolworths product page first.");
+          throw new Error("Open a Coles, Woolworths or ALDI product page first.");
         if (
           !Number.isInteger(message.quantity) ||
           message.quantity < 1 ||
@@ -1126,7 +1177,7 @@ if (
         return panels.minimize(tabId);
       if (message.type === "panel-expand" && compactPage)
         return panels.full(await chrome.tabs.get(tabId), true);
-      if (compactPage && !["state", "add"].includes(message.type))
+      if (compactPage && !["state", "add", "openVerification", "cancelVerification"].includes(message.type))
         throw new Error("Unsupported compact-view action.");
       if (message.type === "add") {
         const tab = await chrome.tabs.get(tabId);
@@ -1152,6 +1203,7 @@ if (
         data.workflow = {
           status: data.workflow.status,
           message: data.workflow.message,
+          verificationRequired: !!data.workflow.verificationRequired,
         };
       return data;
     })().then(

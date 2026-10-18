@@ -58,3 +58,7 @@ Reload the extension and restart the API after this update. The extension is now
 ## Active task timing
 
 While reading a page, the worker checks for verifiable product data every second without waiting for all background resources. The 30-second alarm remains a recovery mechanism if Chrome suspends the worker. Idle task polling stays at 30 seconds. A saved result makes queued imports waiting for extension work eligible for the next backend worker cycle (normally about one second when idle). Retailer loading time and other queued work can still add delay.
+
+## Human verification
+
+Human verification immediately pauses that retailer in persistent extension storage, including across Chrome restarts. Other retailers continue. Open the panel, select **Open retailer**, complete verification yourself, then **Resume**. The shared server cooldown (15 minutes by default) still applies. If verification recurs, collection pauses again. Existing prices and their timestamps are preserved. No checkbox is clicked automatically.

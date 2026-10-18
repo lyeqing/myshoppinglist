@@ -21,6 +21,8 @@ function disabled(value) {
   el("minimize").disabled = !retailer || !signedIn;
 }
 function progress(workflow) {
+  el("open-verification").hidden = !workflow?.verificationRequired || workflow.status !== "Reading";
+  el("cancel-verification").hidden = el("open-verification").hidden;
   activeImport = workflow?.status === "Reading";
   el("retry").hidden = workflow?.status !== "Failed";
   if (workflow) status(workflow.message, workflow.status === "Failed");
@@ -88,7 +90,7 @@ async function refresh() {
     retailer = retailerPage(tab?.url);
     url = productUrl(tab?.url);
     el("product").textContent =
-      url || "Open a Coles or Woolworths product page to add it.";
+      url || "Open a Coles, Woolworths or ALDI product page to add it.";
     render(await send({ type: "state" }));
   } catch (error) {
     render({ session: null });
@@ -152,6 +154,15 @@ el("logout").addEventListener("click", async () => {
   }
 });
 el("refresh").addEventListener("click", refresh);
+for (const [id, type] of [["open-verification", "openVerification"], ["cancel-verification", "cancelVerification"]]) {
+  el(id).addEventListener("click", async () => {
+    if (busy) return;
+    disabled(true);
+    try { progress((await send({ type })).workflow); }
+    catch (error) { status(error.message, true); }
+    finally { disabled(false); }
+  });
+}
 el("minimize").addEventListener("click", () => {
   void send({ type: "panel-minimize" }).catch((error) =>
     status(error.message, true),

@@ -56,11 +56,42 @@
       return null;
     }
   }
+  function aldiUrl(value) {
+    if (typeof value !== "string" || value.length > 8192 || value.includes("\\")) return null;
+    try {
+      const url = new URL(value);
+      if (url.protocol !== "https:" || url.port || url.username || url.password || !["aldi.com.au", "www.aldi.com.au"].includes(url.hostname)) return null;
+      const match = url.pathname.match(/^\/product\/[a-z0-9]+(?:[a-z0-9-]*[a-z0-9])?-(\d{1,20})\/?$/i);
+      return match ? { id: match[1], url: `https://www.aldi.com.au${url.pathname.replace(/\/$/, "")}` } : null;
+    } catch { return null; }
+  }
+  function readAldi(document, url, blocked) {
+    if (blocked) return fail("retailer_access_restricted", "ALDI restricted access. Inspect the product tab.");
+    const page = aldiUrl(url);
+    if (!page) return fail("product_not_identified", "Open an ALDI product page to add it.");
+    const canonical = document.querySelector('link[rel="canonical"]')?.href;
+    if (canonical && aldiUrl(canonical)?.id !== page.id) return fail("product_identity_conflict", "The ALDI page belongs to another product.");
+    const nodes = Array.from(document.querySelectorAll('script[type="application/ld+json"]'));
+    if (nodes.length > 20 || nodes.reduce((sum, node) => sum + (node.textContent || "").length, 0) > MAX_DATA) return fail("page_too_large", "ALDI product evidence exceeds the size limit.");
+    const matches = nodes.flatMap((node) => products(parseJson(node.textContent))).filter((p) => {
+      const links = [p.url, p["@id"], !Array.isArray(p.offers) && p.offers?.url].filter(Boolean);
+      const sku = text(p.sku);
+      return (sku === page.id || links.some((link) => aldiUrl(link)?.id === page.id)) && (!sku || sku === page.id) && links.every((link) => aldiUrl(link)?.id === page.id);
+    });
+    if (matches.length !== 1) return fail(matches.length > 1 ? "ambiguous_product" : "product_not_identified", "Waiting for one verifiable ALDI main product.");
+    const name = text(matches[0].name).replace(/\s+/g, " ");
+    const heading = text((document.querySelector("main h1") || document.querySelector("h1"))?.textContent).replace(/\s+/g, " ");
+    if (!name || name.length > 500 || !heading || heading.toLowerCase() !== name.toLowerCase()) return fail("product_identity_conflict", "The ALDI heading and product data do not match.");
+    return { ok: true, productId: page.id, url: page.url, name, price: null, priceIssue: "server_validation_pending", promotion: null,
+      evidence: { nextProductJson: null, jsonLd: matches.map((p) => JSON.stringify(p)), aldiProductJson: JSON.stringify({ canonicalUrl: page.url, name: heading }) } };
+  }
   const retailerProductUrl = (value) => {
     const coles = productUrl(value);
     if (coles) return { ...coles, retailer: "coles" };
     const woolworths = woolworthsUrl(value);
-    return woolworths ? { ...woolworths, retailer: "woolworths" } : null;
+    if (woolworths) return { ...woolworths, retailer: "woolworths" };
+    const aldi = aldiUrl(value);
+    return aldi ? { ...aldi, retailer: "aldi" } : null;
   };
   function readWoolworths(document, url, blocked) {
     if (blocked)
@@ -387,6 +418,8 @@
   function read(document, url) {
     const title = document.title || "";
     const body = (document.body?.innerText || "").slice(0, 100000);
+    if (/verify (?:that )?you(?: are|'re) (?:a )?human|robot or human|confirm you are human|complete the security check|checking your browser/i.test(title + "\n" + body))
+      return fail("human_verification_required", "Complete verification in the retailer tab.");
     const blocked =
       /access denied|request unsuccessful|verify you are human|robot or human|just a moment/i.test(
         title + "\n" + body,
@@ -403,6 +436,7 @@
         }
       });
     const pageUrl = new URL(url);
+    if (["www.aldi.com.au", "aldi.com.au"].includes(pageUrl.hostname) && pageUrl.protocol === "https:") return readAldi(document, url, blocked);
     if (
       ["www.woolworths.com.au", "woolworths.com.au"].includes(
         pageUrl.hostname,
@@ -545,6 +579,7 @@
   globalThis.ColesReader = Object.freeze({
     productUrl,
     woolworthsUrl,
+    aldiUrl,
     retailerProductUrl,
     extract,
     read,

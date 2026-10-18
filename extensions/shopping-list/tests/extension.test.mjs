@@ -16,6 +16,59 @@ const {
   `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`
 );
 const token = "a".repeat(64);
+const aldiProduct = "https://www.aldi.com.au/product/farmdale-thickened-cream-600ml-000000000000398449";
+test("ALDI reader binds the main product to its URL and heading and preserves leading zeroes", async () => {
+  const context = vm.createContext({ URL, Date });
+  vm.runInContext(await readFile(new URL("../content.js", import.meta.url), "utf8"), context);
+  const record = { "@type": "Product", name: "Thickened Cream 600ml", brand: { name: "FARMDALE" }, offers: { "@type": "Offer", url: aldiProduct, price: "5.19", priceCurrency: "AUD" } };
+  let records = [record]; let heading = record.name; let canonical = aldiProduct;
+  const document = {
+    title: record.name, body: { innerText: "" },
+    querySelectorAll: (selector) => selector === 'script[type="application/ld+json"]' ? records.map((p) => ({ textContent: JSON.stringify(p) })) : [],
+    querySelector: (selector) => selector === 'link[rel="canonical"]' ? { href: canonical } : selector.includes("h1") ? { textContent: heading } : null,
+  };
+  const reader = context.ColesReader;
+  const value = reader.read(document, aldiProduct);
+  assert.equal(value.ok, true); assert.equal(value.productId, "000000000000398449");
+  assert.equal(productUrl(aldiProduct + "?utm_source=test"), aldiProduct);
+  assert.equal(retailerPage(aldiProduct), true);
+  assert.equal(reader.retailerProductUrl(aldiProduct).retailer, "aldi");
+  assert.equal(JSON.parse(value.evidence.aldiProductJson).canonicalUrl, aldiProduct);
+  assert.equal(reader.aldiUrl("https://www.aldi.com.au.evil.example/product/cream-123"), null);
+  assert.equal(productUrl("https://www.aldi.com.au/products/dairy/k/123"), null);
+  records = [record, record]; assert.equal(reader.read(document, aldiProduct).code, "ambiguous_product");
+  records = [record]; heading = "Another product"; assert.equal(reader.read(document, aldiProduct).code, "product_identity_conflict");
+  heading = record.name; canonical = aldiProduct.replace("398449", "999999"); assert.equal(reader.read(document, aldiProduct).ok, false);
+  canonical = aldiProduct; delete record.offers.price;
+  assert.equal(reader.read(document, aldiProduct).ok, true); // Server decides whether a usable price exists.
+});
+
+test("ALDI Add submits the selected list, quantity and bounded evidence without opening an ALDI task tab", async () => {
+  const f = fixture();
+  await f.browser.tabs.update(7, { url: aldiProduct });
+  f.browser.scripting.executeScript = async () => [{ result: { ok: true, evidence: { nextProductJson: null, jsonLd: ["{}"], aldiProductJson: "{}" } } }];
+  await f.handle({ type: "add", url: aldiProduct, tabId: 7, quantity: 3, listId: 1 });
+  await f.handle.pump();
+  const request = JSON.parse(f.calls.find((call) => call.url.endsWith("/imports/")).body);
+  assert.equal(request.url, aldiProduct); assert.equal(request.quantity, 3); assert.equal(request.listId, 1);
+  assert.equal(request.evidence.aldiProductJson, "{}");
+  await assert.rejects(f.browser.tabs.get(100));
+  assert.equal(f.data().workflow.status, "Completed");
+});
+
+test("ALDI background collection and identity-conflict reload tabs are not allowed", async () => {
+  const f = fixture();
+  await f.browser.tabs.update(7, { url: aldiProduct });
+  f.browser.scripting.executeScript = async () => [{ result: { ok: false, code: "product_identity_conflict" } }];
+  await f.handle({ type: "add", url: aldiProduct, tabId: 7, quantity: 1, listId: 1 });
+  await f.handle.pump();
+  await assert.rejects(f.browser.tabs.get(100));
+  assert.equal(f.calls.some((call) => call.url.endsWith("/imports/")), false);
+  const handle = createWorker(f.browser, async () => ({ ok: true, status: 200, json: async () => ({ id: 1, kind: "product", url: aldiProduct }) }));
+  await f.browser.storage.session.set({ workflow: null });
+  await handle.sharedPump();
+  await assert.rejects(f.browser.tabs.get(100));
+});
 test("Coles plus slugs work in the customer URL validator and extractor", async () => {
   const context = vm.createContext({ URL, Date });
   vm.runInContext(
@@ -211,6 +264,64 @@ function fixture(lists = [{ id: 1, name: "One" }]) {
   };
 }
 const url = "https://www.coles.com.au/product/test-123";
+
+test("verification preserves quantity, request identity and tab through worker suspension then resumes once", async () => {
+  const f = fixture();
+  f.browser.scripting.executeScript = async () => [{ result: { ok: false, code: "human_verification_required" } }];
+  await f.handle({ type: "add", url, tabId: 7, quantity: 3, listId: 1 });
+  const requestId = f.data().workflow.requestId;
+  await f.handle.pump();
+  assert.equal(f.data().workflow.verificationRequired, true);
+  assert.equal(f.removed.length, 0);
+  assert.equal(f.calls.some(c => c.url.endsWith("/imports/")), false);
+  await f.browser.storage.session.set({ workflow: { ...f.data().workflow, deadline: 0 } });
+  const restored = createWorker(f.browser, f.fetcher);
+  await restored.pump();
+  assert.equal(f.data().workflow.status, "Reading");
+  await restored({ type: "openVerification" });
+  assert.equal((await f.browser.tabs.get(7)).active, true);
+  f.browser.scripting.executeScript = async () => [{ result: { ok: true, evidence: { nextProductJson: "{}", jsonLd: [] } } }];
+  await restored.pump(); await restored.pump();
+  const submissions = f.calls.filter(c => c.url.endsWith("/imports/"));
+  assert.equal(submissions.length, 1);
+  const sent = JSON.parse(submissions[0].body);
+  assert.equal(sent.quantity, 3); assert.equal(sent.requestId, requestId);
+});
+
+test("verification cancellation and closed tabs do not submit source evidence or close a user tab", async () => {
+  for (const closed of [false, true]) {
+    const f = fixture();
+    f.browser.scripting.executeScript = async () => [{ result: { ok: false, code: "human_verification_required" } }];
+    await f.handle({ type: "add", url, tabId: 7, quantity: 1, listId: 1 });
+    await f.handle.pump();
+    if (closed) { await f.browser.tabs.remove(7); await f.handle.pump(); }
+    else { await f.handle({ type: "cancelVerification" }); assert.equal((await f.browser.tabs.get(7)).url, url); }
+    assert.equal(f.data().workflow.status, "Failed");
+    assert.equal(f.calls.some(c => c.url.endsWith("/imports/")), false);
+  }
+});
+
+test("comparison verification keeps its tab, caps waiting and allows retry without duplicating the source", async () => {
+  const f = fixture();
+  await f.browser.tabs.create({ url });
+  const workflow = { status: "Reading", kind: "product", url, sessionToken: token,
+    tabId: 100, temporaryTabId: 100, deadline: Date.now() + 90000,
+    work: { jobId: 10, stepToken: "step" } };
+  await f.browser.storage.session.set({ workflow });
+  f.browser.scripting.executeScript = async () => [{ result: { ok: false, code: "human_verification_required" } }];
+  await f.handle.pump();
+  assert.equal(f.data().workflow.verificationRequired, true);
+  assert.deepEqual(f.removed, []);
+  await f.browser.storage.session.set({ workflow: { ...f.data().workflow, verificationExpiresAt: 0 } });
+  await f.handle.pump();
+  assert.equal(f.data().workflow.status, "Failed");
+  assert.match(f.data().workflow.message, /Retry comparison/);
+  assert.equal((await f.browser.tabs.get(100)).url, url);
+  assert.equal(f.calls.length, 0);
+  await f.handle({ type: "retry" });
+  assert.ok(f.calls.some(c => c.url.endsWith("/10/retry")));
+  assert.equal(f.calls.some(c => c.url.endsWith("/imports/")), false);
+});
 test("stale product identity retries once in a background tab and saves the selected product", async () => {
   for (const product of [
     url,

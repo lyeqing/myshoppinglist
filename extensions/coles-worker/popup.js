@@ -49,6 +49,24 @@ form.addEventListener("submit", async event => {
   } catch { button.disabled = false; status.textContent = "Extension unavailable. Reload it in chrome://extensions and try again."; }
 });
 async function renderConnection() {
+  const pauses = (await chrome.storage.local.get("verificationPauses")).verificationPauses || {};
+  const verification = document.getElementById("verification");
+  verification.replaceChildren();
+  for (const [retailer] of Object.entries(pauses)) {
+    const row = document.createElement("p");
+    row.textContent = `${retailer === "coles" ? "Coles" : "Woolworths"} collection paused—verification required. Complete the check, then resume. Server cooldown may delay queued work. `;
+    for (const [label, type] of [["Open retailer", "openVerification"], ["Resume", "resumeVerification"]]) {
+      const action = document.createElement("button"); action.type = "button"; action.textContent = label;
+      action.addEventListener("click", async () => {
+        action.disabled = true;
+        try { const reply = await chrome.runtime.sendMessage({ type, retailer }); if (!reply?.ok) throw new Error(reply?.message || "Unable to resume."); await renderConnection(); }
+        catch (error) { status.textContent = error.message; }
+        finally { action.disabled = false; }
+      });
+      row.append(action);
+    }
+    verification.append(row);
+  }
   const state = await chrome.storage.session.get(["connection", "serverTasks", "task"]);
   const mode = enabled ? "Running" : state.task?.status === "reading" ? "Stopping after the current task" : "Stopped";
   document.getElementById("connection").textContent = `${mode}. ${state.connection || "Server: localhost:5392"}`;
@@ -79,6 +97,7 @@ document.getElementById("worker-form").addEventListener("submit", async event =>
   finally { configuring = false; renderWorkerState(enabled); }
 });
 chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "local" && changes.verificationPauses) void renderConnection();
   if (area === "local" && changes.settings) { renderWorkerState(changes.settings.newValue?.enabled); void renderConnection(); }
   if (area === "session" && changes.task) { render(changes.task.newValue); void renderConnection(); }
   if (area === "session" && (changes.connection || changes.serverTasks)) void renderConnection();

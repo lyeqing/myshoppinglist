@@ -1,5 +1,7 @@
 # MyShoppingList frontend
 
+ALDI product importing is available through the Add to list extension (version 0.5.0): open an ALDI product, choose a shopping list and quantity, then click Add. Reload the extension after updating to enable ALDI host permissions, and run the updated API. ALDI website-only URL imports return instructions to use the extension. Automatic ALDI searches and price refreshes are unavailable; prices are observed page prices with unverified store scope. Imported ALDI products use the normal product cards, History, Favorites and Essentials.
+
 Next.js 16.3.1, React 19.2.8, TypeScript, and Tailwind CSS 4. Stage 5A provides the first trial shopping page: start a three-hour trial, submit Coles or Woolworths product links, view import progress and observed prices, restore imports after refresh, and sign out.
 
 ## Run locally

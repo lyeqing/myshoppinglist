@@ -557,7 +557,7 @@ test.beforeAll(async () => {
       if (value.url.startsWith("https://www.aldi.com.au/")) {
         send(400, {
           title:
-            "Automatic product imports and price checks are unavailable for ALDI.",
+            "Add ALDI products from an open product page using the extension. Automatic ALDI searches and price refreshes are unavailable.",
           errorCode: "source_restricted",
         });
         return;
@@ -2315,13 +2315,13 @@ test("product refresh passes through the proxy with browser protection and item 
   ).toBe(404);
 });
 
-test("ALDI support is labelled unavailable and rejected imports never create jobs", async ({
+test("ALDI imports explain the extension requirement and website submission never queues an unsupported fetch", async ({
   page,
 }) => {
   await start(page);
   const footer = page.getByRole("region", { name: "Retailer support" });
   await expect(
-    footer.getByText("ALDI: automatic checks unavailable", { exact: true }),
+    footer.getByText("ALDI: add with extension · automatic checks unavailable", { exact: true }),
   ).toBeVisible();
   await expect(
     footer.getByText("ALDI · IGA · Foodland Coming later", { exact: true }),
@@ -2331,7 +2331,7 @@ test("ALDI support is labelled unavailable and rejected imports never create job
     .fill("https://www.aldi.com.au/product/example");
   await page.getByRole("button", { name: "Add product", exact: true }).click();
   await expect(
-    page.getByRole("alert").filter({ hasText: "unavailable for ALDI" }),
+    page.getByRole("alert").filter({ hasText: "using the extension" }),
   ).toBeVisible();
   expect(jobs.size).toBe(0);
   await expect(

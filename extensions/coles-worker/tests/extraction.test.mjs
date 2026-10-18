@@ -329,6 +329,45 @@ function worker(existingTask, existingWorkerTabId) {
       new Promise((resolve) => listeners.message(message, sender, resolve)),
   };
 }
+
+test("both readers separate human verification from a hard access denial", () => {
+  for (const extension of ["coles-worker", "shopping-list"]) {
+    const scope = vm.createContext({ URL, Date });
+    vm.runInContext(readFileSync(new URL(`../../${extension}/content.js`, import.meta.url), "utf8"), scope);
+    const doc = { title: "Verify you are human", body: { innerText: "Please complete the security check" }, querySelectorAll: () => [], querySelector: () => null };
+    assert.equal(scope.ColesReader.read(doc, url).code, "human_verification_required");
+    doc.title = "Access Denied"; doc.body.innerText = "Request unsuccessful";
+    assert.equal(scope.ColesReader.read(doc, url).code, "retailer_access_restricted");
+  }
+});
+
+test("unattended verification persists across session loss and skips Coles while processing Woolworths", async () => {
+  const w = worker();
+  w.chrome.scripting.executeScript = async () => [{ result: { ok: false, code: "human_verification_required" } }];
+  await w.send({ type: "start", url });
+  assert.ok(w.local.verificationPauses.coles);
+  delete w.storage.task;
+  assert.equal((await w.send({ type: "start", url })).code, "verification_paused");
+  const woolUrl = "https://www.woolworths.com.au/shop/productdetails/456";
+  const claimed = [];
+  w.local.settings = { enabled: true, key: "k".repeat(32), workerId: "worker" };
+  w.chrome.tabs.get = async () => ({ status: "complete", url: woolUrl });
+  w.chrome.tabs.update = async (id, properties) => ({ id, ...properties });
+  w.chrome.scripting.executeScript = async () => [{ result: { ok: false, code: "product_not_identified" } }];
+  w.scope.fetch = async (link) => {
+    let value;
+    if (link.endsWith("/tasks")) value = [{ id: 1, kind: "product", url, status: "Waiting" }, { id: 2, kind: "product", url: woolUrl, status: "Waiting" }];
+    else if (link.endsWith("/claim")) { claimed.push(link); value = { id: 2, kind: "product", url: woolUrl, claimToken: "token" }; }
+    else value = {};
+    return { ok: true, text: async () => JSON.stringify(value) };
+  };
+  await vm.runInContext("tick()", w.scope);
+  assert.equal(claimed.length, 1); assert.match(claimed[0], /\/tasks\/2\/claim$/);
+  assert.ok(w.local.verificationPauses.coles);
+  w.local.settings.enabled = false;
+  await w.send({ type: "resumeVerification", retailer: "coles" });
+  assert.equal(w.local.verificationPauses.coles, undefined);
+});
 test("toolbar opens the shared side panel without starting a worker task", () => {
   const manifest = JSON.parse(
     readFileSync(new URL("../manifest.json", import.meta.url), "utf8"),
@@ -827,6 +866,7 @@ test("popup restores one Start/Stop button and toggles saved worker state", asyn
     },
     storage: {
       session: { get: async () => ({ task, serverTasks: [] }) },
+      local: { get: async () => ({}) },
       onChanged: {
         addListener: (fn) => {
           changes.listener = fn;

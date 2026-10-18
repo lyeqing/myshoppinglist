@@ -387,6 +387,8 @@
   function read(document, url) {
     const title = document.title || "";
     const body = (document.body?.innerText || "").slice(0, 100000);
+    if (/verify (?:that )?you(?: are|'re) (?:a )?human|robot or human|confirm you are human|complete the security check|checking your browser/i.test(title + "\n" + body))
+      return fail("human_verification_required", "Complete verification in the retailer tab.");
     const blocked =
       /access denied|request unsuccessful|verify you are human|robot or human|just a moment/i.test(
         title + "\n" + body,

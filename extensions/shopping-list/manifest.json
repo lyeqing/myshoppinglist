@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "MyShoppingList — Add to list (Local test)",
-  "version": "0.4.0",
+  "version": "0.5.1",
   "description": "Add products to MyShoppingList and help refresh shared retailer prices while idle.",
   "minimum_chrome_version": "142",
   "permissions": [
@@ -17,7 +17,9 @@
     "https://www.coles.com.au/*",
     "https://coles.com.au/*",
     "https://www.woolworths.com.au/*",
-    "https://woolworths.com.au/*"
+    "https://woolworths.com.au/*",
+    "https://www.aldi.com.au/*",
+    "https://aldi.com.au/*"
   ],
   "background": {
     "service_worker": "background.js",
@@ -40,7 +42,9 @@
         "https://www.coles.com.au/*",
         "https://coles.com.au/*",
         "https://www.woolworths.com.au/*",
-        "https://woolworths.com.au/*"
+        "https://woolworths.com.au/*",
+        "https://www.aldi.com.au/*",
+        "https://aldi.com.au/*"
       ]
     }
   ],
@@ -56,7 +60,9 @@
         "https://www.coles.com.au/*",
         "https://coles.com.au/*",
         "https://www.woolworths.com.au/*",
-        "https://woolworths.com.au/*"
+        "https://woolworths.com.au/*",
+        "https://www.aldi.com.au/*",
+        "https://aldi.com.au/*"
       ],
       "js": ["retailer-panel.js"],
       "run_at": "document_idle"

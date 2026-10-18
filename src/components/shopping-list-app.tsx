@@ -873,7 +873,7 @@ export default function ShoppingListApp() {
                 {[
                   [
                     "Paste a product link",
-                    "Copy the product page URL from Coles or Woolworths.",
+                    "Copy a Coles or Woolworths product URL. For ALDI, use the extension on its product page.",
                   ],
                   [
                     "Keep adding to your list",
@@ -1123,7 +1123,7 @@ export default function ShoppingListApp() {
               </span>
             </span>
             <span className="text-slate-400">
-              ALDI: automatic checks unavailable
+              ALDI: add with extension · automatic checks unavailable
             </span>
             <span className="text-slate-400">
               IGA · Foodland <span className="ml-1 text-xs">Coming later</span>
