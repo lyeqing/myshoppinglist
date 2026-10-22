@@ -7,6 +7,7 @@ import { useState } from "react";
 import PackAlternatives from "./pack-alternatives";
 import BrandAlternatives from "./brand-alternatives";
 import PackDiscoveryControls from "./pack-discovery-controls";
+import BrandDiscoveryControls from "./brand-discovery-controls";
 import type {
   ListItem,
   ListItemUpdate,
@@ -385,13 +386,22 @@ export default function ShoppingListItemCard({
         )}
       </div>
       {!item.isPurchased && !item.isHidden && onDiscovered && (
-        <PackDiscoveryControls
-          accountId={accountId}
-          listId={item.shoppingListId}
-          itemId={item.id}
-          disabled={locked}
-          onDiscovered={onDiscovered}
-        />
+        <>
+          <PackDiscoveryControls
+            accountId={accountId}
+            listId={item.shoppingListId}
+            itemId={item.id}
+            disabled={locked}
+            onDiscovered={onDiscovered}
+          />
+          <BrandDiscoveryControls
+            accountId={accountId}
+            listId={item.shoppingListId}
+            itemId={item.id}
+            disabled={locked}
+            onDiscovered={onDiscovered}
+          />
+        </>
       )}
       <PackAlternatives alternatives={row.packAlternatives} />
       <BrandAlternatives alternatives={row.brandAlternatives} />

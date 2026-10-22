@@ -153,7 +153,7 @@ export interface BrandAlternative extends Omit<
   PackAlternative,
   "relationship"
 > {
-  relationship: "EquivalentDifferentBrand";
+  relationship: "EquivalentDifferentBrand" | "SuggestedDifferentBrand";
   label: string;
 }
 export interface PlanningItem {
@@ -482,4 +482,34 @@ export interface PreferredShopLocation {
 export interface ShopLocationSearchResult {
   items: ShopLocationSummary[];
   hasMore: boolean;
+}
+
+export interface BrandDiscoveryProgress {
+  id: number;
+  itemId: number;
+  productName: string;
+  shopName: string;
+  status:
+    | "Queued"
+    | "Processing"
+    | "WaitingForExtension"
+    | "Completed"
+    | "Failed"
+    | "Cancelled";
+  foundCount: number;
+  errorCode: string | null;
+  updatedDate: string;
+  retryAfter: string | null;
+}
+export interface BrandDiscoveryView {
+  accountId: number;
+  listId: number;
+  itemId: number | null;
+  enabled: boolean;
+  canStart: boolean;
+  reason: string | null;
+  jobs: BrandDiscoveryProgress[];
+  queued: number;
+  alreadyRunning: number;
+  recent: number;
 }

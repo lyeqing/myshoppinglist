@@ -19,6 +19,7 @@ import AccountForm from "./account-form";
 import PackAlternatives from "./pack-alternatives";
 import BrandAlternatives from "./brand-alternatives";
 import PackDiscoveryControls from "./pack-discovery-controls";
+import BrandDiscoveryControls from "./brand-discovery-controls";
 import { useStore } from "zustand";
 import {
   createInStoreStore,
@@ -783,13 +784,22 @@ export default function InStoreApp() {
                         ))}
                       </div>
                       {!row.item.isPurchased && !row.item.isHidden && (
-                        <PackDiscoveryControls
-                          accountId={state.session?.account.id}
-                          listId={detail.id}
-                          itemId={row.item.id}
-                          disabled={disabled}
-                          onDiscovered={() => state.load(detail.id)}
-                        />
+                        <>
+                          <PackDiscoveryControls
+                            accountId={state.session?.account.id}
+                            listId={detail.id}
+                            itemId={row.item.id}
+                            disabled={disabled}
+                            onDiscovered={() => state.load(detail.id)}
+                          />
+                          <BrandDiscoveryControls
+                            accountId={state.session?.account.id}
+                            listId={detail.id}
+                            itemId={row.item.id}
+                            disabled={disabled}
+                            onDiscovered={() => state.load(detail.id)}
+                          />
+                        </>
                       )}
                       <PackAlternatives alternatives={row.packAlternatives} />
                       <BrandAlternatives alternatives={row.brandAlternatives} />

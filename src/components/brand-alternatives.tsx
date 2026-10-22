@@ -80,8 +80,8 @@ export default function BrandAlternatives({
     >
       <h4 className="font-semibold">Alternative brands</h4>
       <p className="mt-1 text-xs text-slate-600">
-        Reviewed alternatives from saved catalogue prices. Taste, ingredients
-        and quality may differ; check the product details for your needs. These
+        Reviewed alternatives and automatic suggestions from saved prices. Taste, ingredients
+        and quality may differ. Automatic suggestions have not been reviewed for suitability; check the product details for your needs. These
         options do not change your list or basket totals.
       </p>
       <ul className="mt-3 space-y-4">
@@ -105,7 +105,7 @@ export default function BrandAlternatives({
               className="border-t border-slate-100 pt-3"
             >
               <p className="text-xs font-semibold text-sky-800">
-                Similar product — different brand
+                {alternative.label}
               </p>
               <p className="mt-1 wrap-break-word font-medium">{product.name}</p>
               {product.brand && (

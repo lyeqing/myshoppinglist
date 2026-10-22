@@ -38,7 +38,7 @@ async function forward(
   const branchSearch = (branchCollection && get) || customerBranchSearch;
   const preferences = route === "account/shopping-preferences";
   const discovery =
-    /^shopping-lists\/[1-9]\d{0,18}(?:\/items\/[1-9]\d{0,18})?\/pack-discovery$/.test(
+    /^shopping-lists\/[1-9]\d{0,18}(?:\/items\/[1-9]\d{0,18})?\/(?:pack-discovery|brand-discovery)$/.test(
       route,
     );
   const productLibrary = get && route === "account/products";

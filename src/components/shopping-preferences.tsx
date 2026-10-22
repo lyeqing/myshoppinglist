@@ -223,8 +223,7 @@ export default function ShoppingPreferences() {
                     id="alternative-brands-help"
                     className="text-sm text-slate-500"
                   >
-                    Show reviewed alternatives from other brands when saved
-                    prices are available. Taste, ingredients and quality may
+                    Automatically search selected supported stores for similar products from other brands after adding an item. Show suggestions and reviewed alternatives when saved prices are available. Taste, ingredients and quality may
                     differ. Check the product details for your needs. Your list
                     and totals stay as they are.
                   </p>
