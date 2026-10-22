@@ -213,7 +213,7 @@ test("My Stores saves first selections, defaults to preferred-only and survives 
   trial = true;
   await page.goto("/settings");
   await expect(
-    page.getByRole("heading", { name: "My Stores", exact: true }),
+    page.getByRole("heading", { name: "Settings", exact: true }),
   ).toBeVisible();
   await expect(
     page.getByText(/Settings are saved for this trial/),

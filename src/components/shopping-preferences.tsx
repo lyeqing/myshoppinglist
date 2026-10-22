@@ -49,7 +49,7 @@ export default function ShoppingPreferences() {
         </nav>
       </header>
       <main className="mx-auto max-w-3xl px-5 py-8">
-        <h1 className="text-3xl font-semibold">My Stores</h1>
+        <h1 className="text-3xl font-semibold">Settings</h1>
         <p className="mt-3 text-sm leading-6 text-slate-600">
           Choose your supermarkets for comparisons and automatic, product and
           list price refreshes. You can also save the branches you visit.
