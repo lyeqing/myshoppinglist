@@ -28,12 +28,14 @@ import {
 import type { InStoreItem, InStorePrice } from "@/lib/api-types";
 
 function lineTotal(price: InStorePrice, quantity: number) {
+  quantity = price.substitution?.quantity ?? quantity;
   return price.quantityPrice?.quantity === quantity
     ? price.quantityPrice.total
     : price.price! * quantity;
 }
 
 function itemGroup(row: InStoreItem, shopId: number | null) {
+  if (row.prices.some(p => p.substitution) && shopId !== null) return row.prices.some(p => p.shopId === shopId && p.price !== null) ? 1 : 4;
   return groupByPrice(
     {
       ...row,
@@ -431,7 +433,7 @@ export default function InStoreApp() {
             >
               <h3 className="text-lg font-semibold">Plan your shop</h3>
               <p className="mt-1 text-xs text-slate-500">
-                Remaining items only. Totals include requested quantities.
+                Remaining items only. Totals include requested quantities and any alternative package counts you choose.
               </p>
               <div className="mt-4 grid gap-3 sm:grid-cols-3">
                 {detail.baskets.map((b) => (
@@ -440,6 +442,8 @@ export default function InStoreApp() {
                     className={`rounded-xl border p-4 ${b.pricedCount < detail.remainingCount ? "border-red-200 bg-red-50 text-red-950" : "border-transparent bg-slate-50"}`}
                   >
                     <p className="text-sm font-medium">Only {b.shopName}</p>
+                    {!!b.needsChoiceCount && <p className="mt-2 text-sm font-semibold">Subtotal — {b.needsChoiceCount} {b.needsChoiceCount === 1 ? "item needs a choice" : "items need a choice"}</p>}
+                    {!!b.substitutionCount && <p className="mt-1 text-xs">Includes {b.substitutionCount} chosen {b.substitutionCount === 1 ? "alternative" : "alternatives"}</p>}
                     {b.pricedCount < detail.remainingCount && (
                       <p className="mt-2 text-sm font-semibold">
                         Incomplete basket — {b.pricedCount} of{" "}
@@ -505,7 +509,7 @@ export default function InStoreApp() {
                 ))}
                 <div className="rounded-xl bg-emerald-50 p-4">
                   <p className="text-sm font-medium">
-                    Cheapest across retailers
+                    {detail.items.some(r => (r.substitutions?.length ?? 0) > 0) ? "Lowest across selected options" : "Cheapest across retailers"}
                   </p>
                   <p className="mt-1 text-2xl font-semibold text-emerald-800">
                     {money(detail.splitSubtotal)}
@@ -618,6 +622,7 @@ export default function InStoreApp() {
                           Purchased
                         </label>
                       </div>
+                      {current?.substitution && <p className="mt-3 text-sm font-semibold text-sky-800">Buying {current.substitution.product.name} instead · {current.substitution.quantity} packages</p>}
                       {selected ? (
                         <div className="mt-4">
                           <p className="text-sm font-medium">{selected.name}</p>
@@ -626,11 +631,11 @@ export default function InStoreApp() {
                               <p className="text-2xl font-semibold">
                                 {money(lineTotal(current, row.item.quantity))}{" "}
                                 <span className="text-xs font-normal">
-                                  for your quantity · {money(current.price)}{" "}
+                                  {current.substitution ? `for ${current.substitution.quantity} alternative packages` : "for your quantity"} · {money(current.price)}{" "}
                                   single-item price
                                 </span>
                               </p>
-                              {alternative && (
+                              {alternative && !row.prices.some(p => p.substitution) && (
                                 <p className="mt-2 text-sm">
                                   {lineTotal(alternative, row.item.quantity) <
                                   lineTotal(current, row.item.quantity)
@@ -648,7 +653,9 @@ export default function InStoreApp() {
                           ) : (
                             <>
                               <p className="text-lg font-semibold">
-                                {!current
+                                {(row.brandAlternatives ?? []).some(a => a.offer.shopId === selected.id && a.offer.status === "Fresh") && !current?.substitution
+                                  ? `Alternative available at ${selected.name} — choose below`
+                                  : !current
                                   ? `Not found at ${selected.name}`
                                   : current.status === "Out of stock"
                                     ? `Out of stock at ${selected.name}`
@@ -659,7 +666,7 @@ export default function InStoreApp() {
                                   No saved exact match at this retailer.
                                 </p>
                               )}
-                              {alternative && (
+                              {alternative && !row.prices.some(p => p.substitution) && (
                                 <p className="mt-2 text-sm">
                                   Available price at {alternative.shopName}:{" "}
                                   {money(alternative.price!)} each ·{" "}
@@ -686,16 +693,16 @@ export default function InStoreApp() {
                                   )
                                   .map((p) => p.shopName)
                                   .join(" & ")}`
-                              : `Best price: ${best.shopName}`}
+                              : `${row.prices.some(p => p.substitution) ? "Lowest selected option" : "Best price"}: ${best.shopName}`}
                           </p>
                           <p className="text-2xl font-semibold">
                             {money(lineTotal(best, row.item.quantity))}{" "}
                             <span className="text-xs font-normal">
-                              for your quantity · {money(best.price!)}{" "}
+                              {best.substitution ? `for ${best.substitution.quantity} alternative packages` : "for your quantity"} · {money(best.price!)}{" "}
                               single-item price
                             </span>
                           </p>
-                          {second && (
+                          {second && !row.prices.some(p => p.substitution) && (
                             <p className="mt-2 text-sm">
                               Second price: {second.shopName}{" "}
                               {money(lineTotal(second, row.item.quantity))} ·
@@ -729,13 +736,13 @@ export default function InStoreApp() {
                               void state.refreshPrices(row.item.id)
                             }
                           >
-                            Refresh price
+                            {(row.substitutions?.length ?? 0) > 0 ? "Refresh original price" : "Refresh price"}
                           </button>
                         )}
                       <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 border-t border-current/10 pt-3 text-xs">
                         {row.prices.map((p) => (
                           <p key={p.shopId}>
-                            {p.shopName}:{" "}
+                            {p.shopName}{p.substitution ? ` — ${p.substitution.product.name} (${p.substitution.quantity} packages)` : ""}:{" "}
                             {p.price === null
                               ? p.status
                               : `${money(p.price)} single-item price`}
@@ -744,7 +751,7 @@ export default function InStoreApp() {
                                 Buy {p.multibuy.quantity} for{" "}
                                 {money(p.multibuy.total)}.
                                 {p.quantityPrice?.quantity ===
-                                  row.item.quantity &&
+                                  (p.substitution?.quantity ?? row.item.quantity) &&
                                 p.quantityPrice.appliedBundles > 0
                                   ? ` Deal applied ${p.quantityPrice.appliedBundles} time(s): ${money(p.quantityPrice.total)} total; save ${money(p.quantityPrice.savings)} (normally ${money(p.quantityPrice.ordinaryTotal)}).${p.quantityPrice.remainingQuantity ? ` ${p.quantityPrice.remainingQuantity} remaining at the single-item price.` : ""}`
                                   : " Single-item price used; quantity does not qualify."}
@@ -802,7 +809,7 @@ export default function InStoreApp() {
                         </>
                       )}
                       <PackAlternatives alternatives={row.packAlternatives} />
-                      <BrandAlternatives alternatives={row.brandAlternatives} />
+                      <BrandAlternatives alternatives={row.brandAlternatives} choices={row.substitutions} item={row.item} accountId={accountId} selectedShopId={selected?.id} disabled={disabled} onChanged={async () => { await store.getState().load(detail.id); if (store.getState().error) throw new Error(store.getState().error); }} />
                     </article>
                   </div>
                 );

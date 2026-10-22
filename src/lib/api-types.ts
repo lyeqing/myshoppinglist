@@ -109,7 +109,18 @@ export interface PriceObservationContext {
   priceScope: string;
   sourceUrl: string | null;
 }
+export interface ShoppingListSubstitutionChoice {
+  shopId: number;
+  shopName: string;
+  product: ListItem["product"];
+  quantity: number;
+  status: string;
+  updatedDate: string;
+  offer: PackComparisonPrice | null;
+  multibuy?: PlanningPrice["multibuy"];
+}
 export interface PlanningPrice {
+  substitution?: ShoppingListSubstitutionChoice | null;
   observation?: PriceObservationContext | null;
   quantityPrice?: QuantityPrice | null;
   multibuy?: {
@@ -159,6 +170,7 @@ export interface BrandAlternative extends Omit<
 export interface PlanningItem {
   packAlternatives?: PackAlternative[] | null;
   brandAlternatives?: BrandAlternative[] | null;
+  substitutions?: ShoppingListSubstitutionChoice[] | null;
   item: ListItem;
   prices: PlanningPrice[];
   comparison?: ItemComparison | null;
@@ -177,6 +189,8 @@ export interface PlanningBasket {
   subtotal: number;
   pricedCount: number;
   missingItems: { itemId: number; name: string; reason: string }[];
+  needsChoiceCount?: number;
+  substitutionCount?: number;
 }
 export interface ShoppingPreferences {
   accountId: number;
@@ -222,6 +236,7 @@ export interface InStoreList {
   retailers: InStoreRetailer[];
 }
 export interface InStorePrice {
+  substitution?: ShoppingListSubstitutionChoice | null;
   observation?: PriceObservationContext | null;
   refreshStatus?: PlanningPrice["refreshStatus"];
   previousPrice?: number | null;
@@ -236,6 +251,7 @@ export interface InStorePrice {
 export interface InStoreItem {
   packAlternatives?: PackAlternative[] | null;
   brandAlternatives?: BrandAlternative[] | null;
+  substitutions?: ShoppingListSubstitutionChoice[] | null;
   item: ListItem;
   prices: InStorePrice[];
 }
@@ -253,6 +269,8 @@ export interface InStoreDetail {
     pricedCount: number;
     comparableSubtotal: number;
     savingsBySplitting: number;
+    needsChoiceCount?: number;
+    substitutionCount?: number;
   }[];
   splitSubtotal: number;
   splitPricedCount: number;

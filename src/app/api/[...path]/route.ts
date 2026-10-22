@@ -45,7 +45,9 @@ async function forward(
   const productPreferences = get && route === "account/products/preferences";
   const productPreferenceWrite = request.method === "PUT" && /^account\/products\/[1-9]\d{0,18}\/preferences$/.test(route);
   const savedProductAdd = request.method === "POST" && /^shopping-lists\/[1-9]\d{0,18}\/products\/[1-9]\d{0,18}$/.test(route);
+  const substitution = request.method === "PUT" && /^shopping-lists\/[1-9]\d{0,18}\/items\/[1-9]\d{0,18}\/substitutions\/[1-9]\d{0,18}$/.test(route);
   const allowed =
+    substitution ||
     productLibrary || productPreferences || productPreferenceWrite || savedProductAdd ||
     branchWrite ||
     branchSearch ||
@@ -189,6 +191,7 @@ async function forward(
           alternativeReview ||
           branchWrite ||
           discovery ||
+          substitution ||
           edit ||
           remove ||
           route.endsWith("/products/url")) &&

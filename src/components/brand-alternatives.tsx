@@ -2,8 +2,10 @@
 
 import PriceObservationContextPanel from "./price-observation-context";
 import Link from "next/link";
-import type { BrandAlternative, PackComparisonPrice } from "@/lib/api-types";
-import { priceAge, usePriceNow } from "@/lib/price-age";
+import { useEffect, useRef, useState } from "react";
+import { api, ApiError } from "@/lib/api-client";
+import type { BrandAlternative, PackComparisonPrice, ListItem, ShoppingListSubstitutionChoice } from "@/lib/api-types";
+import { priceAge, priceCurrent, usePriceNow } from "@/lib/price-age";
 import { money } from "./shopping-list-cost-summary";
 
 const number = (value: number) =>
@@ -66,13 +68,56 @@ function Price({
   );
 }
 
-export default function BrandAlternatives({
-  alternatives,
-}: {
+type Props = {
   alternatives?: BrandAlternative[] | null;
-}) {
-  const now = usePriceNow(alternatives);
-  if (!alternatives?.length) return null;
+  choices?: ShoppingListSubstitutionChoice[] | null;
+  item?: ListItem;
+  accountId?: number;
+  selectedShopId?: number | null;
+  disabled?: boolean;
+  onChanged?: () => Promise<unknown>;
+};
+export default function BrandAlternatives(props: Props) {
+  return <AlternativeChoices key={`${props.accountId}-${props.item?.id}`} {...props} />;
+}
+function AlternativeChoices({ alternatives, choices, item, accountId, selectedShopId, disabled, onChanged }: Props) {
+  const now = usePriceNow([alternatives, choices]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [reloadNeeded, setReloadNeeded] = useState(false);
+  const request = useRef<AbortController | null>(null);
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    const changed = () => { alive.current = false; request.current?.abort(); };
+    window.addEventListener("myshoppinglist-session-changed", changed);
+    return () => { changed(); window.removeEventListener("myshoppinglist-session-changed", changed); };
+  }, []);
+  const visible = (alternatives ?? []).filter(a => !selectedShopId || a.offer.shopId === selectedShopId);
+  const saved = (choices ?? []).filter(c => !selectedShopId || c.shopId === selectedShopId);
+  const canEdit = !!accountId && !!item && !!onChanged;
+  async function choose(shopId: number, productId: number | null, quantity: number) {
+    if (!canEdit || !item || !accountId || busy || disabled || !alive.current) return;
+    const controller = new AbortController(); request.current = controller;
+    setBusy(true); setError(""); setNotice(""); setReloadNeeded(false);
+    let persisted = false;
+    try {
+      await api<void>(`/shopping-lists/${item.shoppingListId}/items/${item.id}/substitutions/${shopId}`, {
+        method: "PUT", signal: controller.signal,
+        body: JSON.stringify({ expectedAccountId: accountId, alternativeProductId: productId, quantity, expectedUpdatedDate: item.updatedDate }),
+      });
+      persisted = true;
+      if (!alive.current) return;
+      await onChanged?.();
+      if (alive.current) setNotice(productId === null ? "Choice undone. The original product is kept." : "Alternative saved for this store. Its package quantity is included in the subtotal.");
+    } catch (e) {
+      if (controller.signal.aborted || !alive.current) return;
+      setError(persisted ? "Choice saved, but prices could not reload. Reload your list before continuing." : e instanceof Error ? e.message : "Unable to save this choice.");
+      setReloadNeeded(persisted || e instanceof ApiError && e.status === 409);
+    } finally { if (alive.current) setBusy(false); }
+  }
+  if (!visible.length && !saved.length) return null;
   return (
     <section
       aria-label="Alternative brands"
@@ -82,10 +127,16 @@ export default function BrandAlternatives({
       <p className="mt-1 text-xs text-slate-600">
         Reviewed alternatives and automatic suggestions from saved prices. Taste, ingredients
         and quality may differ. Automatic suggestions have not been reviewed for suitability; check the product details for your needs. These
-        options do not change your list or basket totals.
+        options only enter a store’s subtotal after you choose one. Your original product stays saved.
       </p>
+      {saved.map(choice => <div key={choice.shopId} className="mt-3 rounded-lg border border-sky-200 bg-sky-50 p-3">
+        <p className="font-semibold">Chosen for {choice.shopName}: {choice.product.name}</p>
+        <p className="mt-1 text-sm">{choice.quantity} {choice.quantity === 1 ? "package" : "packages"} · {choice.status === "Fresh" ? "Included in this store’s subtotal" : `${choice.status} — excluded from subtotal`}</p>
+        {choice.status !== "Fresh" && <p className="mt-1 text-xs">Review the product and its current price before choosing again.</p>}
+        {canEdit && <button type="button" disabled={disabled || busy} onClick={() => void choose(choice.shopId, null, choice.quantity)} className="mt-2 min-h-11 font-semibold text-sky-800 underline disabled:opacity-50">Undo choice for {choice.shopName}</button>}
+      </div>)}
       <ul className="mt-3 space-y-4">
-        {alternatives.map((alternative) => {
+        {visible.map((alternative) => {
           const { product, offer, original } = alternative;
           const link = retailerLink(offer.productUrl);
           const difference = alternative.unitPriceDifferencePercent;
@@ -124,7 +175,7 @@ export default function BrandAlternatives({
               {original && (
                 <div className="mt-2 text-slate-600">
                   <p className="text-xs font-semibold">
-                    Your original product — lowest current saved package price
+                    Your original product — saved package price
                   </p>
                   <Price value={original} unit={alternative.unit} now={now} />
                 </div>
@@ -151,6 +202,23 @@ export default function BrandAlternatives({
                   possible waste before buying.
                 </p>
               )}
+              {canEdit && item && !item.isPurchased && !item.isHidden && (
+                <form key={`${product.id}-${offer.shopId}-${saved.find(c => c.shopId === offer.shopId)?.updatedDate ?? "new"}`} className="mt-3 rounded-lg bg-slate-50 p-3" onSubmit={event => {
+                  event.preventDefault();
+                  const quantity = Number(new FormData(event.currentTarget).get("quantity"));
+                  if (Number.isInteger(quantity) && quantity >= 1 && quantity <= 999) void choose(offer.shopId, product.id, quantity);
+                }}>
+                  <label className="block text-sm font-medium">
+                    Packages of {product.name} at {offer.shopName}
+                    <input name="quantity" aria-label={`Packages of ${product.name} at ${offer.shopName}`} type="number" min={1} max={999} step={1} required defaultValue={saved.find(c => c.shopId === offer.shopId && c.product.id === product.id)?.quantity ?? Math.min(item.quantity, 999)} disabled={disabled || busy || reloadNeeded} className="ml-2 min-h-11 w-24 rounded border border-slate-300 bg-white px-3" />
+                  </label>
+                  <p className="mt-2 text-xs">This is the number of alternative packages to buy, not an automatic size conversion.</p>
+                  <button type="submit" disabled={disabled || busy || reloadNeeded || !priceCurrent(offer, now)} className="mt-2 min-h-11 rounded-lg bg-sky-700 px-4 py-2 font-semibold text-white disabled:opacity-50">
+                    {saved.some(c => c.shopId === offer.shopId && c.product.id === product.id) ? `Update choice for ${offer.shopName}` : `Use this alternative at ${offer.shopName}`}
+                  </button>
+                  {!priceCurrent(offer, now) && <p className="mt-1 text-xs">A current, comparable price is required to choose this alternative.</p>}
+                </form>
+              )}
               {link && (
                 <a
                   href={link}
@@ -165,6 +233,11 @@ export default function BrandAlternatives({
           );
         })}
       </ul>
+      {error && <p role="alert" className="mt-3 text-sm text-red-800">{error}</p>}
+      {notice && <p role="status" className="mt-3 text-sm text-sky-800">{notice}</p>}
+      {reloadNeeded && <button type="button" disabled={busy || disabled} className="mt-2 min-h-11 font-semibold text-sky-800 underline" onClick={async () => {
+        try { await onChanged?.(); if (alive.current) { setReloadNeeded(false); setError(""); } } catch { if (alive.current) setError("Unable to reload prices. Please try again."); }
+      }}>Reload choices</button>}
       <p className="mt-3 text-xs text-slate-600">
         Single-package prices shown; buying several packages or qualifying for a
         multibuy can change your spending. Check the retailer for the latest

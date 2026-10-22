@@ -34,6 +34,8 @@ function Basket({
         {basket.pricedCount} of {count} {count === 1 ? "item" : "items"} priced
         · includes quantities
       </p>
+      {!!basket.needsChoiceCount && <p className="mt-2 text-sm font-semibold">Subtotal — {basket.needsChoiceCount} {basket.needsChoiceCount === 1 ? "item needs a choice" : "items need a choice"}</p>}
+      {!!basket.substitutionCount && <p className="mt-1 text-xs">Includes {basket.substitutionCount} chosen {basket.substitutionCount === 1 ? "alternative" : "alternatives"}</p>}
       {incomplete && (
         <details className="mt-3 text-sm text-red-900">
           <summary className="cursor-pointer font-semibold">
@@ -78,10 +80,9 @@ export default function ShoppingListCostSummary({
         ))}
       </div>
       <p className="mt-3 text-xs leading-5 text-slate-500">
-        Estimated from current observed prices for matching products. Lowest
+        Estimated from current observed prices, including alternatives you explicitly choose. Different brands and package sizes can change what you buy. Lowest
         total may require visiting more than one shop. Your store’s prices and
-        availability may differ. Totals use single-item prices; multibuy
-        discounts are shown on cards but are not applied automatically. Stale
+        availability may differ. Totals use requested package counts and eligible multibuy offers. Stale
         prices and unverified conditional prices are excluded from totals.
       </p>
     </section>

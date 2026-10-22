@@ -36,6 +36,7 @@ function safeLink(value: string | null) {
 }
 
 function lineTotal(price: PlanningPrice, quantity: number) {
+  quantity = price.substitution?.quantity ?? quantity;
   return price.includedInTotal && price.quantityPrice?.quantity === quantity
     ? price.quantityPrice.total
     : (price.price ?? 0) * quantity;
@@ -50,10 +51,12 @@ function PriceDetail({
   quantity: number;
   primary?: boolean;
 }) {
+  quantity = price.substitution?.quantity ?? quantity;
   const now = usePriceNow(price.checkedDate);
   const link = safeLink(price.productUrl);
   return (
     <div className="text-sm text-slate-500">
+      {price.substitution && <p className="mb-1 font-semibold text-sky-800">Chosen alternative: {price.substitution.product.name} · {price.substitution.quantity} packages</p>}
       <p>
         {link ? (
           <a
@@ -270,7 +273,7 @@ export default function ShoppingListItemCard({
           }
           onClick={() => void refreshPrices()}
         >
-          Refresh price
+          {(row.substitutions?.length ?? 0) > 0 ? "Refresh original price" : "Refresh price"}
         </button>
       )}
       <div className="flex items-start gap-4">
@@ -305,8 +308,8 @@ export default function ShoppingListItemCard({
               </span>
             </p>
             <p className="mt-1 text-sm text-emerald-800">
-              {money(best.price!)} single-item price · Total for {item.quantity}{" "}
-              · Lowest observed price
+              {money(best.price!)} single-item price · Total for {best.substitution?.quantity ?? item.quantity}{" "}
+              · {prices.some(p => p.substitution) ? "Includes your chosen alternative" : "Lowest observed price"}
             </p>
             <div className="mt-2">
               <PriceDetail price={best} quantity={item.quantity} primary />
@@ -404,7 +407,7 @@ export default function ShoppingListItemCard({
         </>
       )}
       <PackAlternatives alternatives={row.packAlternatives} />
-      <BrandAlternatives alternatives={row.brandAlternatives} />
+      <BrandAlternatives alternatives={row.brandAlternatives} choices={row.substitutions} item={item} accountId={accountId} disabled={locked} onChanged={onDiscovered} />
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
         <div
           className="flex items-center gap-3"
