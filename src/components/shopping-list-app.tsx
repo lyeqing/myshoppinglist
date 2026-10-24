@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import AppHeader from "./app-header";
 import { api, ApiError } from "@/lib/api-client";
 import {
   isActive,
@@ -522,15 +523,6 @@ export default function ShoppingListApp() {
   }
   const ordered = Object.values(jobs).sort((a, b) => b.jobId - a.jobId);
   const working = ordered.filter(isActive).length;
-  const displayName = session?.account.displayName.trim() || "Shopper";
-  const nameParts = displayName.split(/\s+/u);
-  const initials = [
-    nameParts[0],
-    ...(nameParts.length > 1 ? [nameParts[nameParts.length - 1]] : []),
-  ]
-    .map((part) => Array.from(part)[0])
-    .join("")
-    .toLocaleUpperCase();
   return (
     <>
       <a
@@ -539,83 +531,7 @@ export default function ShoppingListApp() {
       >
         Skip to content
       </a>
-      <header className="border-b border-slate-200 bg-white">
-        <nav
-          aria-label="Main navigation"
-          className="mx-auto flex max-w-7xl flex-wrap gap-5 px-5 pt-4 text-sm font-semibold sm:px-8"
-        >
-          <Link href="/" aria-current="page" className="text-sky-700">
-            My lists
-          </Link>
-          <Link href="/in-store">Shop in store</Link>
-          {session && <Link href="/settings">My Stores</Link>}
-          {session && !session.account.isTrial && <Link href="/products/history">Products</Link>}
-        </nav>
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-5 py-5 sm:gap-4 sm:px-8">
-          <Link
-            href="/"
-            className="flex min-w-0 items-center gap-2 font-semibold tracking-tight sm:gap-3"
-          >
-            <span
-              className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-sky-700 text-white"
-              aria-hidden="true"
-            >
-              <svg
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.7"
-              >
-                <path d="M4 8h16l-2 12H6L4 8ZM8 8l4-6 4 6M9 11v5m6-5v5" />
-              </svg>
-            </span>
-            <span className="truncate text-sm sm:text-base">
-              MyShoppingList
-              <span className="ml-2 hidden text-xs font-normal text-slate-400 sm:inline">
-                EARLY ACCESS
-              </span>
-            </span>
-          </Link>
-          {session ? (
-            <div className="flex shrink-0 items-center gap-3 sm:gap-4">
-              {!session.account.isTrial && (
-                <div
-                  role="group"
-                  aria-label={`Signed in as ${displayName}`}
-                  title={displayName}
-                  className="flex items-center gap-2.5"
-                >
-                  <span
-                    aria-hidden="true"
-                    className="flex size-9 shrink-0 items-center justify-center rounded-full bg-sky-100 text-xs font-semibold text-sky-800 ring-1 ring-inset ring-sky-200"
-                  >
-                    {initials}
-                  </span>
-                  <span
-                    aria-hidden="true"
-                    className="hidden max-w-40 truncate text-sm font-medium text-slate-700 sm:block lg:max-w-56"
-                  >
-                    {displayName}
-                  </span>
-                </div>
-              )}
-              <button
-                onClick={logout}
-                disabled={busy || authBusy}
-                className={`${!session.account.isTrial ? "border-l border-slate-200 pl-3 sm:pl-4 " : ""}py-2 text-sm font-medium text-slate-500 transition hover:text-slate-900 focus-visible:rounded focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-sky-700 disabled:opacity-50`}
-              >
-                Sign out
-              </button>
-            </div>
-          ) : (
-            <span className="text-right text-xs text-slate-500">
-              Made for everyday shopping
-            </span>
-          )}
-        </div>
-      </header>
+      <AppHeader session={session} active="lists" loading={booting} disabled={busy || authBusy} onSignOut={logout} showSignIn={false} />
       <main
         id="main"
         className="mx-auto max-w-7xl px-5 pb-16 pt-10 sm:px-8 sm:pt-14"

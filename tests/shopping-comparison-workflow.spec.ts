@@ -418,7 +418,7 @@ for (const trial of [false, true]) {
         exact: true,
       })
     ).toBeVisible();
-    await page.getByRole("link", { name: "My Stores", exact: true }).click();
+    await page.getByRole("link", { name: "Setting", exact: true }).click();
     await page
       .getByRole("checkbox", { name: "Woolworths", exact: true })
       .check();
@@ -542,7 +542,7 @@ for (const trial of [false, true]) {
       }-combined-workflow.png`,
       fullPage: true,
     });
-    await page.getByRole("link", { name: "My Stores", exact: true }).click();
+    await page.getByRole("link", { name: "Setting", exact: true }).click();
     await expect(
       page
         .getByRole("list", { name: "Selected branches" })
@@ -583,7 +583,7 @@ for (const trial of [false, true]) {
     await expect(
       page.getByText(/Fixture Marion|Unsaved pantry note/)
     ).toHaveCount(0);
-    await page.getByRole("link", { name: "My Stores", exact: true }).click();
+    await page.getByRole("link", { name: "Setting", exact: true }).click();
     await expect(
       page.getByRole("checkbox", {
         name: "Show alternative brands",

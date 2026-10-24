@@ -55,6 +55,10 @@ test("paid history shows saved items and permanently deletes an archive", async 
     return route.fulfill({ status: 404 });
   });
   await page.goto("/history");
+  await expect(page.getByRole("heading", { name: "Archived lists", exact: true })).toBeVisible();
+  const navigation = page.getByRole("navigation", { name: "Main navigation" });
+  await expect(navigation.getByRole("link", { name: "Archived lists", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(navigation.getByRole("link", { name: "Setting", exact: true })).toBeVisible();
   await page.getByRole("button", { name: /Last weekend/ }).click();
   await expect(page.getByRole("heading", { name: "Milk" })).toBeVisible();
   await expect(page.getByText("Quantity 2 · Purchased")).toBeVisible();
@@ -93,11 +97,12 @@ test("free accounts cannot load history data", async ({ page }) => {
     return route.fulfill({ status: 403 });
   });
   await page.goto("/history");
+  await expect(page.getByRole("heading", { name: "Archived lists", exact: true })).toBeVisible();
   await expect(
-    page.getByText("Shopping history is available to paid accounts only."),
+    page.getByText("Archived lists are available to paid accounts only."),
   ).toBeVisible();
   expect(historyRequests).toBe(0);
   await expect(
-    page.getByRole("link", { name: "History", exact: true }),
+    page.getByRole("link", { name: "Archived lists", exact: true }),
   ).toHaveCount(0);
 });

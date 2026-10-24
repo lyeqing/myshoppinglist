@@ -13,6 +13,7 @@ import {
   usePriceNow,
 } from "@/lib/price-age";
 import Link from "next/link";
+import AppHeader from "./app-header";
 import ComparisonStoreContextPanel from "./comparison-store-context";
 import ComparisonPreferences from "./comparison-preferences";
 import AccountForm from "./account-form";
@@ -68,12 +69,6 @@ export default function InStoreApp() {
   const state = useStore(store);
   const now = usePriceNow(state.detail);
   const [signingIn, setSigningIn] = useState(false);
-  const name = state.session?.account.displayName.trim() || "Shopper";
-  const parts = name.split(/\s+/);
-  const initials = [parts[0], ...(parts.length > 1 ? [parts.at(-1)!] : [])]
-    .map((p) => Array.from(p)[0])
-    .join("")
-    .toLocaleUpperCase();
   const { load, dispose } = state;
   useEffect(() => {
     void load(null);
@@ -153,68 +148,9 @@ export default function InStoreApp() {
   ];
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-5 py-4">
-          <Link href="/" className="font-semibold text-sky-800">
-            MyShoppingList
-          </Link>
-          <nav
-            aria-label="Main navigation"
-            className="flex flex-wrap gap-4 text-sm font-semibold"
-          >
-            <Link href="/">My lists</Link>
-            <Link href="/in-store" aria-current="page" className="text-sky-700">
-              Shop in store
-            </Link>
-            {state.session && <Link href="/settings">My Stores</Link>}
-            {state.session && !state.session.account.isTrial && <Link href="/products/history">Products</Link>}
-            {state.session?.account.isPaid && (
-              <Link href="/history">History</Link>
-            )}
-          </nav>
-          <div className="flex items-center gap-3">
-            {state.session && !state.session.account.isTrial && (
-              <div
-                role="group"
-                aria-label={`Signed in as ${name}`}
-                title={name}
-                className="flex items-center gap-2"
-              >
-                <span
-                  aria-hidden="true"
-                  className="flex size-9 items-center justify-center rounded-full bg-sky-100 text-xs font-semibold text-sky-800"
-                >
-                  {initials}
-                </span>
-                <span className="hidden max-w-40 truncate text-sm sm:block">
-                  {name}
-                </span>
-              </div>
-            )}
-            {(!state.session || state.session.account.isTrial) && (
-              <button
-                className={button}
-                disabled={disabled}
-                onClick={() => setSigningIn(true)}
-              >
-                Sign in
-              </button>
-            )}
-            {state.session && (
-              <button
-                className={button}
-                disabled={disabled}
-                onClick={() => {
-                  setSigningIn(false);
-                  void state.logout();
-                }}
-              >
-                Sign out
-              </button>
-            )}
-          </div>
-        </div>
-      </header>
+      <AppHeader session={state.session} active="in-store" loading={state.loading} disabled={disabled}
+        onSignIn={() => setSigningIn(true)}
+        onSignOut={async () => { setSigningIn(false); await state.logout(); }} />
       <main className="mx-auto max-w-5xl px-4 py-7 sm:px-6">
         <div hidden={!signingIn}>
           {signingIn && (

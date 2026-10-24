@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import AppHeader from "./app-header";
 import { useStore } from "zustand";
 import { api, ApiError } from "@/lib/api-client";
 import type { ProductLibraryPage, Session, ShoppingListManagement } from "@/lib/api-types";
@@ -41,13 +42,7 @@ export default function ProductLibraryApp({ view }: { view: View }) {
   }, [store, retry]);
   const title = tabs.find((tab) => tab.view === view)!.label;
   return <div className="min-h-screen bg-slate-50 text-slate-900">
-    <header className="border-b border-slate-200 bg-white">
-      <nav aria-label="Main navigation" className="mx-auto flex max-w-5xl flex-wrap gap-5 px-5 py-5 text-sm font-semibold">
-        <Link href="/">My lists</Link><Link href="/in-store">Shop in store</Link><Link href="/settings">My Stores</Link>
-        <Link href="/products/history" aria-current={view === "history" ? "page" : undefined} className="text-sky-700">Products</Link>
-        {session?.account.isPaid && <Link href="/history">Archived lists</Link>}
-      </nav>
-    </header>
+    <AppHeader session={session} active="products" loading={loading} />
     <main className="mx-auto max-w-5xl px-5 py-8">
       <nav aria-label="Product pages" className="mb-6 flex flex-wrap gap-2">
         {tabs.map((tab) => <Link key={tab.view} href={tab.href} aria-current={tab.view === view ? "page" : undefined}

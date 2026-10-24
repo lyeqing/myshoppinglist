@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import AppHeader from "./app-header";
 import { useStore } from "zustand";
 import PreferredShopBranches from "@/components/preferred-shop-branches";
 import { createShoppingPreferencesStore } from "@/stores/shopping-preferences-store";
@@ -35,19 +36,7 @@ export default function ShoppingPreferences() {
     );
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
-      <header className="border-b border-slate-200 bg-white">
-        <nav
-          aria-label="Main navigation"
-          className="mx-auto flex max-w-3xl flex-wrap gap-5 px-5 py-5 text-sm font-semibold"
-        >
-          <Link href="/">My lists</Link>
-          <Link href="/in-store">Shop in store</Link>
-          {state.session && !state.session.account.isTrial && <Link href="/products/history">Products</Link>}
-          <Link href="/settings" aria-current="page" className="text-sky-700">
-            My Stores
-          </Link>
-        </nav>
-      </header>
+      <AppHeader session={state.session} active="stores" loading={state.loading} disabled={disabled} />
       <main className="mx-auto max-w-3xl px-5 py-8">
         <h1 className="text-3xl font-semibold">Settings</h1>
         <p className="mt-3 text-sm leading-6 text-slate-600">

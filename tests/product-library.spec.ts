@@ -30,6 +30,11 @@ async function fixture(page: Page, products = [product(1, "Coffee", true), produ
     const path = url.pathname;
     const method = route.request().method();
     const send = (json: unknown, status = 200) => route.fulfill({ json, status });
+    if (path === "/api/shopping-lists/history") return send([]);
+    if (path.endsWith("/account/shopping-preferences")) return send({
+      accountId: state.owner, compareOnlyPreferredShops: false, includeDifferentPackSizes: true,
+      includeDifferentBrands: false, shops: [], branches: [], availableShops: [], updatedDate: timestamp,
+    });
     if (path.endsWith("/auth/me")) return send({ account: { id: state.owner, displayName: "Alex", isTrial: state.trial, isPaid: state.paid }, shoppingListId: 1 });
     if (path.endsWith("/manage")) return send({ isPaid: state.paid, limit: state.paid ? 5 : 2, lists: state.lists });
     if (path.endsWith("/account/products/preferences")) {
@@ -105,6 +110,7 @@ test("free product history filters, searches and toggles independent badges with
   await page.goto("/products/history");
   await expect(page.getByRole("heading", { name: "Product history", exact: true })).toBeVisible();
   await expect(page.getByRole("article")).toHaveCount(2);
+  await expect(page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Archived lists", exact: true })).toHaveCount(0);
   await page.getByRole("combobox", { name: "Purchase history", exact: true }).selectOption("purchased");
   await expect(page.getByRole("article")).toHaveCount(1);
   await expect(page.getByRole("heading", { name: "Coffee", exact: true })).toBeVisible();
@@ -266,4 +272,36 @@ test("the proxy allows only product-library routes, safe filters and protected J
     expect((await request.put("/api/account/products/1/preferences", { headers: { "X-MyShoppingList-Request": "1", "Content-Type": "text/plain" }, data: "{}" })).status()).toBe(415);
     expect((await request.delete("/api/account/products/1/preferences", { headers: { "X-MyShoppingList-Request": "1" } })).status()).toBe(404);
   } finally { await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())); }
+});
+
+
+test("paid navigation stays consistent across main pages and product sections", async ({ page }) => {
+  const state = await fixture(page);
+  state.paid = true;
+  const destinations = [
+    ["/", "My lists"], ["/in-store", "Shop in store"], ["/settings", "Setting"],
+    ["/products/history", "Products"], ["/favorites", "Products"],
+    ["/essentials", "Products"], ["/history", "Archived lists"],
+  ];
+  for (const [path, selected] of destinations) {
+    await page.goto(path);
+    const nav = page.getByRole("navigation", { name: "Main navigation" });
+    await expect(nav.getByRole("link")).toHaveText([
+      "My lists", "Shop in store", "Setting", "Products", "Archived lists",
+    ]);
+    await expect(nav.locator('[aria-current="page"]')).toHaveCount(1);
+    await expect(nav.getByRole("link", { name: selected, exact: true })).toHaveAttribute("aria-current", "page");
+    await expect(nav.getByRole("link", { name: "Archived lists", exact: true })).toBeVisible();
+    const header = page.locator("header");
+    await expect(header.getByRole("group", { name: "Signed in as Alex", exact: true })).toBeVisible();
+    await expect(header.getByText("Alex", { exact: true })).toBeVisible();
+    await expect(header.getByRole("button", { name: "Sign out", exact: true })).toBeEnabled();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }
+  await expect(page.getByRole("heading", { name: "Archived lists", exact: true })).toBeVisible();
+  await expect(page.getByText("No archived lists yet.")).toBeVisible();
+  await page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Products", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Product history", exact: true })).toBeVisible();
+  await page.getByRole("navigation", { name: "Main navigation" }).getByRole("link", { name: "Archived lists", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Archived lists", exact: true })).toBeVisible();
 });

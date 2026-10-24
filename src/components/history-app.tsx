@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import Link from "next/link";
+import AppHeader from "./app-header";
 import { useStore } from "zustand";
 import { createHistoryStore } from "@/stores/history-store";
 import ProductBadges from "./product-badges";
@@ -27,54 +27,19 @@ export default function HistoryApp() {
     !state.forbidden;
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-4 px-5 py-4">
-          <Link href="/" className="font-semibold text-sky-800">
-            MyShoppingList
-          </Link>
-          <nav
-            aria-label="Main navigation"
-            className="flex gap-4 text-sm font-semibold"
-          >
-            <Link href="/">My lists</Link>
-            <Link href="/in-store">Shop in store</Link>
-            {state.session && !state.session.account.isTrial && <Link href="/products/history">Products</Link>}
-            {canSee && (
-              <Link href="/history" aria-current="page">
-                History
-              </Link>
-            )}
-          </nav>
-          {state.session ? (
-            <div className="flex items-center gap-3 text-sm">
-              <span>{state.session.account.displayName}</span>
-              <button
-                className={button}
-                disabled={state.loading}
-                onClick={() => void state.logout()}
-              >
-                Sign out
-              </button>
-            </div>
-          ) : (
-            <Link href="/" className={button}>
-              Sign in
-            </Link>
-          )}
-        </div>
-      </header>
+      <AppHeader session={state.session} active="archives" loading={state.loading} disabled={state.loading} onSignOut={state.logout} />
       <main className="mx-auto max-w-5xl px-5 py-10">
         <p className="text-xs font-semibold tracking-widest text-sky-700">
           YOUR PAST LISTS
         </p>
-        <h1 className="mt-2 text-3xl font-semibold">Shopping history</h1>
+        <h1 className="mt-2 text-3xl font-semibold">Archived lists</h1>
         <p className="mt-3 text-slate-600">
           Archived lists and their saved items. These are not receipts or
           historical purchase prices.
         </p>
         {state.loading && (
           <p role="status" className="mt-6">
-            Loading history…
+            Loading archived lists…
           </p>
         )}
         {state.error && (
@@ -95,8 +60,8 @@ export default function HistoryApp() {
         {!state.loading && !canSee && (
           <p className="mt-6 rounded-xl bg-sky-50 p-5">
             {state.session
-              ? "Shopping history is available to paid accounts only."
-              : "Sign in with a paid account to view your history."}
+              ? "Archived lists are available to paid accounts only."
+              : "Sign in with a paid account to view your archived lists."}
           </p>
         )}
         {canSee && !state.loading && (
@@ -104,7 +69,7 @@ export default function HistoryApp() {
             {state.detail ? (
               <section className="mt-8">
                 <button className={button} onClick={() => void state.load()}>
-                  ← All history
+                  ← All archived lists
                 </button>
                 <h2 className="mt-5 text-2xl font-semibold">
                   {state.detail.list.name}
@@ -147,7 +112,7 @@ export default function HistoryApp() {
                   onClick={() => {
                     if (
                       window.confirm(
-                        `Delete “${state.detail!.list.name}” permanently? It will no longer appear in History.`,
+                        `Delete “${state.detail!.list.name}” permanently? It will no longer appear in Archived lists.`,
                       )
                     )
                       void state.remove(state.detail!.list);

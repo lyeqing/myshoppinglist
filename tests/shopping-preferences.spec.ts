@@ -430,7 +430,7 @@ test("shopping views show the saved comparison scope and link to My Stores", asy
   await expect(page.getByText(/Comparing My Stores: Woolworths/)).toBeVisible();
   await page
     .getByRole("navigation", { name: "Main navigation" })
-    .getByRole("link", { name: "My Stores", exact: true })
+    .getByRole("link", { name: "Setting", exact: true })
     .click();
   await expect(
     page.getByRole("checkbox", { name: "Woolworths", exact: true }),
