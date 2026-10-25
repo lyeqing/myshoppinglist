@@ -46,7 +46,7 @@ export default function ProductLibraryApp({ view }: { view: View }) {
     <main className="mx-auto max-w-5xl px-5 py-8">
       <nav aria-label="Product pages" className="mb-6 flex flex-wrap gap-2">
         {tabs.map((tab) => <Link key={tab.view} href={tab.href} aria-current={tab.view === view ? "page" : undefined}
-          className={`${button} ${tab.view === view ? "border-sky-700 bg-sky-50 text-sky-900" : "text-slate-600"}`}>{tab.label}</Link>)}
+          className={`min-h-11 rounded-xl border px-4 py-2 text-sm font-semibold ${tab.view === view ? "border-sky-700 bg-sky-700 text-white" : "border-slate-300 bg-white text-slate-600"}`}>{tab.label}</Link>)}
       </nav>
       <h1 className="text-3xl font-semibold">{title}</h1>
       <p className="mt-3 text-sm leading-6 text-slate-600">{view === "essentials"
