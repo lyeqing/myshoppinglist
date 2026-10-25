@@ -33,7 +33,7 @@
       // Closed shadow DOM protects the frame URL and its per-tab ticket from page scripts.
       const shadow = host.attachShadow({ mode: "closed" });
       host.style.cssText =
-        "all:initial!important;position:fixed!important;right:12px!important;top:clamp(12px,66vh,calc(100vh - 250px))!important;width:min(218px,calc(100vw - 24px))!important;height:238px!important;z-index:2147483647!important;display:block!important;";
+        "all:initial!important;position:fixed!important;right:12px!important;top:clamp(12px,66vh,calc(100vh - 372px))!important;width:min(280px,calc(100vw - 24px))!important;height:min(360px,calc(100vh - 24px))!important;z-index:2147483647!important;display:block!important;";
       const frame = document.createElement("iframe");
       frame.src = chrome.runtime.getURL(
         `compact.html?ticket=${encodeURIComponent(ticket)}`,

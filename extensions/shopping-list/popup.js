@@ -1,240 +1,119 @@
-import { productUrl, retailerPage } from "./background.js";
 const el = (id) => document.getElementById(id);
-let url = null;
+const compact = location.pathname.endsWith("/compact.html");
 let busy = false;
-let signedIn = false;
+let model = {};
 let tabId;
-let retailer = false;
-let activeImport = false;
-el("extension-id").textContent = chrome.runtime.id;
-function status(text, error = false) {
-  el("status").textContent = text;
+let refreshing = false;
+let refreshAgain = false;
+function status(message, error = false) {
+  el("status").textContent = message || "";
   el("status").className = error ? "error" : "";
 }
-function disabled(value) {
-  busy = value;
-  document.querySelectorAll("button,input,select").forEach((e) => {
-    e.disabled = value;
-  });
-  el("add-button").disabled = value || activeImport || !url || !signedIn;
-  el("hide").disabled = false;
-  el("minimize").disabled = !retailer || !signedIn;
-}
-function progress(workflow) {
-  el("open-verification").hidden = !workflow?.verificationRequired || workflow.status !== "Reading";
-  el("cancel-verification").hidden = el("open-verification").hidden;
-  activeImport = workflow?.status === "Reading";
-  el("retry").hidden = workflow?.status !== "Failed";
-  if (workflow) status(workflow.message, workflow.status === "Failed");
-  disabled(busy);
-}
 async function send(message) {
-  const result = await chrome.runtime.sendMessage(message);
-  if (!result?.ok)
-    throw new Error(
-      result?.error || "The extension could not complete the request.",
-    );
-  return result.data;
+  const reply = await chrome.runtime.sendMessage(message);
+  if (!reply?.ok) throw new Error(reply?.error || "The extension could not complete the request.");
+  return reply.data;
+}
+function controls() {
+  const locked = busy || model.pending || model.workflow?.status === "Saving";
+  const ready = !!model.session && !!model.productUrl;
+  for (const id of ["list", "quantity", "cancel"]) el(id).disabled = locked;
+  el("read").hidden = !!model.review;
+  el("read").disabled = locked || !ready;
+  el("save").disabled = locked || !ready || !model.review;
+  el("retry").hidden = !model.pending;
+  el("retry").disabled = busy;
+  el("refresh").disabled = busy;
+  if (el("minimize")) el("minimize").disabled = busy || !model.session;
 }
 function render(data) {
-  signedIn = !!data.session;
-  el("help-prices").checked = data.preference?.enabled !== false;
-  el("shared-status").textContent = data.preference?.blocked
-    ? "Shared collection is restricted for this account. You can still add products."
-    : data.preference?.enabled
-      ? "Ready to help while idle."
-      : "Shared collection is off.";
-  el("login").hidden = signedIn;
-  el("account").hidden = !signedIn;
-  el("name").textContent = data.session?.account.displayName || "";
-  el("list").replaceChildren();
-  const lists = data.lists || [];
-  if (lists.length > 1) {
-    const option = document.createElement("option");
-    option.value = "";
-    option.textContent = "Choose a list";
-    el("list").append(option);
+  model = { ...model, ...data };
+  tabId = model.tabId;
+  el("login").hidden = !!model.session || compact;
+  el("account").hidden = !model.session;
+  el("name").textContent = model.session?.account?.displayName || "";
+  el("product").textContent = model.productUrl
+    ? "Read this product, review the details, then save."
+    : "Open a Coles, Woolworths or ALDI product page.";
+  if (data.lists) {
+    const remembered = Number(el("list").value);
+    el("list").replaceChildren(...data.lists.map((list) => {
+      const option = document.createElement("option");
+      option.value = String(list.id); option.textContent = list.name; return option;
+    }));
+    const selected = data.lists.some((list) => list.id === remembered) ? remembered : model.selectedListId;
+    if (selected != null) el("list").value = String(selected);
+    el("list-label").hidden = !data.lists.length;
+    el("empty").hidden = !!data.lists.length;
   }
-  for (const list of lists) {
-    const option = document.createElement("option");
-    option.value = String(list.id);
-    option.textContent = list.name;
-    el("list").append(option);
+  if (model.pending && model.quantity != null) el("quantity").value = String(model.quantity);
+  const review = model.review;
+  el("review").hidden = !review;
+  if (review) {
+    el("review-name").textContent = review.name;
+    el("review-detail").textContent = [review.brand,
+      [review.packQuantity && review.packQuantity > 1 ? review.packQuantity + " ×" : "", review.packSize, review.packUnit].filter(Boolean).join(" ")
+    ].filter(Boolean).join(" · ");
+    el("review-price").textContent = review.price == null ? "Price unavailable"
+      : new Intl.NumberFormat("en-AU", { style: "currency", currency: review.currency || "AUD" }).format(review.price);
+    el("review-notice").textContent = review.priceNotice || "";
+    el("review-date").textContent = "Observed " + new Date(review.observedAt).toLocaleString();
   }
-  if (data.selectedListId != null)
-    el("list").value = String(data.selectedListId);
-  el("list-label").hidden = !lists.length;
-  el("list").required = lists.length > 1;
-  el("empty").hidden = !!lists.length;
-  if (data.result?.url === url) confirmation(data.result);
-  progress(data.workflow);
-}
-function confirmation(result) {
-  status(
-    result.reused
-      ? "This product is already being checked with this quantity."
-      : `Added to the import queue (quantity ${result.quantity}). Price checks are in progress. Open MyShoppingList to follow progress.`,
-  );
+  status(model.workflow?.message || (model.session ? "Ready when you are." : "Sign in to save personal products."),
+    ["Pending", "Failed"].includes(model.workflow?.status));
+  controls();
 }
 async function refresh() {
+  if (busy || refreshing) { refreshAgain = true; return; }
+  refreshing = true;
+  try { render(await send({ type: "state" })); }
+  catch (error) { status(error.message, true); }
+  finally { refreshing = false; controls(); }
+}
+async function action(message, progress) {
   if (busy) return;
-  disabled(true);
-  status("");
-  try {
-    const ownTab = Number(new URL(location.href).searchParams.get("tabId"));
-    const tab =
-      ownTab > 0
-        ? await chrome.tabs.get(ownTab)
-        : (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
-    tabId = tab?.id;
-    retailer = retailerPage(tab?.url);
-    url = productUrl(tab?.url);
-    el("product").textContent =
-      url || "Open a Coles, Woolworths or ALDI product page to add it.";
-    render(await send({ type: "state" }));
-  } catch (error) {
-    render({ session: null });
+  busy = true; controls(); status(progress);
+  try { render(await send(message)); }
+  catch (error) {
+    // Read state after errors so an uncertain save exposes its stable Retry action.
+    try { render(await send({ type: "state" })); } catch { /* Keep the last view. */ }
     status(error.message, true);
   } finally {
-    disabled(false);
+    busy = false; controls();
+    if (refreshAgain) { refreshAgain = false; void refresh(); }
   }
 }
-el("login").addEventListener("submit", async (event) => {
+el("read").addEventListener("click", () => action({ type: "preview" }, "Reading this product…"));
+el("add").addEventListener("submit", (event) => {
   event.preventDefault();
-  if (busy) return;
-  disabled(true);
-  status("Signing in…");
-  try {
-    render(
-      await send({
-        type: "login",
-        email: el("email").value.trim(),
-        password: el("password").value,
-      }),
-    );
-    status("Signed in. Choose your list and add the product.");
-  } catch (error) {
-    status(error.message, true);
-  } finally {
-    el("password").value = "";
-    disabled(false);
-  }
+  void action({ type: "save", quantity: Number(el("quantity").value),
+    listId: el("list").value ? Number(el("list").value) : null }, "Saving to your list…");
 });
-el("add").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  if (busy) return;
-  disabled(true);
-  status("Adding product…");
-  try {
-    const data = await send({
-      type: "add",
-      url,
-      tabId,
-      listId: el("list").value ? Number(el("list").value) : null,
-      quantity: Number(el("quantity").value),
-    });
-    progress(data.workflow);
-  } catch (error) {
-    status(error.message, true);
-  } finally {
-    disabled(false);
-  }
-});
-el("logout").addEventListener("click", async () => {
-  if (busy) return;
-  disabled(true);
-  try {
-    await send({ type: "logout" });
-    status("Signed out.");
-  } catch (error) {
-    status(`${error.message} Local sign-in was cleared.`, true);
-  } finally {
-    render({ session: null });
-    disabled(false);
-  }
-});
+el("list").addEventListener("change", () => action({ type: "selectList", listId: Number(el("list").value) }, "Selecting list…"));
+el("cancel").addEventListener("click", () => action({ type: "cancel" }, "Cancelling preview…"));
+el("retry").addEventListener("click", () => action({ type: "retry" }, "Checking your save…"));
 el("refresh").addEventListener("click", refresh);
-for (const [id, type] of [["open-verification", "openVerification"], ["cancel-verification", "cancelVerification"]]) {
-  el(id).addEventListener("click", async () => {
-    if (busy) return;
-    disabled(true);
-    try { progress((await send({ type })).workflow); }
-    catch (error) { status(error.message, true); }
-    finally { disabled(false); }
-  });
-}
-el("minimize").addEventListener("click", () => {
-  void send({ type: "panel-minimize" }).catch((error) =>
-    status(error.message, true),
-  );
+el("login").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const password = el("password").value;
+  el("password").value = "";
+  void action({ type: "login", email: el("email").value, password }, "Signing in…");
 });
-el("hide").addEventListener("click", () => {
-  void send({ type: "panel-hide" }).catch((error) =>
-    status(error.message, true),
-  );
+el("logout").addEventListener("click", () => action({ type: "logout" }, "Signing out…"));
+el("hide").addEventListener("click", () => { void send({ type: "panel-hide" }).catch((error) => status(error.message, true)); });
+el("minimize")?.addEventListener("click", () => { void send({ type: "panel-minimize" }).catch((error) => status(error.message, true)); });
+el("expand")?.addEventListener("click", () => {
+  if (tabId != null) void chrome.sidePanel.open({ tabId }).then(() => send({ type: "panel-expand" }))
+    .catch((error) => status(error.message, true));
 });
-el("list").addEventListener("change", async () => {
-  disabled(true);
-  try {
-    await send({ type: "selectList", listId: Number(el("list").value) });
-  } catch (error) {
-    status(error.message, true);
-  } finally {
-    disabled(false);
-  }
-});
-el("retry").addEventListener("click", async () => {
-  if (busy) return;
-  disabled(true);
-  try {
-    progress((await send({ type: "retry" })).workflow);
-  } catch (error) {
-    status(error.message, true);
-  } finally {
-    disabled(false);
-  }
-});
-chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === "session" && changes.workflow)
-    progress(changes.workflow.newValue);
-});
-void refresh();
-let sessionRefreshTimer;
-function refreshSharedSession() {
-  clearTimeout(sessionRefreshTimer);
-  if (busy) {
-    sessionRefreshTimer = setTimeout(refreshSharedSession, 150);
-    return;
-  }
-  void refresh();
-}
-chrome.storage.onChanged.addListener((changes, area) => {
-  if (area !== "session" || !changes.token) return;
-  if (!changes.token.newValue) render({ session: null });
-  clearTimeout(sessionRefreshTimer);
-  sessionRefreshTimer = setTimeout(refreshSharedSession, 100);
-});
-el("help-prices").addEventListener("change", async () => {
-  disabled(true);
-  try {
-    render(
-      await send({
-        type: "contributionPreference",
-        enabled: el("help-prices").checked,
-      }),
-    );
-  } catch (error) {
-    status(error.message, true);
-  } finally {
-    disabled(false);
-  }
-});
+el("extension-id").textContent = chrome.runtime.id;
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== "session") return;
-  if (changes.sharedTask)
-    el("shared-status").textContent = changes.sharedTask.newValue
-      ? "Checking a shared retailer task…"
-      : "Ready to help while idle.";
-  if (changes.sharedMessage)
-    el("shared-status").textContent = changes.sharedMessage.newValue;
+  if (changes.token) {
+    // Clear cached account details immediately, before the next API request.
+    model = {}; render({ session: null, review: null, pending: false, workflow: null });
+  }
+  if (["token", "review", "pending", "workflow"].some((key) => changes[key])) void refresh();
 });
+chrome.runtime.onMessage.addListener((message) => { if (message.type === "panel-changed") void refresh(); });
+void refresh();

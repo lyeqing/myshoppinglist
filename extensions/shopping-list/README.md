@@ -1,62 +1,55 @@
-# MyShoppingList user extension — local test
+# MyShoppingList personal product extension — local test
 
-This is the shopper's add-to-list extension, separate from `coles-worker` (the retailer reader).
+Version 0.6.0 reads a product only after you click **Read product**. It shows the server-validated name, pack, price and observation date before you click **Save to list**. Products and observations belong to the signed-in account. It does not collect shared prices, search other retailers, open comparison tabs or run timed collection.
 
-## Install locally
+## Staged rollout
 
-1. Run the API at `http://localhost:5392` and the website at `http://localhost:3000`.
-2. Open `chrome://extensions`, enable **Developer mode**, click **Load unpacked**, and select this `extensions/shopping-list` folder.
-3. Copy its 32-character extension ID from Chrome's extension card (also shown under Local setup in the popup).
-4. Configure the API with `UserExtension:AllowedExtensionIds:0` set to that ID, for example in your private `appsettings.Local.json`:
+This version requires the updated private-capture API. `UserExtension:PersonalCapturesEnabled` remains **false by default**. Installing the extension does not enable it. Until rollout is approved, previews report that personal capture is not enabled; they never fall back to shared imports.
 
-   ```json
-   "UserExtension": { "AllowedExtensionIds": ["YOUR_32_CHARACTER_EXTENSION_ID"] }
-   ```
+Do not enable personal mode as an isolated extension update. Website controls and the legacy-data transition must be reviewed first. Enabling personal mode also disables the import, pack discovery, brand discovery and price refresh workers, rejects old collection submissions, and returns no shared work to older extensions. Existing database data is retained.
 
-   Merge that section into the existing JSON object; do not replace existing settings. Alternatively set environment variable `UserExtension__AllowedExtensionIds__0` for the API process. Restart the API. No extension is allowed by default. The ID is an allowlist identifier, not a secret or a replacement for signing in.
+## Local setup after rollout approval
 
-5. Pin the extension using Chrome's Extensions menu. Open a Coles, Woolworths or ALDI product, click the extension, and use your existing website sign-in. You can also sign in from the extension; both share the same session. Version 0.5.0 adds ALDI host permissions; reload the extension after updating and restart the updated API.
-6. Choose a list if there are several, set quantity, and click **Add to list**. With no active lists, a list is created automatically using your local date, for example `Shopping_List_04_10_2026_01`. Subsequent automatically created lists that day use the next number; existing names are preserved. The extension reads this product page and saves it to your list. If the other retailer has a fresh exact match in the database, that price is reused. Otherwise the extension opens one background tab, searches and reads candidates, and sends evidence to the server. The server validates identity and price evidence; ambiguous matches are not marked exact.
+1. Run the API at http://localhost:5392 and the website at http://localhost:3000. Codex development servers use port 3001; the user's server on 3000 is reserved.
+2. Open chrome://extensions, enable **Developer mode**, choose **Load unpacked** and select this extensions/shopping-list folder.
+3. Copy the extension's 32-character ID. The API owner must add it to `UserExtension:AllowedExtensionIds`; no extension is allowed by default. Merge settings with the existing private configuration. The ID is an allowlist identifier, not a credential.
+4. Once the complete rollout is approved, the API owner enables `UserExtension:PersonalCapturesEnabled` and restarts the API. Reload the unpacked extension after updating it.
+5. Pin **MyShoppingList — Add to list (Local test)**. Open a Coles, Woolworths or ALDI product page and click the toolbar icon. Website and extension share sign-in in the same Chrome profile.
 
-Personal imports start when you click Add. Shared collection defaults to on for signed-in customers and can be disabled with Help refresh shared prices. While idle the extension asks for one reserved task every minute, backing off to five minutes when no work is available or on errors. Personal Add takes priority, closing any shared task tab; unfinished claims expire for another worker. You can close the popup while Chrome remains open. The temporary comparison tab is reused and closed on completion or failure; the original product tab is never closed or navigated. Status and pending submissions are kept in session storage so service-worker suspension and lost responses can recover. Retry replays the same request ID/step token. A 90-second page timeout or failed comparison keeps the saved source product and offers Retry comparison. After a Chrome restart, your website sign-in remains available until its session expires. Click Add again on the source page to resume an unfinished personal import; existing list items are preserved. Server claims expire after ten minutes of inactivity. Session storage does not survive a browser restart, so any tab restored by Chrome after a crash may need to be closed manually.
+## Save a product
 
-## Full and compact views
+Choose your shopping list and quantity. Click **Read product**, review the extracted name, pack and price, then **Save to list**. **Cancel** discards the preview without saving. Reading a preview does not create a product, observation or list. If no active list exists, a list named using your local date is created only when you save.
 
-Requires Chrome 142 or newer. Reload the extension after updating; Chrome does not need restarting. The first toolbar click each Chrome session opens the full side panel. Chrome controls which side its side panel occupies (normally the right).
+Missing prices are labelled unavailable; you can save the product without a price. The date describes when you read the page, not a live price guarantee. Store location remains unverified. To compare retailers, visit and save each product yourself. Unsupported pages, conflicting identities and inaccessible product data require checking the page and reading again.
 
-On Coles, Woolworths or ALDI pages, signed-in shoppers can minimize to a small panel on the right, approximately two-thirds down the page. Subsequent toolbar clicks use this compact view. It shows the remembered shopping list, quantity and Add, plus expand and hide controls. Add works only on product pages. If the remembered list no longer exists, the account's default list or first available list is used; if there are no lists, Add creates one. Open the full panel to change the selected list.
+Saving requires the same active product tab used for the preview. Navigation never starts another read automatically. There is no automatic verification loop: complete any retailer verification yourself, then choose **Read product**.
 
-ALDI importing reads only the original product tab when Add is clicked. The main-product record must match the product URL and heading. Missing prices do not prevent saving the product; price validation is performed by the API, and store scope remains unverified. Selected Coles and Woolworths comparisons may use temporary tabs. ALDI background collection, automatic ALDI comparisons and automatic ALDI price refreshes are unavailable. On stale/conflicting ALDI data, reload its original page and retry. Site terms restrict scripts; this implementation does not imply ALDI permission and does not bypass access restrictions.
+## Safe retries
 
-On other websites the toolbar opens the full panel and Minimize is disabled. Navigating away closes the full panel; supported retailer pages can then display the compact view. Hide (including Chrome's side-panel close button) stays hidden until the toolbar is clicked again. Signing out disables compact view. Hiding either view does not cancel imports or change the shared-price collection preference.
+If a save times out or its reply is lost, **Retry save** sends the exact same list, quantity, evidence, observation date and request ID. It does not reread the page or add the item twice. A pending save locks quantity/list changes and new reads until its outcome is resolved. Closing or hiding the panel does not cancel an already submitted save.
 
-The compact controls run in an isolated extension frame. Retailer pages receive visibility information only; Add is validated against the actual active tab, signed-in session and owned shopping lists.
+The pending request survives service-worker suspension while Chrome remains open. Session storage does not survive a full Chrome restart, extension reload/removal or profile reset. After those events, check your list before starting a new capture if the previous outcome was uncertain. Signing out or changing account discards cached evidence and pending work so it cannot be submitted under another account.
+
+## Full and compact panels
+
+Chrome 142 or newer is required. The first toolbar click opens the full side panel. Signed-in shoppers on supported retailer pages can minimize to a compact, scrollable panel. Both views provide the same review-before-save flow and list selection. Expand opens the full view; Hide stays hidden until another toolbar click. On other websites, use the full panel and open a supported product to read it.
+
+Compact controls run in an isolated extension frame with a per-tab ticket. Retailer page scripts cannot initiate a capture. Opening, minimizing, hiding or navigating does not extract products.
 
 ## Data and permissions
 
-- `activeTab`: identify the current product tab when you open the extension.
-- `sidePanel`: display the full extension interface beside the current tab.
-- `scripting` and retailer host permissions: read bounded product JSON from Coles, Woolworths and ALDI, and comparison search links from Coles and Woolworths. ALDI is read only in the user's original Add tab. No account details or whole-page HTML are sent.
-- `alarms`: resume active imports and schedule idle shared work. Shared polling stops on sign-out or opt-out.
-- `storage`: cache the shared session and active work in `chrome.storage.session`. Passwords are never saved. The website cookie restores sign-in after Chrome restarts; unfinished work does not survive a restart.
-- `cookies`: read and update only the MyShoppingList session cookie on localhost. Signing out in either the website or extension signs out both. Changing accounts clears old work and closes extension-owned tabs.
-- `http://localhost/*`: Chrome host patterns do not restrict ports; the implementation sends API requests only to the fixed `http://localhost:5392` base. The website session bridge is limited to ports 3000 and 3001 and sends a session-change notification without credentials. No background browsing history collection or worker key. The packaged extractor is injected only for personal imports or reserved shared tasks.
-- Submitted data: account email/password at sign-in; chosen list, quantity, canonical product URL, bounded product evidence and comparison search links when adding. Shared submissions also include the reserved task token and extension version. The server records the authenticated contributor ID, timestamps and validation outcome. No analytics or remote executable code.
+- activeTab, retailer host permissions and scripting: read bounded product JSON from the selected product tab after a user action; display the compact frame on supported retailer pages.
+- sidePanel: display the full extension interface.
+- storage: keep account session, preview, panel preferences and an unconfirmed request in trusted chrome.storage.session. Passwords are never stored. Evidence and bearer tokens are not returned to retailer pages or UI message responses.
+- cookies: share the HTTP-only MyShoppingList session cookie with the website. Sign-out affects both.
+- localhost host permission: Chrome host patterns cannot restrict ports. API calls use the fixed localhost:5392 origin. The website bridge only notifies ports 3000 and 3001 of session changes without sending credentials.
+- Submitted capture data: chosen list, quantity, canonical product URL, bounded product evidence, observation date and a unique request ID. The server derives ownership from authentication. Sign-in sends email/password to the API.
+- No alarms permission, idle collection, analytics, remote executable code or retailer background tabs.
 
-## Tests
+## Checks
 
-From the frontend: `node --test extensions/shopping-list/tests/extension.test.mjs`.
+Run `node --test extensions/shopping-list/tests/extension.test.mjs` from the frontend repository. This covers capture intent, cancellation, retries, account boundaries, navigation, list ownership, extraction and panel authorization. Installed Chrome integration and live retailer behaviour require separate verification during rollout.
 
-## Before Chrome Web Store publication
+## Publication
 
-This local version is not ready for public installation. Set the production HTTPS API and website URL in `background.js`, update the cookie domain checks, website bridge origins and content-script matches, replace localhost host permission with the production host, update website links in `popup.html`, remove the local-test name and setup text, and configure the published extension ID on the server. Review the included blue basket icon (the Retailer Reader has an orange tag icon), add screenshots, a public privacy policy, support/contact URLs, a store description, and accurate privacy/permission disclosures. Verify production sign-in, expiry, imports, list selection and accessibility in an installed Chrome build. Package only runtime files (manifest, background, content.js, website-session.js, retailer-panel.js, popup and compact HTML/JS/CSS and icons), excluding tests and this README. Publish through the owner's Chrome Web Store developer account after review. Replace the website's installation instructions link with the published listing when available.
-
-Chrome references: https://developer.chrome.com/docs/extensions/develop/concepts/activeTab and https://developer.chrome.com/docs/extensions/develop/concepts/network-requests
-
-## Administration
-
-Sign in on the website and open /admin. The backend Admin:AccountIds setting controls access; it is never controlled by the browser. Administrators manually record paid status, block contributions, suspend/restore accounts and review the last 100 observations/actions. A reason is required for every change. Suspension revokes sessions; restoration requires signing in again. Paid status does not automatically grant access or change restrictions. Blocking contributions preserves shopping access and sends new Add requests to trusted processing. An extraction error is not proof of abuse. Historical observations remain attributable for review; no automatic abuse classification is performed.
-
-## Human verification
-
-When a product import encounters human verification, it waits for up to five minutes and keeps the retailer tab open. Use **Open retailer** in either view, complete the check yourself, and the same import resumes automatically. **Cancel price checks** stops browser checks and keeps products already added. Closing the tab reports a failure; comparison retry remains available. No checkbox is clicked automatically.
+This is an unpacked local test extension, not a Chrome Web Store release. Before publication, configure production HTTPS API/website origins, cookie domain checks and website bridge matches; replace localhost permissions and links; configure the published extension ID; add screenshots, privacy policy and support information; and verify the complete installed-extension workflow. Package runtime files and icons only, excluding tests and this README. Publish through the owner's store account after review.

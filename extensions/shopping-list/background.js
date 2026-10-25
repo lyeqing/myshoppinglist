@@ -54,840 +54,231 @@ export function productUrl(value) {
 }
 
 export function createWorker(browser, fetcher = fetch) {
-  let busy = false;
-  let pumping = false;
-  let timer;
-  let sharing = false;
-  let sharedTimer;
-  const sharedWaiters = [];
-  const SHARED_ALARM = "myshoppinglist-shared-prices";
   const storage = browser.storage.session;
-  const ALARM = "myshoppinglist-active-import";
-  let sessionGeneration = 0;
+  let generation = 0;
   let sessionAbort = new AbortController();
   let syncing;
-  async function notifyWebsite() {
-    const tabs = await browser.tabs.query({ url: "http://localhost/*" });
-    for (const tab of tabs) {
-      if (
-        !tab.url ||
-        !["http://localhost:3000", "http://localhost:3001"].includes(
-          new URL(tab.url).origin,
-        )
-      )
-        continue;
-      try {
-        await browser.tabs.sendMessage(tab.id, {
-          type: "myshoppinglist-session-changed",
-        });
-      } catch {
-        /* Page not loaded yet. */
-      }
-    }
-  }
+  let busy = false;
+  const changed = () => new Error("Your account changed. Read the product again.");
   async function syncSession() {
     if (syncing) return syncing;
     syncing = (async () => {
-      const cookie = await browser.cookies.get({
-        url: WEBSITE_URL,
-        name: SESSION_COOKIE,
-      });
-      const token =
-        cookie?.path === "/" && /^[a-f0-9]{64}$/.test(cookie.value)
-          ? cookie.value
-          : null;
-      const stored = await storage.get("token");
-      if ((stored.token || null) === token) return token;
-      sessionGeneration++;
+      const cookie = await browser.cookies.get({ url: WEBSITE_URL, name: SESSION_COOKIE });
+      const token = cookie?.path === "/" && /^[a-f0-9]{64}$/.test(cookie.value) ? cookie.value : null;
+      if (((await storage.get("token")).token || null) === token) return token;
+      generation++;
       sessionAbort.abort();
       sessionAbort = new AbortController();
-      clearTimeout(timer);
-      await browser.alarms.clear(ALARM);
-      await browser.alarms.clear(SHARED_ALARM);
-      await closeTab((await storage.get("workflow")).workflow);
-      await closeShared();
       const { panelUi } = await storage.get("panelUi");
       await storage.clear();
-      if (panelUi) await storage.set({ panelUi });
-      if (token) await storage.set({ token });
-      await notifyWebsite();
+      await storage.set({ token, ...(panelUi ? { panelUi } : {}) });
+      for (const tab of await browser.tabs.query({ url: "http://localhost/*" })) {
+        try {
+          if (["http://localhost:3000", "http://localhost:3001"].includes(new URL(tab.url).origin))
+            await browser.tabs.sendMessage(tab.id, { type: "myshoppinglist-session-changed" });
+        } catch { /* The website may not be loaded. */ }
+      }
       return token;
     })();
-    try {
-      return await syncing;
-    } finally {
-      syncing = null;
-    }
+    try { return await syncing; } finally { syncing = null; }
   }
-  async function removeSessionCookie(token) {
-    const cookie = await browser.cookies.get({
-      url: WEBSITE_URL,
-      name: SESSION_COOKIE,
-    });
-    if (cookie?.value === token)
-      await browser.cookies.remove({ url: WEBSITE_URL, name: SESSION_COOKIE });
+  async function removeCookie(token) {
+    const cookie = await browser.cookies.get({ url: WEBSITE_URL, name: SESSION_COOKIE });
+    if (cookie?.value === token) await browser.cookies.remove({ url: WEBSITE_URL, name: SESSION_COOKIE });
     await syncSession();
   }
-  async function closeTab(workflow) {
-    if (workflow?.temporaryTabId != null) {
-      const id = workflow.temporaryTabId;
-      workflow.temporaryTabId = null;
-      await storage.set({ workflow });
-      try {
-        await browser.tabs.remove(id);
-      } catch {
-        /* Already closed. */
-      }
-    }
-  }
-  async function stop(workflow, message, failed = true) {
-    clearTimeout(timer);
-    await browser.alarms.clear(ALARM);
-    workflow.status = failed ? "Failed" : "Completed";
-    workflow.message = message;
-    await closeTab(workflow);
-    await storage.set({ workflow });
-  }
-  async function schedule() {
-    await browser.alarms.create(ALARM, { periodInMinutes: 0.5 });
-    clearTimeout(timer);
-    timer = setTimeout(() => {
-      void pump();
-    }, 1000);
-    timer.unref?.();
-  }
-  async function request(
-    path,
-    { method = "GET", body, anonymous = false, expectedToken } = {},
-  ) {
+  async function request(path, { method = "GET", body, anonymous = false, expectedToken } = {}) {
     const token = await syncSession();
-    if (!anonymous && !token)
-      throw new Error("Please sign in to your MyShoppingList account.");
-    if (expectedToken && expectedToken !== token)
-      throw new Error("Your account changed. Open the extension again.");
-    const version = sessionGeneration;
-    const headers = {
-      "Content-Type": "application/json",
-      "X-MyShoppingList-Request": "1",
-      "X-MyShoppingList-Extension": browser.runtime.id,
-      "X-Extension-Version":
-        browser.runtime.getManifest?.().version || "unknown",
-      "X-Client-Timezone":
-        Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-    };
-    if (!anonymous) headers.Authorization = `Bearer ${token}`;
-    const response = await fetcher(`${API_URL}${path}`, {
-      method,
-      headers,
-      credentials: "omit",
-      redirect: "error",
-      cache: "no-store",
-      signal: AbortSignal.any([
-        AbortSignal.timeout(20000),
-        sessionAbort.signal,
-      ]),
+    if (!anonymous && !token) throw new Error("Please sign in to MyShoppingList.");
+    if (expectedToken && expectedToken !== token) throw changed();
+    const version = generation;
+    const response = await fetcher(API_URL + path, {
+      method, credentials: "omit", redirect: "error", cache: "no-store",
+      headers: {
+        "Content-Type": "application/json", "X-MyShoppingList-Request": "1",
+        "X-MyShoppingList-Extension": browser.runtime.id,
+        "X-Extension-Version": browser.runtime.getManifest?.().version || "unknown",
+        "X-Client-Timezone": Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+        ...(!anonymous ? { Authorization: "Bearer " + token } : {}),
+      },
+      signal: AbortSignal.any([AbortSignal.timeout(20000), sessionAbort.signal]),
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     await syncSession();
-    if (version !== sessionGeneration)
-      throw new Error("Your account changed. Open the extension again.");
-    if (response.status === 401 && !anonymous) await removeSessionCookie(token);
+    if (version !== generation) throw changed();
+    if (response.status === 401 && !anonymous) await removeCookie(token);
     if (!response.ok) {
       const problem = await response.json().catch(() => ({}));
-      throw new Error(
-        response.status === 401
-          ? "Please sign in again. Check your email and password."
-          : response.status === 429
-            ? "Too many requests. Please wait and try again."
-            : response.status >= 500
-              ? "The server is unavailable. Please try again later."
-              : problem.title || "The request could not be completed.",
-      );
+      const error = new Error(response.status === 401 ? "Please sign in again."
+        : response.status === 429 ? "Too many requests. Wait a moment, then retry."
+        : problem.title || "The server is unavailable. Please try again.");
+      error.status = response.status;
+      throw error;
     }
     const data = response.status === 204 ? null : await response.json();
     await syncSession();
-    if (version !== sessionGeneration)
-      throw new Error("Your account changed. Open the extension again.");
+    if (version !== generation) throw changed();
     return data;
   }
-  async function state() {
-    await syncSession();
-    const { token, result, workflow } = await storage.get([
-      "token",
-      "result",
-      "workflow",
-    ]);
-    if (!token) return { session: null, lists: [], result: null, workflow };
-    const session = await request("/api/auth/me", { expectedToken: token });
-    const lists = await request("/api/shopping-lists", {
-      expectedToken: token,
-    });
-    const selected = preferredList(
-      lists,
-      (await storage.get("selectedListId")).selectedListId,
-      session.shoppingListId,
-    );
-    await storage.set({ selectedListId: selected?.id ?? null });
-    const preference = session.account.isTrial
-      ? { enabled: false, blocked: false }
-      : await request("/api/contributions/preference", {
-          expectedToken: token,
-        });
-    await storage.set({ contributionPreference: preference });
-    if (preference.enabled && !preference.blocked)
-      await browser.alarms.create(SHARED_ALARM, { periodInMinutes: 1 });
-    else {
-      await browser.alarms.clear(SHARED_ALARM);
-      await closeShared();
-    }
+  async function check(token) {
+    if ((await syncSession()) !== token) throw changed();
+  }
+  async function view() {
+    const { review, pending, workflow } = await storage.get(["review", "pending", "workflow"]);
     return {
-      session,
-      lists,
-      result,
-      workflow,
-      preference,
-      selectedListId: selected?.id ?? null,
+      review: review?.summary ?? null,
+      pending: !!pending,
+      quantity: pending?.body.quantity ?? null,
+      workflow: workflow ? { status: workflow.status, message: workflow.message } : null,
     };
   }
-  function safeWork(work) {
-    if (!work || !Number.isSafeInteger(work.jobId))
-      throw new Error("Invalid import response.");
-    if (work.status !== "Waiting") return;
-    const uri = new URL(work.url);
-    // ALDI is read only in the user's original Add tab, never in background task tabs.
-    if (work.stage === "product" && productUrl(work.url) && !["aldi.com.au", "www.aldi.com.au"].includes(uri.hostname)) return;
-    if (
-      work.stage === "search" &&
-      uri.protocol === "https:" &&
-      !uri.username &&
-      !uri.password &&
-      !uri.port &&
-      ((uri.hostname === "www.coles.com.au" &&
-        uri.pathname === "/search/products") ||
-        (uri.hostname === "www.woolworths.com.au" &&
-          uri.pathname === "/shop/search/products"))
-    )
-      return;
-    throw new Error("The server returned an unsupported retailer task.");
+  async function state() {
+    const token = await syncSession();
+    if (!token) return { session: null, lists: [], ...(await view()) };
+    const session = await request("/api/auth/me", { expectedToken: token });
+    const lists = await request("/api/shopping-lists", { expectedToken: token });
+    const selected = preferredList(lists, (await storage.get("selectedListId")).selectedListId, session.shoppingListId);
+    await check(token);
+    await storage.set({ selectedListId: selected?.id ?? null });
+    return { session, lists, selectedListId: selected?.id ?? null, ...(await view()) };
   }
-  async function next(workflow, work) {
-    if (
-      workflow.sessionToken &&
-      (await syncSession()) !== workflow.sessionToken
-    )
-      return;
-    safeWork(work);
-    workflow.work = work;
-    workflow.outbox = null;
-    if (work.status === "Queued") {
-      await stop(
-        workflow,
-        "Added to the queue. A trusted worker will collect prices; follow progress on your shopping list.",
-        false,
-      );
-      return;
-    }
-    if (work.status !== "Waiting") {
-      await stop(
-        workflow,
-        work.status === "Completed"
-          ? "Product saved. Comparison finished; open your list to see the result."
-          : `${work.sourceSaved ? "Product added. " : ""}${
-              work.errorCode === "retailer_access_restricted"
-                ? "We couldn’t check the other retailer because access was blocked. Please try the comparison again later."
-                : work.errorCode === "read_timeout"
-                  ? "The other retailer took too long to respond. Please try the comparison again later."
-                  : work.errorCode === "tab_closed"
-                    ? "The comparison tab was closed before the check finished. Please retry the comparison."
-                    : "We couldn’t finish checking the other retailer. Please retry the comparison later."
-            }`,
-        work.status !== "Completed",
-      );
-      return;
-    }
-    workflow.url = work.url;
-    workflow.kind = work.stage;
-    workflow.status = "Reading";
-    workflow.verificationRequired = false;
-    workflow.verificationExpiresAt = null;
-    workflow.deadline = Date.now() + 90000;
-    workflow.message =
-      work.stage === "search"
-        ? "Product saved. Searching the other retailer…"
-        : "Reading a comparison product…";
-    await storage.set({ workflow });
-    if (workflow.temporaryTabId == null) {
-      const tab = await browser.tabs.create({ url: work.url, active: false });
-      if (
-        workflow.sessionToken &&
-        (await syncSession()) !== workflow.sessionToken
-      ) {
-        try {
-          await browser.tabs.remove(tab.id);
-        } catch {
-          /* Closed. */
-        }
-        return;
-      }
-      workflow.temporaryTabId = tab.id;
-    } else
-      await browser.tabs.update(workflow.temporaryTabId, { url: work.url });
-    workflow.tabId = workflow.temporaryTabId;
-    await storage.set({ workflow });
+  async function productTab(tabId, expectedUrl) {
+    const tab = await browser.tabs.get(tabId);
+    const url = productUrl(tab.url);
+    if (!tab.active || tab.pendingUrl || !url || (expectedUrl && url !== expectedUrl))
+      throw new Error("Return to the same product page, then read it again.");
+    return { tab, url };
   }
-  async function pump() {
-    if (pumping || busy) return;
-    pumping = true;
-    let workflow;
-    let version;
+  async function submit(token) {
+    const { pending } = await storage.get("pending");
+    if (!pending || pending.token !== token) throw new Error("There is no saved request to retry.");
+    await storage.set({ workflow: { status: "Saving", message: "Saving to your list…" } });
     try {
-      await syncSession();
-      version = sessionGeneration;
-      workflow = (await storage.get("workflow")).workflow;
-      if (!workflow || workflow.status !== "Reading") return;
-      if (
-        workflow.sessionToken &&
-        workflow.sessionToken !== (await storage.get("token")).token
-      ) {
-        await closeTab(workflow);
-        await storage.remove("workflow");
-        return;
-      }
-      if (!workflow.outbox) {
-        let result;
-        if (workflow.verificationRequired && Date.now() >= workflow.verificationExpiresAt) {
-          workflow.temporaryTabId = null;
-          await stop(workflow, workflow.kind === "source"
-            ? "Verification is still needed. Complete it in the retailer tab, then click Add again."
-            : "Verification is still needed. Complete it in the retailer tab, then Retry comparison. Added products remain in your list.");
-          return;
-        }
-        if (!workflow.verificationRequired && Date.now() >= workflow.deadline)
-          result = { ok: false, code: "read_timeout" };
-        else {
-          let tab;
-          try {
-            tab = await browser.tabs.get(workflow.tabId);
-          } catch {
-            result = { ok: false, code: "tab_closed" };
-          }
-          if (tab) {
-            if (tab.pendingUrl) {
-              await schedule();
-              return;
-            }
-            const same =
-              workflow.kind === "search"
-                ? tab.url === workflow.url
-                : productUrl(tab.url) === productUrl(workflow.url);
-            if (!same && tab.status === "loading") {
-              await schedule();
-              return;
-            }
-            if (!same) result = { ok: false };
-            else {
-              try {
-                result = (
-                  await browser.scripting.executeScript({
-                    target: { tabId: workflow.tabId, frameIds: [0] },
-                    files: ["content.js"],
-                    world: "ISOLATED",
-                    injectImmediately: true,
-                  })
-                )[0]?.result;
-              } catch {
-                await schedule();
-                return;
-              }
-              if (
-                workflow.kind === "source" &&
-                result?.code === "product_identity_conflict" &&
-                new URL(workflow.url).hostname !== "www.aldi.com.au" &&
-                !workflow.sourceReloadAttempted
-              ) {
-                await syncSession();
-                if (version !== sessionGeneration) return;
-                // Client-side retailer navigation can retain the previous product's
-                // embedded JSON. Read a fresh document without changing the user's tab.
-                workflow.sourceReloadAttempted = true;
-                workflow.message =
-                  "Refreshing product details in a temporary tab…";
-                await storage.set({ workflow });
-                const freshTab = await browser.tabs.create({
-                  url: workflow.url,
-                  active: false,
-                });
-                await syncSession();
-                if (version !== sessionGeneration) {
-                  try {
-                    await browser.tabs.remove(freshTab.id);
-                  } catch {
-                    /* Already closed. */
-                  }
-                  return;
-                }
-                workflow.temporaryTabId = freshTab.id;
-                workflow.tabId = freshTab.id;
-                workflow.deadline = Date.now() + 90000;
-                await storage.set({ workflow });
-                await schedule();
-                return;
-              }
-              if (result?.code === "human_verification_required") {
-                workflow.verificationExpiresAt ??= Date.now() + 5 * 60000;
-                workflow.verificationRequired = true;
-                workflow.message = "Retailer verification required. Open the retailer, complete the check, and this import will resume.";
-                await storage.set({ workflow });
-                await schedule();
-                return;
-              }
-              if (workflow.verificationRequired && result?.ok) {
-                workflow.verificationRequired = false;
-                workflow.verificationExpiresAt = null;
-                workflow.deadline = Date.now() + 90000;
-              }
-              if (!result || result.code === "product_not_identified") {
-                await schedule();
-                return;
-              }
-              if (
-                result.ok &&
-                workflow.kind === "search" &&
-                (result.kind !== "search" || result.url !== workflow.url)
-              ) {
-                await schedule();
-                return;
-              }
-            }
-          }
-        }
-        await syncSession();
-        if (version !== sessionGeneration) return;
-        if (workflow.kind === "source") {
-          if (!result?.ok || !result.evidence) {
-            await stop(
-              workflow,
-              "Could not read this product. Keep its page open, then click Add again.",
-            );
-            return;
-          }
-          workflow.outbox = {
-            path: "/api/user-extension/imports/",
-            body: {
-              listId: workflow.listId,
-              url: workflow.url,
-              quantity: workflow.quantity,
-              evidence: result.evidence,
-              requestId: workflow.requestId,
-            },
-          };
-        } else
-          workflow.outbox = {
-            path: `/api/user-extension/imports/${workflow.work.jobId}/result`,
-            body: {
-              stepToken: workflow.work.stepToken,
-              url: workflow.url,
-              ok: !!result?.ok,
-              evidence: result?.evidence || null,
-              links: result?.links || null,
-              emptyConfirmed: !!result?.emptyConfirmed,
-              errorCode: result?.ok ? null : result?.code || null,
-            },
-          };
-        await storage.set({ workflow });
-      }
-      const work = await request(workflow.outbox.path, {
-        method: "POST",
-        body: workflow.outbox.body,
-        expectedToken: workflow.sessionToken,
+      const saved = await request("/api/user-extension/captures", {
+        method: "POST", body: pending.body, expectedToken: token,
       });
-      if (version !== sessionGeneration) return;
-      await next(workflow, work);
-      if (workflow.status === "Reading") await schedule();
+      if (!saved || !Number.isSafeInteger(saved.productId) || !Number.isSafeInteger(saved.shoppingListProductId)
+          || saved.status !== "Completed") throw new Error("The save response was incomplete.");
+      await check(token);
+      await storage.set({ pending: null, review: null, workflow: {
+        status: "Completed", message: saved.priceSaved
+          ? (saved.alreadyOnList ? "Product is on your list. Its quantity has been updated." : "Product saved to your list.")
+          : "Product saved to your list without a verified price.",
+      } });
     } catch (error) {
-      if (workflow && version === sessionGeneration)
-        await stop(
-          workflow,
-          `${error.message} Use Retry to resume this import.`,
-        );
-    } finally {
-      pumping = false;
+      await syncSession();
+      if ((await storage.get("token")).token === token) {
+        // A timeout, lost reply or server failure can follow a committed save.
+        // Keep the exact receipt request until the user explicitly retries it.
+        const definitive = [400, 403, 404, 409, 410, 413].includes(error.status);
+        await storage.set({
+          ...(definitive ? { pending: null } : {}),
+          workflow: { status: definitive ? "Failed" : "Pending",
+            message: definitive ? error.message
+              : error.message + " The outcome is not confirmed. Retry this save safely using the same request." },
+        });
+      }
+      throw error;
     }
+    return view();
   }
-  const handle = async function (message) {
-    await syncSession();
-    const actionToken = (await storage.get("token")).token;
-    if (
-      ["add", "logout", "contributionPreference", "login"].includes(
-        message.type,
-      ) &&
-      sharing
-    )
-      await new Promise((resolve) => sharedWaiters.push(resolve));
-    if (message.type === "state") return { ...(await state()), busy };
-    if (message.type === "selectList") {
-      const lists = await request("/api/shopping-lists", {
-        expectedToken: actionToken,
-      });
-      if (!lists.some((list) => list.id === message.listId))
-        throw new Error("Choose one of your current shopping lists.");
-      await storage.set({ selectedListId: message.listId });
-      return { selectedListId: message.listId };
-    }
-    if (busy || pumping || sharing)
-      throw new Error("A request is already in progress. Please wait.");
+  async function handle(message) {
+    if (message.type === "state") return state();
+    if (busy) throw new Error("Please wait for the current action.");
     busy = true;
     try {
-      if (message.type === "openVerification" || message.type === "cancelVerification") {
-        const workflow = (await storage.get("workflow")).workflow;
-        if (!workflow?.verificationRequired || workflow.status !== "Reading")
-          throw new Error("There is no verification waiting.");
-        if (message.type === "openVerification") {
-          const tab = await browser.tabs.get(workflow.tabId);
-          if (!retailerPage(tab.url)) throw new Error("The retailer tab changed. Cancel this import and try again.");
-          await browser.tabs.update(workflow.tabId, { active: true });
-          if (browser.windows?.update) await browser.windows.update(tab.windowId, { focused: true });
-        } else {
-          if (workflow.work?.jobId) {
-            workflow.outbox = {
-              path: `/api/user-extension/imports/${workflow.work.jobId}/result`,
-              body: { stepToken: workflow.work.stepToken, url: workflow.url, ok: false, errorCode: "browser_error" },
-            };
-            try {
-              await request(workflow.outbox.path, { method: "POST", expectedToken: workflow.sessionToken, body: workflow.outbox.body });
-              workflow.outbox = null;
-            } catch { /* Keep the identical failure for an explicit Retry, even while offline. */ }
-          }
-          if ((await syncSession()) !== workflow.sessionToken) return { workflow: null };
-          workflow.verificationRequired = false;
-          await stop(workflow, "Price checks stopped. Products already added remain in your list.");
-        }
-        return { workflow };
-      }
-      if (message.type === "contributionPreference") {
-        const enabled = message.enabled === true;
-        await storage.set({
-          contributionPreference: { enabled, blocked: false },
-        });
-        if (!enabled) {
-          await browser.alarms.clear(SHARED_ALARM);
-          await closeShared();
-        }
-        await request("/api/contributions/preference", {
-          method: "PUT",
-          body: { enabled },
-          expectedToken: actionToken,
-        });
-        return state();
-      }
+      const token = await syncSession();
       if (message.type === "login") {
-        await closeShared();
-        if (
-          typeof message.email !== "string" ||
-          typeof message.password !== "string"
-        )
-          throw new Error("Enter your email and password.");
         const result = await request("/api/user-extension/login", {
-          method: "POST",
-          anonymous: true,
-          body: { email: message.email, password: message.password },
+          method: "POST", anonymous: true, body: { email: message.email, password: message.password },
         });
-        if (!/^[a-f0-9]{64}$/.test(result.token))
-          throw new Error("The server returned an invalid session.");
         const expires = Date.parse(result.session?.sessionExpiresDate) / 1000;
-        if (!Number.isFinite(expires) || expires <= Date.now() / 1000)
-          throw new Error("The server returned an expired session.");
-        await browser.cookies.set({
-          url: WEBSITE_URL,
-          name: SESSION_COOKIE,
-          value: result.token,
-          path: "/",
-          httpOnly: true,
-          secure: new URL(WEBSITE_URL).protocol === "https:",
-          sameSite: "lax",
-          expirationDate: expires,
-        });
+        if (!/^[a-f0-9]{64}$/.test(result.token) || !Number.isFinite(expires) || expires <= Date.now() / 1000)
+          throw new Error("The server returned an invalid sign-in response.");
+        await browser.cookies.set({ url: WEBSITE_URL, name: SESSION_COOKIE, value: result.token,
+          path: "/", httpOnly: true, secure: WEBSITE_URL.startsWith("https:"), sameSite: "lax", expirationDate: expires });
         await syncSession();
         return state();
       }
       if (message.type === "logout") {
-        await browser.alarms.clear(SHARED_ALARM);
-        await closeShared();
-        clearTimeout(timer);
-        await browser.alarms.clear(ALARM);
-        await closeTab((await storage.get("workflow")).workflow);
-        try {
-          await request("/api/auth/logout", {
-            method: "POST",
-            expectedToken: actionToken,
-          });
-        } finally {
-          await removeSessionCookie(actionToken);
-        }
-        return { session: null, lists: [] };
+        try { if (token) await request("/api/auth/logout", { method: "POST", expectedToken: token }); }
+        finally { await removeCookie(token); }
+        return state();
       }
-      if (message.type === "add") {
-        await closeShared();
-        const previous = (await storage.get("workflow")).workflow;
-        if (previous?.status === "Reading")
-          throw new Error(
-            "Finish the current import before adding another product.",
-          );
-        const url = productUrl(message.url);
-        if (!url)
-          throw new Error("Open a Coles, Woolworths or ALDI product page first.");
-        if (
-          !Number.isInteger(message.quantity) ||
-          message.quantity < 1 ||
-          message.quantity > 2147483647
-        )
+      if (!token) throw new Error("Please sign in to MyShoppingList.");
+      const { pending } = await storage.get("pending");
+      if (message.type === "retry") return await submit(token);
+      if (pending) throw new Error("Retry the unconfirmed save before starting another product.");
+      if (message.type === "selectList") {
+        const data = await state();
+        if (!data.lists.some((list) => list.id === message.listId)) throw new Error("Choose one of your shopping lists.");
+        await check(token);
+        await storage.set({ selectedListId: message.listId });
+        return { selectedListId: message.listId };
+      }
+      if (message.type === "cancel") {
+        await storage.set({ review: null, workflow: null });
+        return view();
+      }
+      if (message.type === "preview") {
+        await storage.set({ review: null, workflow: null });
+        const { url } = await productTab(message.tabId);
+        const observedAt = new Date().toISOString();
+        await browser.scripting.executeScript({ target: { tabId: message.tabId }, files: ["content.js"] });
+        const frames = await browser.scripting.executeScript({ target: { tabId: message.tabId },
+          func: () => globalThis.ColesReader.read(document, location.href) });
+        const extracted = frames[0]?.result;
+        if (!extracted?.ok || !extracted.evidence) throw new Error("This product could not be read. Check the product page and try again.");
+        await productTab(message.tabId, url);
+        const summary = await request("/api/user-extension/captures/preview", {
+          method: "POST", expectedToken: token, body: { url, evidence: extracted.evidence, observedAt },
+        });
+        if (!summary?.name || productUrl(summary.url) !== url || !Number.isFinite(Date.parse(summary.observedAt))
+            || (summary.price != null && (!Number.isFinite(summary.price) || summary.price < 0)))
+          throw new Error("The product preview could not be validated. Read the page again.");
+        await productTab(message.tabId, url);
+        await check(token);
+        await storage.set({ review: { token, tabId: message.tabId, url, observedAt, evidence: extracted.evidence, summary },
+          workflow: { status: "Review", message: "Review this product, then save it to your list." } });
+        return view();
+      }
+      if (message.type === "save") {
+        const { review } = await storage.get("review");
+        if (!review || review.token !== token || review.tabId !== message.tabId)
+          throw new Error("Read the current product before saving.");
+        await productTab(message.tabId, review.url);
+        if (!Number.isInteger(message.quantity) || message.quantity < 1 || message.quantity > 2147483647)
           throw new Error("Enter a positive whole-number quantity.");
-        const lists = await request("/api/shopping-lists", {
-          expectedToken: actionToken,
-        });
-        let listId = message.listId;
-        if (message.compact) {
-          const session = await request("/api/auth/me", {
-            expectedToken: actionToken,
-          });
-          listId =
-            preferredList(
-              lists,
-              (await storage.get("selectedListId")).selectedListId,
-              session.shoppingListId,
-            )?.id ?? null;
-        }
-        if (lists.length === 0) {
-          listId = (
-            await request("/api/shopping-lists/default", {
-              method: "POST",
-              expectedToken: actionToken,
-            })
-          ).shoppingListId;
-        } else if (lists.length === 1 && listId == null) listId = lists[0].id;
-        if (lists.length && !lists.some((l) => l.id === listId))
-          throw new Error("Choose one of your current shopping lists.");
-        const tab = await browser.tabs.get(message.tabId);
-        if (productUrl(tab.url) !== url)
-          throw new Error(
-            "The product tab changed. Refresh the extension and try again.",
-          );
-        if ((await syncSession()) !== actionToken)
-          throw new Error("Your account changed. Open the extension again.");
-        await storage.set({ selectedListId: listId });
-        const workflow = {
-          status: "Reading",
-          kind: "source",
-          sessionToken: (await storage.get("token")).token,
-          requestId: crypto.randomUUID(),
-          url,
-          listId,
-          quantity: message.quantity,
-          tabId: tab.id,
-          temporaryTabId: null,
-          deadline: Date.now() + 90000,
-          message: "Reading the current product…",
-        };
-        await closeTab(previous);
-        await storage.set({ workflow });
-        await schedule();
-        return { workflow };
+        const data = await state();
+        const selectedId = message.listId ?? data.selectedListId;
+        let list = data.lists.find((item) => item.id === selectedId);
+        if (data.lists.length && !list) throw new Error("Choose one of your shopping lists.");
+        if (!list) list = await request("/api/shopping-lists/default", { method: "POST", expectedToken: token });
+        if (!Number.isSafeInteger(list?.id)) throw new Error("Your shopping list could not be selected.");
+        await productTab(message.tabId, review.url);
+        await check(token);
+        await storage.set({ selectedListId: list.id, pending: { token, body: {
+          listId: list.id, quantity: message.quantity, url: review.url, evidence: review.evidence,
+          observedAt: review.observedAt, requestId: crypto.randomUUID(),
+        } } });
+        return await submit(token);
       }
-      if (message.type === "retry") {
-        const workflow = (await storage.get("workflow")).workflow;
-        if (!workflow || workflow.status !== "Failed")
-          throw new Error("There is no failed import to retry.");
-        if (workflow.outbox) {
-          workflow.status = "Reading";
-          await storage.set({ workflow });
-        } else if (workflow.work?.jobId) {
-          await next(
-            workflow,
-            await request(
-              `/api/user-extension/imports/${workflow.work.jobId}/retry`,
-              { method: "POST", expectedToken: workflow.sessionToken },
-            ),
-          );
-        } else throw new Error("Open the source product and click Add again.");
-        if (workflow.status === "Reading") await schedule();
-        return { workflow };
-      }
-      throw new Error("Unknown action.");
-    } finally {
-      busy = false;
+      throw new Error("Unsupported extension action.");
+    } finally { busy = false; }
+  }
+  handle.syncSession = syncSession;
+  handle.restore = async () => {
+    // Remove only tabs explicitly owned by the retired worker, never source tabs.
+    const old = await storage.get(["workflow", "sharedTask"]);
+    for (const id of new Set([old.workflow?.temporaryTabId, old.sharedTask?.tabId].filter(Number.isInteger))) {
+      try { await browser.tabs.remove(id); } catch { /* Already closed. */ }
     }
+    await storage.remove(["sharedTask", "contributionPreference"]);
+    if (old.workflow?.temporaryTabId != null || old.workflow?.sessionToken) await storage.remove("workflow");
+    return syncSession();
   };
-  async function closeShared() {
-    clearTimeout(sharedTimer);
-    const { sharedTask } = await storage.get("sharedTask");
-    if (sharedTask?.tabId != null)
-      try {
-        await browser.tabs.remove(sharedTask.tabId);
-      } catch {
-        /* Already closed. */
-      }
-    await storage.remove("sharedTask");
-  }
-  function sharedSoon() {
-    clearTimeout(sharedTimer);
-    sharedTimer = setTimeout(() => void sharedPump(false), 1000);
-    sharedTimer.unref?.();
-  }
-  async function sharedPump(allowClaim = true) {
-    if (sharing || busy || pumping) return;
-    sharing = true;
-    let version;
-    try {
-      await syncSession();
-      version = sessionGeneration;
-      const values = await storage.get([
-        "token",
-        "workflow",
-        "sharedTask",
-        "contributionPreference",
-        "sharedNextCheck",
-      ]);
-      if (
-        !values.token ||
-        values.contributionPreference?.enabled === false ||
-        values.contributionPreference?.blocked
-      ) {
-        await closeShared();
-        await browser.alarms.clear(SHARED_ALARM);
-        return;
-      }
-      if (values.workflow?.status === "Reading") return;
-      let task = values.sharedTask;
-      if (!task) {
-        if (!allowClaim || values.sharedNextCheck > Date.now()) return;
-        const work = await request("/api/contributions/claim", {
-          method: "POST",
-        });
-        await storage.set({
-          sharedNextCheck: Date.now() + (work ? 60000 : 300000),
-        });
-        if (!work) return;
-        safeWork({
-          jobId: work.id,
-          status: "Waiting",
-          stage: work.kind,
-          url: work.url,
-        });
-        task = {
-          ...work,
-          sessionToken: values.token,
-          deadline: Math.min(
-            Date.now() + 90000,
-            Date.parse(work.leaseExpiresAt),
-          ),
-          tabId: null,
-        };
-        await storage.set({ sharedTask: task });
-        const tab = await browser.tabs.create({ url: task.url, active: false });
-        await syncSession();
-        if (version !== sessionGeneration) {
-          try {
-            await browser.tabs.remove(tab.id);
-          } catch {
-            /* Closed. */
-          }
-          return;
-        }
-        task.tabId = tab.id;
-        await storage.set({ sharedTask: task });
-        sharedSoon();
-        return;
-      }
-      let result = { ok: false, code: "read_timeout" };
-      if (!task.outbox && Date.now() < task.deadline) {
-        let tab;
-        try {
-          tab = await browser.tabs.get(task.tabId);
-        } catch {
-          result.code = "tab_closed";
-        }
-        if (tab) {
-          if (tab.pendingUrl || tab.status === "loading") {
-            sharedSoon();
-            return;
-          }
-          const same =
-            task.kind === "search"
-              ? tab.url === task.url
-              : productUrl(tab.url) === productUrl(task.url);
-          if (same) {
-            result = (
-              await browser.scripting.executeScript({
-                target: { tabId: task.tabId, frameIds: [0] },
-                files: ["content.js"],
-                world: "ISOLATED",
-                injectImmediately: true,
-              })
-            )[0]?.result;
-            if (
-              !result ||
-              result.code === "product_not_identified" ||
-              (task.kind === "search" &&
-                result.ok &&
-                (result.kind !== "search" || result.url !== task.url))
-            ) {
-              sharedSoon();
-              return;
-            }
-          } else result = { ok: false, code: "invalid_product_link" };
-        }
-      }
-      if (!task.outbox) {
-        await syncSession();
-        if (version !== sessionGeneration) return;
-        task.outbox = {
-          claimToken: task.claimToken,
-          url: task.url,
-          ok: !!result?.ok,
-          evidence: result?.evidence || null,
-          links: result?.links || null,
-          emptyConfirmed: !!result?.emptyConfirmed,
-          errorCode: result?.code || null,
-          extensionVersion:
-            browser.runtime.getManifest?.().version || "unknown",
-        };
-        await storage.set({ sharedTask: task });
-      }
-      await request(`/api/contributions/${task.id}/result`, {
-        method: "POST",
-        body: task.outbox,
-        expectedToken: task.sessionToken,
-      });
-      await closeShared();
-      await storage.set({ sharedMessage: "Last shared price check finished." });
-    } catch (error) {
-      if (version !== sessionGeneration) return;
-      await closeShared();
-      await storage.set({
-        sharedNextCheck: Date.now() + 300000,
-        sharedMessage: `Shared collection paused: ${error.message}`,
-      });
-    } finally {
-      sharing = false;
-      sharedWaiters.splice(0).forEach((resolve) => resolve());
-    }
-  }
-  async function restore() {
-    await syncSession();
-    const { token, contributionPreference } = await storage.get([
-      "token",
-      "contributionPreference",
-    ]);
-    if (
-      token &&
-      contributionPreference?.enabled !== false &&
-      !contributionPreference?.blocked
-    )
-      await browser.alarms.create(SHARED_ALARM, { periodInMinutes: 1 });
-  }
-  return Object.assign(handle, { pump, sharedPump, restore, syncSession });
+  return handle;
 }
-
 export function createPanelController(browser, worker) {
   const storage = browser.storage.session;
   let serial = Promise.resolve();
@@ -1010,7 +401,7 @@ export function createPanelController(browser, worker) {
         const tab = await browser.tabs.get(tabId);
         await worker.syncSession();
         if (!retailerPage(tab.url) || !(await storage.get("token")).token)
-          throw new Error("Sign in on a Coles or Woolworths page to minimize.");
+          throw new Error("Sign in on a Coles, Woolworths or ALDI page to minimize.");
         const ui = await read();
         ui.fullTabId = null;
         ui.hidden = false;
@@ -1135,14 +526,7 @@ if (
       void handle.restore();
     }, 100);
   });
-  chrome.alarms.onAlarm.addListener((alarm) => {
-    if (alarm.name === "myshoppinglist-active-import") void handle.pump();
-    else if (alarm.name === "myshoppinglist-shared-prices")
-      void handle.sharedPump();
-  });
   chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
-    void handle.pump();
-    void handle.sharedPump(false);
     if (change.url) void panels.navigation(tabId, tab.url);
   });
   chrome.runtime.onMessage.addListener((message, sender, respond) => {
@@ -1177,34 +561,12 @@ if (
         return panels.minimize(tabId);
       if (message.type === "panel-expand" && compactPage)
         return panels.full(await chrome.tabs.get(tabId), true);
-      if (compactPage && !["state", "add", "openVerification", "cancelVerification"].includes(message.type))
+      if (compactPage && !["state", "preview", "save", "retry", "cancel", "selectList"].includes(message.type))
         throw new Error("Unsupported compact-view action.");
-      if (message.type === "add") {
-        const tab = await chrome.tabs.get(tabId);
-        if (!tab.active || tab.pendingUrl)
-          throw new Error("Return to the product tab and try again.");
-        if (compactPage)
-          message = {
-            type: "add",
-            compact: true,
-            url: tab.url,
-            tabId,
-            quantity: message.quantity,
-          };
-        else if (message.tabId !== tabId)
-          throw new Error("The product tab changed. Refresh the panel.");
-      }
-      const data = await handle(message);
-      if (compactPage) data.tabId = tabId;
-      if (compactPage)
-        data.productUrl = productUrl((await chrome.tabs.get(tabId)).url);
-      // UI pages need progress text, never the workflow's bearer token or submission evidence.
-      if (data.workflow)
-        data.workflow = {
-          status: data.workflow.status,
-          message: data.workflow.message,
-          verificationRequired: !!data.workflow.verificationRequired,
-        };
+      const data = await handle({ ...message, tabId });
+      data.tabId = tabId;
+      try { data.productUrl = productUrl((await chrome.tabs.get(tabId)).url); }
+      catch { data.productUrl = null; }
       return data;
     })().then(
       (data) => respond({ ok: true, data }),
@@ -1213,7 +575,7 @@ if (
           ok: false,
           error:
             error.name === "TimeoutError"
-              ? "Request timed out. An add may already have succeeded; check your list before trying again."
+              ? "Request timed out. If saving, use Retry save to check the same request safely."
               : error instanceof TypeError
                 ? "Cannot connect to localhost:5392. Check that the API is running."
                 : error.message,

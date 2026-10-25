@@ -1,44 +1,36 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>MyShoppingList quick add</title>
-    <link rel="stylesheet" href="compact.css" />
-  </head>
-  <body>
-    <header>
-      <strong><span aria-hidden="true">▣</span> MyShoppingList</strong>
-      <div>
-        <button id="expand" title="Open full view" aria-label="Open full view">
-          ↗</button
-        ><button
-          id="hide"
-          title="Hide until toolbar click"
-          aria-label="Hide quick add"
-        >
-          ×
-        </button>
-      </div>
-    </header>
-    <p id="list" title="Selected shopping list">Loading your list…</p>
-    <form id="add">
-      <label for="quantity">Quantity</label>
-      <div class="controls">
-        <input
-          id="quantity"
-          type="number"
-          min="1"
-          max="2147483647"
-          step="1"
-          value="1"
-          required
-        /><button id="add-button" disabled type="submit">+ Add</button>
-      </div>
-    </form>
-    <p id="status" role="status" aria-live="polite">Checking this page…</p>
-    <button id="open-verification" hidden>Open retailer</button>
-    <button id="cancel-verification" hidden>Cancel price checks</button>
-    <script src="compact.js" type="module"></script>
-  </body>
-</html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Save to MyShoppingList</title><link rel="stylesheet" href="compact.css"></head>
+<body class="compact">
+<header><div class="panel-controls"><button id="expand" class="secondary">Full view</button><button id="hide" class="secondary">Hide</button></div>
+<p class="eyebrow">MYSHOPPINGLIST · PERSONAL PRODUCTS</p><h1>Save a product</h1></header>
+<p id="product">Open a Coles, Woolworths or ALDI product page.</p>
+<p id="status" role="status" aria-live="polite"></p>
+<form id="login" hidden><h2>Sign in</h2>
+<label>Email<input id="email" type="email" autocomplete="username" maxlength="320" required></label>
+<label>Password<input id="password" type="password" autocomplete="current-password" maxlength="1024" required></label>
+<button type="submit">Sign in</button><a href="http://localhost:3000/" target="_blank" rel="noreferrer">Create an account</a></form>
+<section id="account" hidden>
+<div class="account"><span id="name"></span><button id="logout" class="secondary">Sign out</button></div>
+<form id="add">
+<label id="list-label">Shopping list<select id="list"></select></label>
+<p id="empty" hidden>A shopping list named with your local date will be created when you save.</p>
+<label>Quantity<input id="quantity" type="number" min="1" max="2147483647" step="1" value="1" required></label>
+<button id="read" type="button">Read product</button>
+<section id="review" hidden aria-labelledby="review-title">
+<h2 id="review-title">Review product</h2><p id="review-name" class="product-name"></p>
+<p id="review-detail"></p><p id="review-price" class="price"></p><p id="review-notice"></p>
+<p id="review-date" class="muted"></p><p class="muted">Store location is not verified. This observation is private to your account.</p>
+<button id="save" type="submit">Save to list</button><button id="cancel" type="button" class="secondary">Cancel</button>
+</section>
+</form>
+<button id="retry" hidden>Retry save</button>
+</section>
+<button id="refresh" class="secondary">Refresh status</button>
+<a href="http://localhost:3000/" target="_blank" rel="noreferrer">Open MyShoppingList</a>
+<footer>Reads only the product page you choose, after you click Read product. Review it before saving.
+Sign-in is shared with MyShoppingList in this Chrome profile.
+<details><summary>Local setup</summary><p>Extension ID:</p><code id="extension-id"></code></details></footer>
+<script src="compact.js" type="module"></script>
+</body></html>
