@@ -4,16 +4,11 @@ import Link from "next/link";
 import AppHeader from "./app-header";
 import { api, ApiError } from "@/lib/api-client";
 import {
-  isActive,
-  placeholder,
-  type Accepted,
-  type ImportPage,
-  type Job,
   type Session,
   type ShoppingListManagement,
   type ShoppingListSummary,
 } from "@/lib/api-types";
-import ImportCard, { Spinner } from "./import-card";
+import { Spinner } from "./import-card";
 import ShoppingListItems from "./shopping-list-items";
 import AccountForm from "./account-form";
 import { useShallow } from "zustand/react/shallow";
@@ -39,21 +34,11 @@ export default function ShoppingListApp() {
     session,
     booting,
     restoreError,
-    jobs,
-    errors,
-    loading,
-    cursor,
-    loadError,
   } = useShoppingStore(
     useShallow((state) => ({
       session: state.session,
       booting: state.booting,
       restoreError: state.restoreError,
-      jobs: state.jobs,
-      errors: state.errors,
-      loading: state.loading,
-      cursor: state.cursor,
-      loadError: state.loadError,
     })),
   );
   const {
@@ -61,11 +46,6 @@ export default function ShoppingListApp() {
     clearSession,
     setBooting,
     setRestoreError,
-    setJobs,
-    setErrors,
-    setLoading,
-    setCursor,
-    setLoadError,
   } = useShoppingStore((state) => state.actions);
   const [restoreAttempt, setRestoreAttempt] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -75,13 +55,8 @@ export default function ShoppingListApp() {
   const [authBusy, setAuthBusy] = useState(false);
   const authPending = useRef(false);
   const trialSession = useRef(false);
-  const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState("");
-  const [formError, setFormError] = useState("");
-  const [url, setUrl] = useState("");
-  const [quantity, setQuantity] = useState("1");
   const lifetime = useRef<AbortController | null>(null);
-  const posting = useRef(false);
   const generation = useRef(0);
   useEffect(() => {
     const changed = () => {
@@ -91,9 +66,6 @@ export default function ShoppingListApp() {
       setAccountMode(null);
       setAuthBusy(false);
       authPending.current = false;
-      setUrl("");
-      setQuantity("1");
-      setFormError("");
       setNotice("");
       setRestoreAttempt((value) => value + 1);
     };
@@ -113,9 +85,6 @@ export default function ShoppingListApp() {
       generation.current++;
       clearSession();
       setNotice(text);
-      setFormError("");
-      setUrl("");
-      setQuantity("1");
     },
     [clearSession],
   );
@@ -128,61 +97,6 @@ export default function ShoppingListApp() {
     },
     [endSession],
   );
-  const loadPage = useCallback(
-    async (listId: number, before: number | null, signal: AbortSignal) => {
-      const version = generation.current;
-      setLoading(true);
-      setLoadError("");
-      try {
-        const page = await api<ImportPage>(
-          `/shopping-lists/${listId}/imports?pageSize=20${before ? `&beforeId=${before}` : ""}`,
-          { signal },
-        );
-        if (signal.aborted || version !== generation.current) return;
-        setCursor(page.nextBeforeId);
-        const results = await Promise.allSettled(
-          page.items.map((item) =>
-            api<Job>(`/product-import-jobs/${item.jobId}`, { signal }),
-          ),
-        );
-        if (signal.aborted || version !== generation.current) return;
-        const authFailure = results.find(
-          (result) =>
-            result.status === "rejected" &&
-            result.reason instanceof ApiError &&
-            result.reason.status === 401,
-        );
-        if (authFailure?.status === "rejected") {
-          handleError(authFailure.reason, setLoadError);
-          return;
-        }
-        const restored: Record<number, Job> = {};
-        const failures: Record<number, string> = {};
-        results.forEach((result, index) => {
-          const item = page.items[index];
-          if (result.status === "fulfilled")
-            restored[item.jobId] = result.value;
-          else {
-            restored[item.jobId] = {
-              ...placeholder(item.jobId, listId),
-              status: item.status,
-              createdDate: item.createdDate,
-            };
-            failures[item.jobId] = message(result.reason);
-          }
-        });
-        setJobs((previous) => ({ ...previous, ...restored }));
-        setErrors((previous) => ({ ...previous, ...failures }));
-      } catch (error) {
-        if (version === generation.current) handleError(error, setLoadError);
-      } finally {
-        if (!signal.aborted && version === generation.current)
-          setLoading(false);
-      }
-    },
-    [handleError, setLoading, setLoadError, setCursor, setJobs, setErrors],
-  );
-
   useEffect(() => {
     const controller = new AbortController();
     lifetime.current = controller;
@@ -194,8 +108,6 @@ export default function ShoppingListApp() {
         if (controller.signal.aborted) return;
         trialSession.current = current.account.isTrial;
         setSession(current);
-        if (current.shoppingListId)
-          void loadPage(current.shoppingListId, null, controller.signal);
       } catch (error) {
         if (
           !controller.signal.aborted &&
@@ -209,7 +121,7 @@ export default function ShoppingListApp() {
     }
     void restore();
     return () => controller.abort();
-  }, [loadPage, restoreAttempt, setSession, setRestoreError, setBooting]);
+  }, [restoreAttempt, setSession, setRestoreError, setBooting]);
 
   useEffect(() => {
     if (!session || authBusy) return;
@@ -227,60 +139,11 @@ export default function ShoppingListApp() {
     return () => clearTimeout(timer);
   }, [session, authBusy, endSession]);
 
-  const activeIds = Object.values(jobs)
-    .filter((job) => isActive(job) && !errors[job.jobId])
-    .map((job) => job.jobId)
-    .sort((a, b) => a - b)
-    .join(",");
-  useEffect(() => {
-    if (!session || !activeIds || authBusy) return;
-    const controller = new AbortController();
-    const version = generation.current;
-    let timer: ReturnType<typeof setTimeout>;
-    const ids = activeIds.split(",").map(Number);
-    async function poll() {
-      const results = await Promise.allSettled(
-        ids.map((id) =>
-          api<Job>(`/product-import-jobs/${id}`, { signal: controller.signal }),
-        ),
-      );
-      if (controller.signal.aborted || version !== generation.current) return;
-      if (
-        results.some(
-          (result) =>
-            result.status === "rejected" &&
-            result.reason instanceof ApiError &&
-            result.reason.status === 401,
-        )
-      ) {
-        endSession(
-          "Your session has ended. Sign in again or start a new trial.",
-        );
-        return;
-      }
-      const updates: Record<number, Job> = {};
-      const failures: Record<number, string> = {};
-      results.forEach((result, index) => {
-        if (result.status === "fulfilled") updates[ids[index]] = result.value;
-        else failures[ids[index]] = message(result.reason);
-      });
-      setJobs((previous) => ({ ...previous, ...updates }));
-      setErrors((previous) => ({ ...previous, ...failures }));
-      timer = setTimeout(poll, 2000);
-    }
-    timer = setTimeout(poll, 2000);
-    return () => {
-      clearTimeout(timer);
-      controller.abort();
-    };
-  }, [activeIds, session, authBusy, endSession, setJobs, setErrors]);
-
   function accountBusy(value: boolean) {
     authPending.current = value;
     setAuthBusy(value);
     if (value) {
       generation.current++;
-      setLoading(false);
     }
   }
   const accountReady = useCallback(
@@ -292,21 +155,13 @@ export default function ShoppingListApp() {
       trialSession.current = current.account.isTrial;
       setSession(current);
       setAccountMode(null);
-      setLoading(false);
       setNotice(
         sameList
           ? "Your account is ready. Your list and edits are kept."
           : "You’re signed in.",
       );
-      if (!sameList) {
-        setFormError("");
-        setUrl("");
-        setQuantity("1");
-      }
-      if (current.shoppingListId)
-        void loadPage(current.shoppingListId, null, lifetime.current!.signal);
     },
-    [session, setSession, setLoading, loadPage],
+    [session, setSession],
   );
 
   useEffect(() => {
@@ -430,8 +285,6 @@ export default function ShoppingListApp() {
       trialSession.current = current.account.isTrial;
       setSession(current);
       setAccountMode(null);
-      if (current.shoppingListId)
-        await loadPage(current.shoppingListId, null, lifetime.current!.signal);
     } catch (error) {
       handleError(error, setNotice);
     } finally {
@@ -453,76 +306,6 @@ export default function ShoppingListApp() {
       setBusy(false);
     }
   }
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
-    if (posting.current || !session?.shoppingListId) return;
-    const qty = Number(quantity);
-    if (!Number.isSafeInteger(qty) || qty < 1 || qty > 2147483647) {
-      setFormError("Enter a positive whole-number quantity.");
-      return;
-    }
-    const version = generation.current;
-    posting.current = true;
-    setSubmitting(true);
-    setFormError("");
-    try {
-      const accepted = await api<Accepted>(
-        `/shopping-lists/${session.shoppingListId}/products/url`,
-        {
-          method: "POST",
-          body: JSON.stringify({ url: url.trim(), quantity: qty }),
-          signal: lifetime.current?.signal,
-        },
-      );
-      if (version !== generation.current || lifetime.current?.signal.aborted)
-        return;
-      setJobs((previous) => ({
-        ...previous,
-        [accepted.jobId]: previous[accepted.jobId] ?? {
-          ...placeholder(
-            accepted.jobId,
-            session.shoppingListId!,
-            accepted.quantity,
-          ),
-          status: accepted.status,
-        },
-      }));
-      setUrl("");
-      setQuantity("1");
-      setNotice(
-        accepted.reused
-          ? "This product is already being checked with this quantity."
-          : "Link added. Keep shopping while we find your product.",
-      );
-    } catch (error) {
-      if (version === generation.current) handleError(error, setFormError);
-    } finally {
-      posting.current = false;
-      setSubmitting(false);
-    }
-  }
-  async function retry(id: number) {
-    const version = generation.current;
-    try {
-      const job = await api<Job>(`/product-import-jobs/${id}`, {
-        signal: lifetime.current?.signal,
-      });
-      if (version !== generation.current) return;
-      setJobs((previous) => ({ ...previous, [id]: job }));
-      setErrors((previous) => {
-        const next = { ...previous };
-        delete next[id];
-        return next;
-      });
-    } catch (error) {
-      if (version === generation.current)
-        handleError(error, (text) =>
-          setErrors((previous) => ({ ...previous, [id]: text })),
-        );
-    }
-  }
-  const ordered = Object.values(jobs).sort((a, b) => b.jobId - a.jobId);
-  const working = ordered.filter(isActive).length;
   return (
     <>
       <a
@@ -567,7 +350,7 @@ export default function ShoppingListApp() {
                     <select
                       aria-label="Selected list"
                       className="mt-1 block w-full rounded-xl border border-slate-300 p-3"
-                      disabled={managing || authBusy || submitting}
+                      disabled={managing || authBusy}
                       value={session.shoppingListId ?? ""}
                       onChange={(event) => {
                         accountReady({
@@ -595,7 +378,6 @@ export default function ShoppingListApp() {
                       disabled={
                         managing ||
                         authBusy ||
-                        submitting ||
                         !session.shoppingListId
                       }
                       onClick={() => void manageList("archive")}
@@ -608,7 +390,6 @@ export default function ShoppingListApp() {
                     disabled={
                       managing ||
                       authBusy ||
-                      submitting ||
                       !session.shoppingListId
                     }
                     onClick={() => void manageList("delete")}
@@ -639,7 +420,6 @@ export default function ShoppingListApp() {
                     disabled={
                       managing ||
                       authBusy ||
-                      submitting ||
                       management.lists.length >= management.limit
                     }
                   >
@@ -672,8 +452,8 @@ export default function ShoppingListApp() {
               Your list. <span className="text-sky-700">A clearer price.</span>
             </h1>
             <p className="mt-4 max-w-xl text-base leading-7 text-slate-500">
-              Save a product link. We’ll find the details and keep the observed
-              price with your shopping list.
+              Save products with the Chrome extension. Keep observed prices
+              with your shopping list and manage your shop on any device.
             </p>
           </div>
           {session && (
@@ -702,14 +482,14 @@ export default function ShoppingListApp() {
         {!booting && !restoreError && (!session || session.account.isTrial) && (
           <div className="mb-5 flex flex-wrap gap-3">
             <button
-              disabled={busy || authBusy || submitting}
+              disabled={busy || authBusy}
               onClick={() => setAccountMode("register")}
               className={secondary}
             >
               {session ? "Keep my list" : "Create an account"}
             </button>
             <button
-              disabled={busy || authBusy || submitting}
+              disabled={busy || authBusy}
               onClick={() => setAccountMode("login")}
               className={secondary}
             >
@@ -778,7 +558,7 @@ export default function ShoppingListApp() {
                 <span aria-hidden="true">→</span>
               </button>
               <p className="mt-4 text-xs text-slate-400">
-                Coles and Woolworths product links supported today.
+                Collect Coles, Woolworths and ALDI products with the extension.
               </p>
             </div>
             <div className="border-t border-slate-100 bg-sky-50/60 p-7 sm:p-10 md:border-l md:border-t-0">
@@ -788,16 +568,16 @@ export default function ShoppingListApp() {
               <ol className="mt-7 space-y-7">
                 {[
                   [
-                    "Paste a product link",
-                    "Copy a Coles or Woolworths product URL. For ALDI, use the extension on its product page.",
+                    "Open a product page",
+                    "Visit Coles, Woolworths or ALDI in Chrome on your computer.",
                   ],
                   [
-                    "Keep adding to your list",
-                    "We’ll find the details in the background.",
+                    "Review and save",
+                    "Use the extension to read the product, choose your list and confirm.",
                   ],
                   [
-                    "See what we found",
-                    "Check the price, source, and observation time.",
+                    "Manage your shopping",
+                    "View your observations and edit your list on desktop or mobile.",
                   ],
                 ].map(([title, detail], i) => (
                   <li key={title} className="flex gap-4">
@@ -818,85 +598,19 @@ export default function ShoppingListApp() {
         ) : (
           <div className="grid items-start gap-7 lg:grid-cols-[340px_1fr]">
             <aside className="space-y-5 lg:sticky lg:top-6">
-              <form
-                onSubmit={submit}
-                className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
-              >
-                <h2 className="text-lg font-semibold">Add to your list</h2>
-                <p className="mt-1 text-sm leading-6 text-slate-500">
-                  One product link at a time. Multiple imports can run together.
+              <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" aria-labelledby="add-products">
+                <h2 id="add-products" className="text-lg font-semibold">Add products with the Chrome extension</h2>
+                <p className="mt-3 text-sm leading-6 text-slate-600">
+                  On your computer, open a Coles, Woolworths or ALDI product page.
+                  Click MyShoppingList, choose your list and quantity, then read,
+                  review and save the product.
                 </p>
-                <label
-                  htmlFor="product-url"
-                  className="mb-2 mt-6 block text-sm font-medium"
-                >
-                  Product URL
-                </label>
-                <input
-                  id="product-url"
-                  type="url"
-                  required
-                  disabled={submitting || authBusy}
-                  maxLength={2048}
-                  placeholder="https://www.coles.com.au/product/…"
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm placeholder:text-slate-400 disabled:opacity-60"
-                  aria-describedby="url-help"
-                />
-                <p
-                  id="url-help"
-                  className="mt-2 text-xs leading-5 text-slate-400"
-                >
-                  Use the full product page link, not a search page.
+                <Link href="/extension" className={primary + " mt-5"}>Extension setup and instructions</Link>
+                <p className="mt-3 text-xs leading-5 text-slate-500">
+                  On mobile, you can manage your saved lists here. Collect new
+                  products using Chrome on your computer.
                 </p>
-                <label
-                  htmlFor="quantity"
-                  className="mb-2 mt-5 block text-sm font-medium"
-                >
-                  Quantity
-                </label>
-                <input
-                  id="quantity"
-                  type="number"
-                  required
-                  disabled={submitting || authBusy}
-                  min={1}
-                  max={2147483647}
-                  step={1}
-                  inputMode="numeric"
-                  value={quantity}
-                  onChange={(e) => setQuantity(e.target.value)}
-                  className="w-24 rounded-xl border border-slate-300 px-3 py-2.5 text-sm disabled:opacity-60"
-                />
-                {formError && (
-                  <p
-                    role="alert"
-                    className="mt-4 text-sm leading-6 text-amber-800"
-                  >
-                    {formError}
-                  </p>
-                )}
-                <button
-                  disabled={submitting || authBusy || !session.shoppingListId}
-                  className={`${primary} mt-6 w-full`}
-                >
-                  {submitting ? (
-                    <>
-                      <Spinner /> Adding link…
-                    </>
-                  ) : (
-                    <>
-                      <span aria-hidden="true">+</span> Add product
-                    </>
-                  )}
-                </button>
-                {!session.shoppingListId && (
-                  <p className="mt-3 text-sm text-amber-800">
-                    This shopping list is no longer available.
-                  </p>
-                )}
-              </form>
+              </section>
               <div className="rounded-2xl border border-slate-200 p-5">
                 <h3 className="text-sm font-semibold">A note on prices</h3>
                 <p className="mt-2 text-sm leading-6 text-slate-500">
@@ -911,116 +625,10 @@ export default function ShoppingListApp() {
                 <ShoppingListItems
                   key={`${session.account.id}:${session.shoppingListId}`}
                   listId={session.shoppingListId}
-                  refreshKey={ordered
-                    .map(
-                      (j) =>
-                        `${j.jobId}:${j.shoppingListProductId}:${j.status}:${j.lastActivityDate}:${j.retailers.map((r) => `${r.shopId}:${r.status}:${r.checkedDate}`).join(";")}`,
-                    )
-                    .join(",")}
+                  refreshKey={String(restoreAttempt)}
                   onExpired={endSession}
                 />
               )}
-              <details className="group/activity rounded-2xl border border-slate-200 bg-white p-5">
-                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
-                  <span>
-                    <span className="text-lg font-semibold">
-                      Import activity
-                    </span>
-                    <span className="mt-1 block text-sm text-slate-500">
-                      {ordered.length} loaded import
-                      {ordered.length === 1 ? "" : "s"}
-                      {working ? ` · ${working} in progress` : ""}
-                      {loadError ? " · Could not load activity" : ""}
-                    </span>
-                  </span>
-                  <svg
-                    aria-hidden="true"
-                    viewBox="0 0 24 24"
-                    className="h-5 w-5 shrink-0 transition-transform group-open/activity:rotate-180"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
-                    <path d="m6 9 6 6 6-6" />
-                  </svg>
-                </summary>
-                <section
-                  aria-label="Import history and price comparisons"
-                  className="mt-5"
-                >
-                  {working > 0 && (
-                    <p className="mb-4 text-sm text-sky-700">
-                      {activeIds
-                        ? "Updating every 2 seconds"
-                        : "Updates paused"}
-                    </p>
-                  )}
-                  {loadError && (
-                    <p
-                      role="alert"
-                      className="mb-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-900"
-                    >
-                      {loadError}{" "}
-                      <button
-                        className="font-semibold underline"
-                        onClick={() =>
-                          void loadPage(
-                            session.shoppingListId!,
-                            cursor,
-                            lifetime.current!.signal,
-                          )
-                        }
-                      >
-                        Retry loading
-                      </button>
-                    </p>
-                  )}
-                  <div className="space-y-5">
-                    {ordered.map((job) => (
-                      <ImportCard
-                        key={job.jobId}
-                        job={job}
-                        error={errors[job.jobId]}
-                        onRetry={() => void retry(job.jobId)}
-                      />
-                    ))}
-                  </div>
-                  {loading && (
-                    <p
-                      role="status"
-                      className="mt-5 flex items-center gap-2 text-sm text-slate-500"
-                    >
-                      <Spinner /> Loading saved imports…
-                    </p>
-                  )}
-                  {!loading && !ordered.length && !loadError && (
-                    <div className="flex min-h-80 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white/60 p-8 text-center">
-                      <h3 className="text-lg font-semibold">
-                        Your next shop starts here
-                      </h3>
-                      <p className="mt-2 max-w-xs text-sm leading-6 text-slate-500">
-                        Paste your first Coles or Woolworths product link. The
-                        details will appear here when we find them.
-                      </p>
-                    </div>
-                  )}
-                  {cursor && (
-                    <button
-                      disabled={loading}
-                      onClick={() =>
-                        void loadPage(
-                          session.shoppingListId!,
-                          cursor,
-                          lifetime.current!.signal,
-                        )
-                      }
-                      className={`${secondary} mt-5`}
-                    >
-                      Load older imports
-                    </button>
-                  )}
-                </section>
-              </details>
             </div>
           </div>
         )}
@@ -1033,13 +641,13 @@ export default function ShoppingListApp() {
               RETAILER SUPPORT
             </span>
             <span className="font-semibold text-slate-700">
-              Coles · Woolworths{" "}
+              Coles · Woolworths · ALDI{" "}
               <span className="ml-1 rounded-full bg-emerald-50 px-2 py-1 text-xs text-emerald-700">
-                Live
+                Extension
               </span>
             </span>
             <span className="text-slate-400">
-              ALDI: add with extension · automatic checks unavailable
+              Read and save products you choose
             </span>
             <span className="text-slate-400">
               IGA · Foodland <span className="ml-1 text-xs">Coming later</span>
@@ -1048,7 +656,7 @@ export default function ShoppingListApp() {
           <p className="mt-4 text-xs leading-6 text-slate-400">
             MyShoppingList is independent of these retailers. Comparison
             coverage varies by retailer. Some prices need verification. Existing
-            list-item quantities are replaced when you import the same product
+            list-item quantities are replaced when you save the same product
             again.
           </p>
         </section>

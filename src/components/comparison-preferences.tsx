@@ -123,6 +123,8 @@ function Controls({
           <p>
             Choose which saved alternatives to show. These settings apply to
             your account and do not change your list or basket totals.
+            Comparisons use saved observations. To compare another size or brand,
+            save it with the Chrome extension first; these options do not collect prices.
           </p>
           {state.loading && <p role="status">Loading comparison options…</p>}
           {state.error && (

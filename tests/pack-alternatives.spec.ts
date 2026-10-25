@@ -176,7 +176,7 @@ for (const view of ["planning", "in-store"]) {
       section.getByText(/Coles: \$10.00 per package · \$2.00 per 100 g/),
     ).toBeVisible();
     await expect(section.getByText(/Larger package: consider/)).toBeVisible();
-    await expect(section.getByText(/Price last checked/)).toHaveCount(2);
+    await expect(section.getByText(/Price observed/)).toHaveCount(2);
     await expect(
       section.getByRole("link", { name: "Check this size at Woolworths" }),
     ).toHaveAttribute("href", /woolworths/);
@@ -255,7 +255,7 @@ test("stale prices have dates and no savings claim; missing baseline remains und
   });
   await expect(section.getByText(/Stale price/)).toBeVisible();
   await expect(
-    section.getByText(/Last checked.*2026.*Stale price/),
+    section.getByText(/Last observed.*2026.*Stale price/),
   ).toBeVisible();
   await expect(section.getByText(/A unit-price difference needs/)).toHaveCount(
     2,
@@ -281,7 +281,7 @@ test("today's offer is up to date and very large packages remain factual", async
     exact: true,
   });
   await expect(
-    section.getByText("Price up to date", { exact: true }),
+    section.getByText("Observed today", { exact: true }),
   ).toBeVisible();
   await expect(section.getByText(/2,000 × your original/)).toBeVisible();
   await expect(section.getByText(/possible waste before buying/)).toBeVisible();

@@ -6,10 +6,6 @@ import ProductBadges from "./product-badges";
 import { useEffect, useState } from "react";
 import {
   priceAge,
-  priceCurrent,
-  pricePending,
-  refreshLabel,
-  refreshProgress,
   usePriceNow,
 } from "@/lib/price-age";
 import Link from "next/link";
@@ -112,29 +108,23 @@ export default function InStoreApp() {
             : 0) || a.item.product.name.localeCompare(b.item.product.name),
       ) ?? [];
   const accountId = state.session?.account.id;
-  const refreshing =
-    detail?.items.some((r) => r.prices.some(pricePending)) ?? false;
   useEffect(() => {
     if (!state.selectedList || !accountId || state.unauthorized) return;
     const poll = () => {
       if (
         document.visibilityState === "visible" &&
-        !store.getState().loading &&
-        !store.getState().refreshBusy
+        !store.getState().loading
       )
         void load();
     };
-    const timer = window.setInterval(poll, refreshing ? 3000 : 30000);
     window.addEventListener("focus", poll);
     return () => {
-      window.clearInterval(timer);
       window.removeEventListener("focus", poll);
     };
   }, [
     state.selectedList,
     accountId,
     state.unauthorized,
-    refreshing,
     load,
     store,
   ]);
@@ -173,8 +163,7 @@ export default function InStoreApp() {
           Shop in store
         </h1>
         <p className="mt-2 text-sm text-slate-600">
-          Estimated—prices may vary by store. Fresh prices follow the Wednesday
-          catalogue cycle.
+          Estimated—prices may vary by store. Dates show when prices were observed, not a guarantee of today’s price.
         </p>
         <section
           aria-label="Choose retailer"
@@ -208,7 +197,7 @@ export default function InStoreApp() {
               disabled={disabled}
               onClick={() => void load()}
             >
-              Refresh prices
+              Refresh items
             </button>
           </div>
           {!state.loading && !retailers.length && (
@@ -322,7 +311,7 @@ export default function InStoreApp() {
             <ComparisonPreferences
               key={`${accountId}-${detail.id}`}
               accountId={accountId}
-              disabled={disabled || state.refreshBusy}
+              disabled={disabled}
               onChanged={async () => {
                 await load(detail.id);
                 const latest = store.getState();
@@ -337,24 +326,10 @@ export default function InStoreApp() {
                   throw new Error("Comparison reload is unavailable.");
               }}
             />
-            <div className="mb-4 space-y-2">
-              <button
-                className={button}
-                disabled={
-                  disabled || state.refreshBusy || !detail.remainingCount
-                }
-                onClick={() => void state.refreshPrices()}
-              >
-                Refresh list prices
-              </button>
-              <p role="status" className="text-sm text-slate-600">
-                {refreshProgress(
-                  detail.items,
-                  detail.retailers.map((s) => s.id),
-                  now,
-                )}
-              </p>
-            </div>
+            <p className="mb-4 text-sm text-slate-600">
+              These are saved price observations. To update a price, revisit
+              the product in Chrome and save it with the extension.
+            </p>
             {detail.remainingCount > 0 && (
               <PackDiscoveryControls
                 accountId={state.session?.account.id}
@@ -656,25 +631,6 @@ export default function InStoreApp() {
                           No fresh comparable price available.
                         </p>
                       )}
-                      {!row.item.isPurchased &&
-                        !row.item.isHidden &&
-                        row.prices.length > 0 && (
-                          <button
-                            className={`${button} mt-3`}
-                            disabled={
-                              disabled ||
-                              state.refreshBusy ||
-                              row.prices.every(
-                                (p) => pricePending(p) || priceCurrent(p, now),
-                              )
-                            }
-                            onClick={() =>
-                              void state.refreshPrices(row.item.id)
-                            }
-                          >
-                            {(row.substitutions?.length ?? 0) > 0 ? "Refresh original price" : "Refresh price"}
-                          </button>
-                        )}
                       <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 border-t border-current/10 pt-3 text-xs">
                         {row.prices.map((p) => (
                           <p key={p.shopId}>
@@ -715,14 +671,6 @@ export default function InStoreApp() {
                               }
                               shopName={p.shopName}
                             />
-                            {refreshLabel(p.refreshStatus) && (
-                              <span
-                                role="status"
-                                className="block text-sky-800"
-                              >
-                                {refreshLabel(p.refreshStatus)}
-                              </span>
-                            )}
                           </p>
                         ))}
                       </div>

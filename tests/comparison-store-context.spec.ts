@@ -135,7 +135,7 @@ async function open(page: Page, view: "list" | "in-store") {
 async function reload(page: Page, view: "list" | "in-store") {
   await page
     .getByRole("button", {
-      name: view === "list" ? "Refresh items" : "Refresh prices",
+      name: view === "list" ? "Refresh items" : "Refresh items",
       exact: true,
     })
     .click();

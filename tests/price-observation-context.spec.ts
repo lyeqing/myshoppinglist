@@ -237,10 +237,10 @@ for (const view of ["planning", "in-store"]) {
       })
     ).toBeVisible();
     await expect(
-      sizes(page).getByText("Price up to date", { exact: true })
+      sizes(page).getByText("Observed today", { exact: true })
     ).toHaveCount(2);
     await expect(
-      brands(page).getByText(/Last checked.*12 Oct 2026.*Not comparable/)
+      brands(page).getByText(/Last observed.*12 Oct 2026.*Not comparable/)
     ).toBeVisible();
     await expect(
       sizes(page).getByText(
@@ -383,7 +383,7 @@ for (const view of ["planning", "in-store"]) {
     state.brand.original = null;
     await open(page, view);
     await expect(
-      page.getByText("Price check date unavailable", { exact: true })
+      page.getByText("Observation date unavailable", { exact: true })
     ).toBeVisible();
     await expect(
       page.getByText(

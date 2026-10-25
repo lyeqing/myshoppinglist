@@ -282,38 +282,22 @@ async function open(page: Page, view: string) {
 }
 
 for (const view of ["planning", "in-store"]) {
-  test(`${view}: automatic discovery displays suggestions separately and preserves the chosen product`, async ({ page }) => {
-    const fixture = await setup(page); fixture.autoStart();
-    await open(page, view);
-    const controls = page.getByRole("region", { name: "Find alternative brands for this product", exact: true });
-    await expect(controls.getByText("Woolworths:")).toBeVisible();
-    expect(fixture.posts()).toBe(0);
+  test(view + ": saved alternative brands suggestions remain available without discovery requests", async ({ page }) => {
+    const fixture = await setup(page);
     fixture.complete();
-    const suggestions = page.getByRole("region", { name: "Alternative brands", exact: true });
-    await expect(suggestions.getByText("Suggested alternative — check suitability", { exact: true })).toBeVisible();
-    await expect(suggestions.getByText("Other Original Coffee 1kg", { exact: true })).toBeVisible();
-    await expect(suggestions.getByText(/not been reviewed for suitability/)).toBeVisible();
-    await expect(suggestions.getByText(/1,000 g total per/)).toBeVisible();
-    await expect(suggestions.getByRole("link", { name: "Check this alternative at Woolworths" })).toHaveAttribute("href", /woolworths.com.au/);
-    await expect(page.getByText("Acme Original Coffee 500g", { exact: true }).first()).toBeVisible();
-    await page.reload(); if (view === "in-store") await page.getByRole("button", { name: /Weekly/ }).click();
-    await expect(page.getByText("Suggested alternative — check suitability", { exact: true })).toBeVisible();
+    const requests: string[] = [];
+    page.on("request", request => { if (/pack-discovery|brand-discovery/.test(request.url())) requests.push(request.url()); });
+    await open(page, view);
+    await expect(page.getByText("Other Original Coffee 1kg", { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: /Find other sizes|Find alternative brands/ })).toHaveCount(0);
     expect(fixture.posts()).toBe(0);
-  });
-  test(`${view}: existing products can search, show empty results, and retry a failed check`, async ({ page }) => {
-    const fixture = await setup(page); await open(page, view);
-    const controls = page.getByRole("region", { name: "Find alternative brands for this product", exact: true });
-    const start = controls.getByRole("button", { name: "Find alternative brands", exact: true });
-    await start.click(); await expect(controls.getByText("Waiting for an online reader extension")).toBeVisible();
-    fixture.complete("Completed", 0);
-    await expect(controls.getByText("No suitable alternative brands found in this check")).toBeVisible();
-    fixture.allowStart(); await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-    await expect(start).toBeEnabled(); await start.click(); fixture.complete("Failed", 0);
-    await expect(controls.getByText("Check could not finish. Existing prices are kept")).toBeVisible();
-    fixture.allowStart(); await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-    await expect(start).toBeEnabled(); await start.click(); fixture.complete();
-    await expect(page.getByText("Suggested alternative — check suitability", { exact: true })).toBeVisible();
-    expect(fixture.posts()).toBe(3);
+    await page.clock.install();
+    await page.clock.fastForward(65000);
+    expect(requests).toEqual([]);
+    await page.reload();
+    if(view === "in-store") await page.getByRole("button", {name:/Weekly/}).click();
+    await expect(page.getByText("Other Original Coffee 1kg", {exact:true}).first()).toBeVisible();
+    expect(fixture.posts()).toBe(0);
   });
 }
 let server: Server;

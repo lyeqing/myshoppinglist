@@ -16,12 +16,12 @@ export function priceAge(
   usable: boolean,
   now: number | null,
 ): string {
-  if (!date || now === null) return "Price check date unavailable";
+  if (!date || now === null) return "Observation date unavailable";
   const value = new Date(date);
   if (!Number.isFinite(value.getTime()) || value.getTime() > now)
-    return "Price check date unverified";
-  if (usable && checkedToday(date, now)) return "Price up to date";
-  return `${usable ? "Price last checked" : "Last checked"} ${value.toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" })}`;
+    return "Observation date unverified";
+  if (usable && checkedToday(date, now)) return "Observed today";
+  return `${usable ? "Price observed" : "Last observed"} ${value.toLocaleDateString("en-AU", { day: "numeric", month: "short", year: "numeric" })}`;
 }
 
 // Local midnight and returning to a tab must update labels without another retailer request.

@@ -275,217 +275,24 @@ async function open(page: Page, view: string) {
     await page.getByRole("button", { name: /Weekly/ }).click();
 }
 for (const view of ["planning", "in-store"]) {
-  for (const scope of ["product", "list"]) {
-    test(`${view} ${scope} discovery is explicit, survives reload, and displays saved alternatives`, async ({
-      page,
-    }, info) => {
-      const fixture = await setup(page);
-      await open(page, view);
-      const controls = page.getByRole("region", {
-        name:
-          scope === "product"
-            ? "Find other sizes for this product"
-            : "Find other sizes for this list",
-        exact: true,
-      });
-      const button = controls.getByRole("button", {
-        name:
-          scope === "product"
-            ? "Find other sizes"
-            : "Find other sizes for this list",
-        exact: true,
-      });
-      await expect(button).toBeEnabled();
-      expect(fixture.posts()).toBe(0);
-      if (view === "planning") {
-        await page
-          .getByRole("button", { name: "Edit note", exact: true })
-          .click();
-        await page
-          .getByRole("textbox", { name: "Notes", exact: true })
-          .fill("Unsaved note stays here");
-      }
-      await button.focus();
-      await page.keyboard.press("Enter");
-      await expect(
-        controls.getByText(/Waiting for an online reader extension/),
-      ).toBeVisible();
-      await expect(button).toBeDisabled();
-      expect(fixture.posts()).toBe(1);
-      expect(fixture.requests.filter((r) => r.startsWith("POST "))).toEqual([
-        scope === "product"
-          ? "POST /api/shopping-lists/1/items/1/pack-discovery"
-          : "POST /api/shopping-lists/1/pack-discovery",
-      ]);
-      const details = controls.getByRole("list", { name: "Other-size store checks" });
-      const toggle = controls.getByRole("button", { name: "Hide search details", exact: true });
-      await expect(toggle).toHaveAttribute("aria-expanded", "true");
-      await toggle.focus();
-      await page.keyboard.press("Space");
-      await expect(details).toBeHidden();
-      await expect(controls.getByRole("button", { name: "Show search details", exact: true })).toHaveAttribute("aria-expanded", "false");
-      await expect(controls.getByText("Store checks: 1 in progress.", { exact: true })).toBeVisible();
-      fixture.complete();
-      const alternatives = page.getByRole("region", {
-        name: "Other package sizes",
-        exact: true,
-      });
-      await expect(alternatives).toBeVisible({ timeout: 10000 });
-      await expect(
-        alternatives.getByText(/35% less per 100 g; costs/),
-      ).toBeVisible();
-      if (view === "planning")
-        await expect(
-          page.getByRole("textbox", { name: "Notes", exact: true }),
-        ).toHaveValue("Unsaved note stays here");
-      await expect(controls.getByText("Store checks: 1 completed.", { exact: true })).toBeVisible();
-      await expect(details).toBeHidden();
-      expect(fixture.posts()).toBe(1);
-      const show = controls.getByRole("button", { name: "Show search details", exact: true });
-      await show.focus();
-      await page.keyboard.press("Enter");
-      await expect(details).toBeVisible();
-      await expect(controls.getByText(/1 verified package checked/)).toBeVisible();
-      await page.reload();
-      if (view === "in-store")
-        await page.getByRole("button", { name: /Weekly/ }).click();
-      await expect(alternatives).toBeVisible();
-      await expect(
-        controls.getByText(/1 verified package checked/),
-      ).toBeVisible();
-      expect(fixture.posts()).toBe(1);
-      expect(
-        await page.evaluate(
-          () => document.documentElement.scrollWidth <= innerWidth,
-        ),
-      ).toBe(true);
-      await page.screenshot({
-        path: `test-results/${info.project.name}-discovery-${view}-${scope}.png`,
-        fullPage: true,
-      });
-    });
-  }
+  test(view + ": saved other sizes suggestions remain available without discovery requests", async ({ page }) => {
+    const fixture = await setup(page);
+    fixture.complete();
+    const requests: string[] = [];
+    page.on("request", request => { if (/pack-discovery|brand-discovery/.test(request.url())) requests.push(request.url()); });
+    await open(page, view);
+    await expect(page.getByText("Acme Original Coffee 1kg", { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: /Find other sizes|Find alternative brands/ })).toHaveCount(0);
+    expect(fixture.posts()).toBe(0);
+    await page.clock.install();
+    await page.clock.fastForward(65000);
+    expect(requests).toEqual([]);
+    await page.reload();
+    if(view === "in-store") await page.getByRole("button", {name:/Weekly/}).click();
+    await expect(page.getByText("Acme Original Coffee 1kg", {exact:true}).first()).toBeVisible();
+    expect(fixture.posts()).toBe(0);
+  });
 }
-test("starting another size search expands its hidden details", async ({ page }) => {
-  const fixture = await setup(page);
-  await open(page, "planning");
-  const controls = page.getByRole("region", { name: "Find other sizes for this list", exact: true });
-  const start = controls.getByRole("button", { name: "Find other sizes for this list", exact: true });
-  await start.click();
-  await expect(controls.getByRole("button", { name: "Hide search details" })).toBeVisible();
-  await controls.getByRole("button", { name: "Hide search details" }).click();
-  fixture.complete();
-  await expect(controls.getByText("Store checks: 1 completed.", { exact: true })).toBeVisible({ timeout: 10000 });
-  fixture.allowStart();
-  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-  await expect(start).toBeEnabled();
-  await expect(controls.getByRole("button", { name: "Show search details" })).toBeVisible();
-  await start.click();
-  await expect(controls.getByRole("list", { name: "Other-size store checks" })).toBeVisible();
-  await expect(controls.getByRole("button", { name: "Hide search details" })).toHaveAttribute("aria-expanded", "true");
-  expect(fixture.posts()).toBe(2);
-});
-
-test("disabled preference prevents searches and links to settings", async ({
-  page,
-}) => {
-  const fixture = await setup(page);
-  fixture.disable();
-  await open(page, "planning");
-  const controls = page.getByRole("region", {
-    name: "Find other sizes for this product",
-    exact: true,
-  });
-  await expect(
-    controls.getByRole("button", { name: "Find other sizes", exact: true }),
-  ).toBeDisabled();
-  await expect(
-    controls.getByRole("link", { name: "Manage package comparisons" }),
-  ).toHaveAttribute("href", "/settings");
-  expect(fixture.posts()).toBe(0);
-});
-test("request and load failures recover while existing prices stay visible", async ({
-  page,
-}) => {
-  const fixture = await setup(page);
-  fixture.failRead(503);
-  await open(page, "planning");
-  const controls = page.getByRole("region", {
-    name: "Find other sizes for this product",
-    exact: true,
-  });
-  await expect(controls.getByRole("alert")).toBeVisible();
-  fixture.failRead(0);
-  await controls.getByRole("button", { name: "Reload size search" }).click();
-  const button = controls.getByRole("button", {
-    name: "Find other sizes",
-    exact: true,
-  });
-  await expect(button).toBeEnabled();
-  fixture.fail(503);
-  await button.click();
-  await expect(controls.getByRole("alert")).toBeVisible();
-  await expect(
-    page.getByText("Keep my usual size", { exact: true }),
-  ).toBeVisible();
-  fixture.fail(0);
-  await button.click();
-  await expect(
-    controls.getByText(/Waiting for an online reader extension/),
-  ).toBeVisible();
-  fixture.complete("Failed", 1);
-  await expect(controls.getByText(/some checks could not finish/)).toBeVisible({
-    timeout: 10000,
-  });
-  await expect(controls.getByText(/Retry after/)).toBeVisible();
-  await expect(
-    page.getByRole("region", { name: "Other package sizes", exact: true }),
-  ).toBeVisible();
-});
-test("completed empty checks are described as a bounded result", async ({
-  page,
-}) => {
-  const fixture = await setup(page);
-  await open(page, "planning");
-  const controls = page.getByRole("region", {
-    name: "Find other sizes for this product",
-    exact: true,
-  });
-  await controls
-    .getByRole("button", { name: "Find other sizes", exact: true })
-    .click();
-  await expect(
-    controls.getByText(/Waiting for an online reader extension/),
-  ).toBeVisible();
-  fixture.complete("Completed", 0);
-  await expect(
-    controls.getByText(/No verified other sizes found in this check/),
-  ).toBeVisible({ timeout: 10000 });
-});
-test("sign-in changes abort an outstanding write and discard its progress", async ({
-  page,
-}) => {
-  const fixture = await setup(page);
-  fixture.defer();
-  await open(page, "planning");
-  const controls = page.getByRole("region", {
-    name: "Find other sizes for this product",
-    exact: true,
-  });
-  await controls
-    .getByRole("button", { name: "Find other sizes", exact: true })
-    .click();
-  await expect.poll(fixture.posts).toBe(1);
-  fixture.changeAccount();
-  await page.evaluate(() =>
-    window.dispatchEvent(new Event("myshoppinglist-session-changed")),
-  );
-  fixture.release();
-  await expect(
-    page.getByText(/Waiting for an online reader extension/),
-  ).toHaveCount(0);
-  await expect(page.getByText(/store checks? queued/)).toHaveCount(0);
-});
 let server: Server;
 let writes = 0;
 test.beforeAll(async () => {

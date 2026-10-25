@@ -16,9 +16,6 @@ import type {
 } from "@/lib/api-types";
 import {
   priceAge,
-  priceCurrent,
-  pricePending,
-  refreshLabel,
   usePriceNow,
 } from "@/lib/price-age";
 import { ApiError } from "@/lib/api-client";
@@ -116,11 +113,6 @@ function PriceDetail({
           <p className="mt-1 text-xs">{price.specialDescription}</p>
         )
       )}
-      {refreshLabel(price.refreshStatus) && (
-        <p role="status" className="mt-1 text-xs text-sky-700">
-          {refreshLabel(price.refreshStatus)}
-        </p>
-      )}
       <p className="mt-1 text-xs">
         {priceAge(
           price.checkedDate,
@@ -142,28 +134,19 @@ export default function ShoppingListItemCard({
   accountId,
   onDiscovered,
   disabled,
-  checking,
   save,
   remove,
   reload,
-  retryComparison,
-  refreshPrices,
-  refreshBusy,
 }: {
   row: PlanningItem;
   accountId?: number;
   onDiscovered?: () => Promise<unknown>;
   disabled: boolean;
-  checking: boolean;
   save: (id: number, edit: ListItemUpdate) => Promise<ListItem>;
   remove: (id: number, expectedUpdatedDate: string) => Promise<void>;
   reload: (id: number) => Promise<ListItem | null>;
-  retryComparison: (id: number) => Promise<void>;
-  refreshPrices: () => Promise<void>;
-  refreshBusy: boolean;
 }) {
   const { item, prices } = row;
-  const now = usePriceNow(prices);
   const [draft, setDraft] = useState<{ notes: string; version: string } | null>(
     null,
   );
@@ -263,19 +246,6 @@ export default function ShoppingListItemCard({
       aria-label={title}
       className="scroll-mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
     >
-      {!item.isPurchased && !item.isHidden && prices.length > 0 && (
-        <button
-          className={`${button} mb-3`}
-          disabled={
-            locked ||
-            refreshBusy ||
-            prices.every((p) => pricePending(p) || priceCurrent(p, now))
-          }
-          onClick={() => void refreshPrices()}
-        >
-          {(row.substitutions?.length ?? 0) > 0 ? "Refresh original price" : "Refresh price"}
-        </button>
-      )}
       <div className="flex items-start gap-4">
         {safeLink(item.product.imageUrl) && (
           // Retailer image URLs are stored externally; avoid requiring an image proxy.
@@ -331,62 +301,6 @@ export default function ShoppingListItemCard({
               />
             ))}
         </div>
-        {row.comparison && row.comparison.status !== "Completed" && (
-          <aside
-            aria-label="Price comparison progress"
-            className="mt-3 rounded-xl bg-sky-50 p-3 text-sm"
-          >
-            <p role="status">
-              {row.comparison.status === "Checking"
-                ? `Checking ${
-                    row.comparison.retailers
-                      .filter(
-                        (r) =>
-                          r.status === "Pending" ||
-                          r.status === "Checking" ||
-                          r.status === "CheckFailed",
-                      )
-                      .map((r) => r.name)
-                      .join(" and ") || "other shops"
-                  }… Prices will update here.`
-                : row.comparison.errorCode === "retailer_access_restricted"
-                  ? "Comparison paused: the retailer blocked access. Your product is saved."
-                  : row.comparison.errorCode === "read_timeout"
-                    ? "Comparison check timed out. Your product is saved."
-                    : "Comparison check failed. Your product is saved."}
-            </p>
-            {row.comparison.retryAfter && (
-              <p className="mt-1 text-xs text-slate-600">
-                {row.comparison.status === "Checking"
-                  ? "Next check after "
-                  : "Retry available after "}
-                {new Date(row.comparison.retryAfter).toLocaleString("en-AU")}
-              </p>
-            )}
-            {row.comparison.status === "Failed" && (
-              <button
-                type="button"
-                disabled={locked || !row.comparison.canRetry}
-                className="mt-2 rounded-lg border border-sky-300 px-3 py-2 font-semibold text-sky-800 disabled:cursor-not-allowed disabled:opacity-50"
-                onClick={() =>
-                  void act(async () => {
-                    await retryComparison(item.id);
-                    setNotice(
-                      "Comparison queued. An online extension will check prices.",
-                    );
-                  })
-                }
-              >
-                {busy ? "Queuing comparison…" : "Retry comparison"}
-              </button>
-            )}
-          </aside>
-        )}
-        {!row.comparison && checking && (
-          <p role="status" className="mt-3 text-sm text-sky-700">
-            Checking other shops… Prices will update here.
-          </p>
-        )}
       </div>
       {!item.isPurchased && !item.isHidden && onDiscovered && (
         <>

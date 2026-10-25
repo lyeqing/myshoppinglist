@@ -768,38 +768,8 @@ test("stalled session restoration times out and retries without losing the sessi
   stall = false;
   await page.getByRole("button", { name: "Retry restoring my list" }).click();
   await expect(page.getByText("Your trial is active")).toBeVisible();
-  await expect(page.getByLabel("Product URL", { exact: true })).toBeEnabled();
+  await expect(page.getByRole("link", { name: "Extension setup and instructions" })).toBeVisible();
   expect(sessions.size).toBe(1);
-});
-
-test("stalled import history does not block the list and can be retried", async ({
-  page,
-}) => {
-  await start(page);
-  await page.clock.install();
-  let stall = true;
-  await page.route("**/imports?*", (route) => {
-    if (!stall) return route.continue();
-  });
-  const requested = page.waitForRequest("**/imports?*");
-  await page.reload();
-  await requested;
-  await openActivity(page);
-  await expect(page.getByLabel("Product URL", { exact: true })).toBeEnabled();
-  await expect(page.getByText("Restoring your shopping list…")).toBeHidden();
-  await expect(page.getByText("Loading saved imports…")).toBeVisible();
-  await page.clock.fastForward(21000);
-  await expect(
-    page.getByRole("alert").filter({ hasText: "took too long" }),
-  ).toBeVisible();
-  stall = false;
-  await page
-    .getByRole("button", { name: "Retry loading", exact: true })
-    .click();
-  await expect(page.getByText("Your next shop starts here")).toBeVisible();
-  await expect(
-    page.getByRole("alert").filter({ hasText: "took too long" }),
-  ).toBeHidden();
 });
 
 async function fillAccount(page: Page, register = true) {
@@ -1008,7 +978,7 @@ test("account login replaces trial view without merging trial items", async ({
   await expect(page.getByLabel("Notes", { exact: true })).toHaveCount(0);
   await expect(
     page.getByText(
-      "Your saved products will appear here after their details are found.",
+      "Products you save with the Chrome extension will appear here. Use Refresh items after saving.",
     ),
   ).toBeVisible();
   expect(listItems.get(trialItem.id)!.shoppingListId).toBe(
@@ -1111,185 +1081,30 @@ test("account gateway enforces JSON, sizes, methods and safe expired reset", asy
   await page.reload();
   await expect(page.getByText("Your trial is active")).toBeVisible();
 });
-async function openActivity(page: Page) {
-  const summary = page
-    .locator("summary")
-    .filter({ hasText: "Import activity" });
-  await expect(summary).toBeVisible();
-  if (!((await summary.locator("..").getAttribute("open")) !== null))
-    await summary.click();
-}
 async function add(page: Page, code = "test") {
-  await openActivity(page);
-  await page
-    .getByLabel("Product URL")
-    .fill(`https://www.coles.com.au/product/${code}`);
-  const submitted = page.waitForResponse(
-    (response) =>
-      response.url().endsWith("/products/url") &&
-      response.request().method() === "POST",
-  );
-  await page.getByRole("button", { name: "Add product", exact: true }).click();
-  await submitted;
-  await expect(
-    page.getByRole("button", { name: "Add product", exact: true }),
-  ).toBeEnabled();
+  // Simulate a product already saved by the extension, without a collection request.
+  const cookie = (await page.context().cookies()).find(c => c.name === "myshoppinglist_session")!;
+  const session = sessions.get(cookie.value)!;
+  const id = jobs.size + 1;
+  const createdDate = new Date().toISOString();
+  sources.set(id, "https://www.coles.com.au/product/" + code);
+  let saved = completed({
+    jobId: id, shoppingListId: session.shoppingListId!, quantity: 1,
+    status: "Completed", progressStage: "Completed", product: null, shoppingListProductId: null,
+    createdDate, lastActivityDate: createdDate, completedDate: createdDate,
+    nextAttemptDate: null, errorCode: null, retailers: [],
+  });
+  if (comparison) saved = comparison(saved);
+  jobs.set(id, saved);
+  listItems.set(id, {
+    id, shoppingListId: saved.shoppingListId, product: saved.product!, quantity: saved.quantity,
+    notes: null, isPurchased: false, isHidden: false, purchasedDate: null,
+    preferredShopId: null, addedDate: createdDate, updatedDate: createdDate,
+  });
+  await page.getByRole("button", { name: "Refresh items", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Editable shopping list" }).getByRole("article")).toBeVisible();
 }
 
-test("start, import, price context, terminal polling stop and refresh recovery", async ({
-  page,
-}, info) => {
-  await page.goto("/");
-  await expect(
-    page.getByRole("heading", { name: "Your list. A clearer price." }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Start my shopping list" }),
-  ).toBeVisible();
-  await page.screenshot({
-    path: `test-results/${info.project.name}-welcome.png`,
-    fullPage: true,
-  });
-  await page.getByRole("button", { name: "Start my shopping list" }).click();
-  await expect(page.getByText("Your trial is active")).toBeVisible();
-  expect(await page.evaluate(() => document.cookie)).not.toContain(
-    "myshoppinglist_session",
-  );
-  await add(page);
-  await expect(
-    page.getByRole("heading", { name: "Finding your product…" }),
-  ).toBeVisible();
-  await expect(
-    page
-      .getByRole("region", { name: "Import history and price comparisons" })
-      .getByRole("heading", { name: product.name }),
-  ).toBeVisible({ timeout: 10000 });
-  await expect(page.getByText("Store not verified")).toBeVisible();
-  await expect(
-    page.getByText("Comparison not available yet", { exact: true }),
-  ).toBeVisible();
-  const polled = counts.get(1);
-  await page.waitForTimeout(2300);
-  expect(counts.get(1)).toBe(polled);
-  await page.reload();
-  await openActivity(page);
-  await expect(
-    page
-      .getByRole("region", { name: "Import history and price comparisons" })
-      .getByRole("heading", { name: product.name }),
-  ).toBeVisible();
-  await page.screenshot({
-    path: `test-results/${info.project.name}-list.png`,
-    fullPage: true,
-  });
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
-  await page.getByRole("button", { name: "Sign out" }).click();
-  await expect(
-    page.getByRole("button", { name: "Start my shopping list" }),
-  ).toBeVisible();
-});
-test("multiple imports remain usable and all polling stops on expiry", async ({
-  page,
-}) => {
-  frozen = true;
-  await start(page);
-  await add(page, "one");
-  await add(page, "two");
-  await expect(
-    page.getByText("2 loaded imports · 2 in progress"),
-  ).toBeVisible();
-  expire = true;
-  await expect(
-    page.getByText("Your trial has ended. Start a new trial to continue."),
-  ).toBeVisible({ timeout: 7000 });
-  const count = calls;
-  await page.waitForTimeout(2300);
-  expect(calls).toBe(count);
-  await expect(
-    page
-      .getByRole("region", { name: "Import history and price comparisons" })
-      .getByRole("article"),
-  ).toHaveCount(0);
-});
-test("validation, rate limits and paused updates retain useful state", async ({
-  page,
-}) => {
-  frozen = true;
-  await start(page);
-  await page.getByLabel("Product URL").fill("https://example.com/product");
-  await page.getByRole("button", { name: "Add product", exact: true }).click();
-  await expect(
-    page.getByRole("alert").filter({ hasText: "valid Coles" }),
-  ).toBeVisible();
-  failNextSubmit = true;
-  await add(page);
-  await expect(
-    page.getByRole("alert").filter({ hasText: "60 seconds" }),
-  ).toBeVisible();
-  await add(page);
-  offline = true;
-  await expect(page.getByRole("button", { name: "Retry updates" })).toBeVisible(
-    { timeout: 7000 },
-  );
-  offline = false;
-  frozen = false;
-  await page.getByRole("button", { name: "Retry updates" }).click();
-  await expect(
-    page
-      .getByRole("region", { name: "Import history and price comparisons" })
-      .getByRole("heading", { name: product.name }),
-  ).toBeVisible({ timeout: 7000 });
-});
-test("navigation aborts ongoing polling", async ({ page }) => {
-  frozen = true;
-  await start(page);
-  await add(page);
-  await expect(
-    page
-      .getByRole("region", { name: "Import history and price comparisons" })
-      .getByRole("article"),
-  ).toHaveCount(1);
-  await page.goto("about:blank");
-  const count = calls;
-  await page.waitForTimeout(2300);
-  expect(calls).toBe(count);
-});
-test("older saved imports are available through cursor pagination", async ({
-  page,
-}) => {
-  await start(page);
-  await add(page);
-  await expect(
-    page
-      .getByRole("region", { name: "Import history and price comparisons" })
-      .getByRole("article"),
-  ).toHaveCount(1);
-  const original = jobs.get(1)!;
-  for (let id = 1; id <= 21; id++) {
-    jobs.set(id, completed({ ...original, jobId: id }));
-    counts.set(id, 10);
-  }
-  await page.reload();
-  await openActivity(page);
-  await expect(
-    page
-      .getByRole("region", { name: "Import history and price comparisons" })
-      .getByRole("article"),
-  ).toHaveCount(20);
-  await page.getByRole("button", { name: "Load older imports" }).click();
-  await expect(
-    page
-      .getByRole("region", { name: "Import history and price comparisons" })
-      .getByRole("article"),
-  ).toHaveCount(21);
-  await expect(
-    page.getByRole("button", { name: "Load older imports" }),
-  ).toHaveCount(0);
-});
 test("gateway rejects unknown routes and cross-origin posts without contacting upstream", async ({
   request,
 }) => {
@@ -1326,31 +1141,6 @@ test("gateway rejects unknown routes and cross-origin posts without contacting u
   });
   expect(receivedCookie).not.toContain("secret");
   expect(receivedCookie).not.toContain("tracking");
-});
-
-test("Woolworths URL imports and retains its own source after refresh", async ({
-  page,
-}) => {
-  await start(page);
-  await openActivity(page);
-  const url =
-    "https://www.woolworths.com.au/shop/productdetails/32731/coca-cola-classic-soft-drink-bottle";
-  await page.getByLabel("Product URL").fill(url);
-  await page.getByRole("button", { name: "Add product", exact: true }).click();
-  await expect(
-    page
-      .getByRole("region", { name: "Import history and price comparisons" })
-      .getByRole("heading", { name: product.name }),
-  ).toBeVisible({ timeout: 10000 });
-  expect(sources.get(1)).toBe(url);
-  const article = page
-    .getByRole("region", { name: "Import history and price comparisons" })
-    .getByRole("article");
-  await expect(article.getByText("Woolworths", { exact: true })).toBeVisible();
-  await expect(article.locator(`a[href="${url}"]`)).toBeVisible();
-  await page.reload();
-  await openActivity(page);
-  await expect(article.locator(`a[href="${url}"]`)).toBeVisible();
 });
 
 function comparable(job: Job): Job {
@@ -1473,58 +1263,6 @@ test("multibuy deal updates quantity totals and retailer ranking", async ({
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-});
-
-test("stale prices update automatically without losing note drafts or requiring a reload", async ({
-  page,
-}) => {
-  await start(page);
-  await add(page);
-  const list = page.getByRole("region", { name: "Editable shopping list" });
-  const card = list.getByRole("article");
-  await expect(card).toBeVisible({ timeout: 10000 });
-  const old: PlanningPrice = {
-    shopId: 1,
-    shopName: "Coles",
-    price: 23,
-    includedInTotal: false,
-    status: "Stale price",
-    productUrl: "https://www.coles.com.au/product/123456",
-    checkedDate: "2026-09-01T00:00:00Z",
-    specialDescription: null,
-    refreshStatus: "Waiting",
-  };
-  planningPrices.set(1, [old]);
-  await page.reload();
-  await expect(card.getByText(/Waiting for price update/)).toBeVisible();
-  await expect(card.getByText(/Stale price/)).toBeVisible();
-  await card.getByRole("button", { name: "Add note" }).click();
-  await card.getByLabel("Notes").fill("Keep this draft during price updates");
-  planningPrices.set(1, [{ ...old, refreshStatus: "Updating" }]);
-  await expect(card.getByText("Updating price…")).toBeVisible({
-    timeout: 10000,
-  });
-  planningPrices.set(1, [
-    {
-      ...old,
-      price: 17,
-      includedInTotal: true,
-      status: "Fresh",
-      refreshStatus: null,
-    },
-  ]);
-  await expect(card.getByText("at Coles", { exact: true })).toBeVisible({
-    timeout: 10000,
-  });
-  await expect(card.getByText(/Stale price|Updating price/)).toHaveCount(0);
-  await expect(card.getByLabel("Notes")).toHaveValue(
-    "Keep this draft during price updates",
-  );
-  await expect(
-    list
-      .getByRole("region", { name: "Shopping cost summary" })
-      .getByText("$17.00", { exact: true }),
-  ).toHaveCount(2);
 });
 
 test("planning cards show prices, save quantities and notes, and delete only the list entry", async ({
@@ -1727,344 +1465,12 @@ test("editing gateway allows full-length notes and rejects unsafe delete and edi
   expect(calls).toBe(before);
 });
 
-test("import activity is collapsed by default while prices update on the cards", async ({
-  page,
-}) => {
-  comparison = comparable;
-  await start(page);
-  const activity = page.locator("details").filter({
-    has: page.locator("summary").filter({ hasText: "Import activity" }),
-  });
-  await expect(activity).not.toHaveAttribute("open");
-  await page
-    .getByLabel("Product URL")
-    .fill("https://www.coles.com.au/product/test");
-  await page.getByRole("button", { name: "Add product", exact: true }).click();
-  const card = page
-    .getByRole("region", { name: "Editable shopping list" })
-    .getByRole("article");
-  await expect(card.getByText("at Woolworths", { exact: true })).toBeVisible({
-    timeout: 10000,
-  });
-  await expect(activity).not.toHaveAttribute("open");
-  await openActivity(page);
-  await expect(activity).toHaveAttribute("open", "");
-  await page.locator("summary").filter({ hasText: "Import activity" }).click();
-  await expect(activity).not.toHaveAttribute("open");
-});
-
-test("verified comparison highlights the best price and retains cache context", async ({
-  page,
-}, info) => {
-  comparison = comparable;
-  await start(page);
-  await add(page);
-  await expect(
-    page.getByText("Best known price · national", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    page
-      .getByRole("region", { name: "Import history and price comparisons" })
-      .getByText("at Woolworths", { exact: true }),
-  ).toBeVisible();
-  await expect(page.getByText(/Saved observation/)).toBeVisible();
-  await expect(
-    page
-      .getByRole("region", { name: "Import history and price comparisons" })
-      .getByText("Price up to date", { exact: true }),
-  ).toHaveCount(2);
-  await expect(page.getByText(/among 2 retailers/)).toBeVisible();
-  await page.screenshot({
-    path: `test-results/${info.project.name}-comparison.png`,
-    fullPage: true,
-  });
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
-  await page.reload();
-  await openActivity(page);
-  await expect(
-    page
-      .getByRole("region", { name: "Import history and price comparisons" })
-      .getByText("at Woolworths", { exact: true }),
-  ).toBeVisible();
-});
-
 for (const [code, explanation] of [
   ["retailer_access_restricted", "The retailer blocked this check."],
   ["read_timeout", "The retailer took too long to respond."],
   ["search_read_failed", "We couldn’t finish this retailer’s check."],
 ]) {
-  test(`comparison failure ${code} explains the check without reporting no match`, async ({
-    page,
-  }) => {
-    comparison = (job) => {
-      const saved = completed(job);
-      return {
-        ...saved,
-        retailers: saved.retailers.map((retailer) =>
-          retailer.shopId === 2
-            ? { ...retailer, status: "CheckFailed", errorCode: code }
-            : retailer,
-        ),
-      };
-    };
-    await start(page);
-    await add(page);
-    const activity = page.getByRole("region", {
-      name: "Import history and price comparisons",
-    });
-    await expect(
-      activity.getByText(explanation, { exact: false }),
-    ).toBeVisible();
-    await expect(
-      activity.getByText("No match found", { exact: true }),
-    ).toHaveCount(0);
-    expect(listItems.size).toBe(1);
-    await page.reload();
-    await openActivity(page);
-    await expect(
-      activity.getByText(explanation, { exact: false }),
-    ).toBeVisible();
-  });
 }
-
-test("product card shows cooldown, retries once, and updates without opening history", async ({
-  page,
-  request,
-}) => {
-  let retries = 0;
-  let checking = false;
-  let cooling = true;
-  let done = false;
-  await page.route("**/api/shopping-lists/*/plan", async (route) => {
-    const response = await route.fetch();
-    const plan = await response.json();
-    for (const row of plan.items)
-      row.comparison = {
-        jobId: 1,
-        status: done ? "Completed" : checking ? "Checking" : "Failed",
-        errorCode: "retailer_access_restricted",
-        canRetry: !checking && !cooling,
-        retryAfter: cooling
-          ? new Date(Date.now() + 900000).toISOString()
-          : null,
-        retailers: [
-          {
-            name: "Woolworths",
-            status: checking ? "Pending" : "CheckFailed",
-            errorCode: "retailer_access_restricted",
-          },
-        ],
-      };
-    await route.fulfill({ json: plan });
-  });
-  await page.route(
-    "**/api/shopping-lists/*/items/*/retry-comparison",
-    async (route) => {
-      retries++;
-      checking = true;
-      await new Promise((resolve) => setTimeout(resolve, 250));
-      await route.fulfill({
-        json: {
-          jobId: 1,
-          status: "Checking",
-          canRetry: false,
-          retryAfter: null,
-          errorCode: null,
-          retailers: [
-            { name: "Woolworths", status: "Pending", errorCode: null },
-          ],
-        },
-      });
-    },
-  );
-  await start(page);
-  await add(page);
-  await page.locator("summary").filter({ hasText: "Import activity" }).click();
-  const card = page
-    .getByRole("region", { name: "Editable shopping list" })
-    .getByRole("article");
-  await expect(card.getByText(/Comparison paused/)).toBeVisible();
-  await expect(
-    card.getByRole("button", { name: "Retry comparison" }),
-  ).toBeDisabled();
-  cooling = false;
-  await page
-    .getByRole("button", { name: "Refresh items", exact: true })
-    .click();
-  const retry = card.getByRole("button", { name: "Retry comparison" });
-  await expect(retry).toBeEnabled();
-  await retry.click();
-  await expect(card.getByText(/Checking Woolworths/)).toBeVisible();
-  expect(retries).toBe(1);
-  await expect(
-    card.getByRole("button", { name: "Retry comparison" }),
-  ).toHaveCount(0);
-  done = true;
-  await expect(card.getByLabel("Price comparison progress")).toHaveCount(0, {
-    timeout: 10000,
-  });
-  // Browser protection still applies to the newly allowed route.
-  expect(
-    (
-      await request.post("/api/shopping-lists/1/items/1/retry-comparison", {
-        data: {},
-      })
-    ).status(),
-  ).toBe(403);
-});
-
-test("blocked source imports explain retailer access and survive refresh", async ({
-  page,
-}) => {
-  comparison = (job) => ({
-    ...job,
-    status: "Failed",
-    product: null,
-    shoppingListProductId: null,
-    errorCode: "retailer_access_restricted",
-    retailers: [],
-  });
-  await start(page);
-  await add(page);
-  const blocked = page.getByRole("heading", {
-    name: "The retailer blocked access",
-  });
-  await expect(blocked).toBeVisible();
-  await expect(
-    page.getByText(/The retailer prevented MyShoppingList/),
-  ).toBeVisible();
-  await expect(
-    page.getByText(
-      "Check the product link and submit it again when you’re ready.",
-    ),
-  ).toHaveCount(0);
-  expect(listItems.size).toBe(0);
-  const polled = counts.get(1);
-  await page.waitForTimeout(2300);
-  expect(counts.get(1)).toBe(polled);
-  await page.reload();
-  await openActivity(page);
-  await expect(blocked).toBeVisible();
-  comparison = (job) => ({
-    ...job,
-    status: "Failed",
-    product: null,
-    shoppingListProductId: null,
-    errorCode: "product_not_identified",
-    retailers: [],
-  });
-  await add(page, "another");
-  await expect(
-    page.getByRole("heading", { name: "We couldn’t identify this product" }),
-  ).toBeVisible();
-});
-
-test("unknown stores, uncertain matches and failures do not receive recommendations", async ({
-  page,
-}) => {
-  comparison = (job) => {
-    const result = comparable(job);
-    return {
-      ...result,
-      retailers: [
-        {
-          ...result.retailers[0],
-          prices: result.retailers[0].prices.map((p) => ({
-            ...p,
-            priceScope: "Unknown",
-          })),
-        },
-        {
-          ...result.retailers[1],
-          status: "Likely",
-          matchType: "Likely",
-          prices: [],
-        },
-        {
-          ...result.retailers[1],
-          shopId: 3,
-          shopName: "ALDI",
-          status: "Unavailable",
-          prices: [],
-          errorCode: "access_restricted",
-        },
-      ],
-    };
-  };
-  await start(page);
-  await add(page);
-  await expect(
-    page.getByText("Store not verified", { exact: true }),
-  ).toBeVisible();
-  await expect(page.getByText(/Identity needs confirmation/)).toBeVisible();
-  await expect(
-    page.getByText(/We couldn’t check a current price/),
-  ).toBeVisible();
-  await expect(page.getByText(/^Best known price ·/)).toHaveCount(0);
-});
-
-test("stale prices and expired promotions remain visible with warnings", async ({
-  page,
-}) => {
-  comparison = (job) => {
-    const result = comparable(job);
-    result.retailers[0].prices[0].checkedDate = new Date(
-      Date.now() - 25 * 3600000,
-    ).toISOString();
-    result.retailers[1].prices[0].specialEndDate = new Date(
-      Date.now() - 1000,
-    ).toISOString();
-    return result;
-  };
-  await start(page);
-  await add(page);
-  await expect(
-    page.getByText("Price may be stale", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByText("Promotion ended · price needs checking", { exact: true }),
-  ).toBeVisible();
-  await expect(page.getByText(/^Best known price ·/)).toHaveCount(0);
-  await expect(page.getByText("AUD 19.00", { exact: true })).toBeVisible();
-});
-
-test("freshness updates after polling stops without another network request", async ({
-  page,
-}) => {
-  const now = Date.now();
-  await page.clock.install({ time: new Date(now) });
-  comparison = (job) => {
-    const result = comparable(job);
-    for (const retailer of result.retailers)
-      retailer.prices[0].checkedDate = new Date(
-        now - 6 * 3600000 + 30000,
-      ).toISOString();
-    return result;
-  };
-  await start(page);
-  await add(page);
-  await expect(
-    page.getByText("Best known price · national", { exact: true }),
-  ).toBeVisible();
-  const polled = counts.get(1);
-  await page.clock.fastForward(61000);
-  const date = new Date(now - 6 * 3600000 + 30000).toISOString();
-  await expect(
-    page
-      .getByRole("region", { name: "Import history and price comparisons" })
-      .getByText(priceAge(date, true, now + 61000), { exact: true }),
-  ).toHaveCount(2);
-  if (checkedToday(date, now + 61000))
-    await expect(
-      page.getByText("Refresh recommended", { exact: true }),
-    ).toHaveCount(0);
-  await expect(page.getByText(/^Best known price ·/)).toHaveCount(0);
-  expect(counts.get(1)).toBe(polled);
-});
 
 test("comparison rules preserve freshness boundaries, ties and separate price coverage", () => {
   const now = Date.parse("2026-09-20T00:00:00Z");
@@ -2141,9 +1547,9 @@ test("price dates distinguish local midnight, missing dates, future checks and i
   const today = new Date(2026, 9, 17, 0, 0).toISOString();
   expect(checkedToday(yesterday, now)).toBe(false);
   expect(checkedToday(today, now)).toBe(true);
-  expect(priceAge(today, true, now)).toBe("Price up to date");
+  expect(priceAge(today, true, now)).toBe("Observed today");
   expect(priceAge(yesterday, true, now)).toContain("16 Oct 2026");
-  expect(priceAge(today, false, now)).not.toBe("Price up to date");
+  expect(priceAge(today, false, now)).not.toBe("Observed today");
   expect(priceAge(null, true, now)).toContain("unavailable");
   expect(priceAge(new Date(now + 1).toISOString(), true, now)).toContain(
     "unverified",
@@ -2156,123 +1562,6 @@ test("price dates distinguish local midnight, missing dates, future checks and i
   ];
   expect(refreshProgress(rows, [1], now)).toBe("All prices up to date");
   expect(refreshProgress(rows, [1, 2], now)).toContain("matches are missing");
-});
-
-test("product and list price refresh preserve drafts and display partial failures", async ({
-  page,
-}) => {
-  comparison = comparable;
-  await start(page);
-  await add(page);
-  const list = page.getByRole("region", { name: "Editable shopping list" });
-  const card = list.getByRole("article");
-  await expect(card).toBeVisible();
-  const oldDate = new Date(Date.now() - 48 * 3600000).toISOString();
-  const old: PlanningPrice = {
-    shopId: 1,
-    shopName: "Coles",
-    price: 23,
-    includedInTotal: true,
-    status: "Fresh",
-    productUrl: "https://www.coles.com.au/product/123456",
-    checkedDate: oldDate,
-    specialDescription: null,
-  };
-  planningPrices.set(1, [
-    old,
-    { ...old, shopId: 2, shopName: "Woolworths", price: 25 },
-  ]);
-  await list
-    .getByRole("button", { name: "Refresh items", exact: true })
-    .click();
-  await expect(card.getByText(/Price last checked/)).toHaveCount(2);
-  await card.getByRole("button", { name: "Add note" }).click();
-  await card.getByLabel("Notes").fill("Keep my draft");
-  const requested: string[] = [];
-  await page.route("**/api/shopping-lists/**/refresh-prices", async (route) => {
-    requested.push(new URL(route.request().url()).pathname);
-    planningPrices.set(1, [
-      { ...old, refreshStatus: "Waiting" },
-      {
-        ...old,
-        shopId: 2,
-        shopName: "Woolworths",
-        refreshStatus: "RetryLater",
-      },
-    ]);
-    await route.fulfill({
-      json: { queued: 1, alreadyRunning: 0, current: 0, deferred: 1 },
-    });
-  });
-  await card
-    .getByRole("button", { name: "Refresh price", exact: true })
-    .click();
-  expect(requested[0]).toMatch(/items\/1\/refresh-prices$/);
-  await expect(card.getByText(/Waiting for price update/)).toBeVisible();
-  await expect(list.getByText(/1 deferred/)).toBeVisible();
-  await expect(card.getByLabel("Notes")).toHaveValue("Keep my draft");
-  await list
-    .getByRole("button", { name: "Refresh list prices", exact: true })
-    .click();
-  expect(requested.at(-1)).toMatch(/shopping-lists\/\d+\/refresh-prices$/);
-
-  planningPrices.set(1, [
-    { ...old, checkedDate: new Date().toISOString() },
-    { ...old, shopId: 2, shopName: "Woolworths", refreshStatus: "RetryLater" },
-  ]);
-  await list
-    .getByRole("button", { name: "Refresh items", exact: true })
-    .click();
-  await expect(
-    card.getByText("Price up to date", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    list.getByText("All prices up to date", { exact: true }),
-  ).toHaveCount(0);
-  await expect(card.getByText(/Price update unsuccessful/)).toBeVisible();
-  await list
-    .getByRole("button", { name: "Refresh list prices", exact: true })
-    .click();
-  expect(requested.at(-1)).toMatch(/shopping-lists\/\d+\/refresh-prices$/);
-});
-
-test("manual price refresh reports HTTP failure without changing the observation date", async ({
-  page,
-}) => {
-  comparison = comparable;
-  await start(page);
-  await add(page);
-  const list = page.getByRole("region", { name: "Editable shopping list" });
-  const card = list.getByRole("article");
-  await expect(card).toBeVisible();
-  planningPrices.set(1, [
-    {
-      shopId: 1,
-      shopName: "Coles",
-      price: 23,
-      includedInTotal: true,
-      status: "Fresh",
-      productUrl: "https://www.coles.com.au/product/123456",
-      checkedDate: "2026-01-01T00:00:00Z",
-      specialDescription: null,
-    },
-  ]);
-  await list
-    .getByRole("button", { name: "Refresh items", exact: true })
-    .click();
-  await page.route("**/api/shopping-lists/**/refresh-prices", (route) =>
-    route.fulfill({ status: 503, json: { title: "Unavailable" } }),
-  );
-  await card
-    .getByRole("button", { name: "Refresh price", exact: true })
-    .click();
-  await expect(list.getByRole("alert")).toContainText(
-    "temporarily unavailable",
-  );
-  await expect(card.getByText(/Price last checked/)).toContainText("2026");
-  await expect(card.getByText("Price up to date", { exact: true })).toHaveCount(
-    0,
-  );
 });
 
 test("product refresh passes through the proxy with browser protection and item ownership", async ({
@@ -2313,35 +1602,6 @@ test("product refresh passes through the proxy with browser protection and item 
       )
     ).status(),
   ).toBe(404);
-});
-
-test("ALDI imports explain the extension requirement and website submission never queues an unsupported fetch", async ({
-  page,
-}) => {
-  await start(page);
-  const footer = page.getByRole("region", { name: "Retailer support" });
-  await expect(
-    footer.getByText("ALDI: add with extension · automatic checks unavailable", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    footer.getByText("ALDI · IGA · Foodland Coming later", { exact: true }),
-  ).toHaveCount(0);
-  await page
-    .getByLabel("Product URL", { exact: true })
-    .fill("https://www.aldi.com.au/product/example");
-  await page.getByRole("button", { name: "Add product", exact: true }).click();
-  await expect(
-    page.getByRole("alert").filter({ hasText: "using the extension" }),
-  ).toBeVisible();
-  expect(jobs.size).toBe(0);
-  await expect(
-    page.getByRole("button", { name: "Add product", exact: true }),
-  ).toBeEnabled();
-  await page
-    .getByLabel("Product URL", { exact: true })
-    .fill("https://www.coles.com.au/product/test");
-  await page.getByRole("button", { name: "Add product", exact: true }).click();
-  await expect.poll(() => jobs.size).toBe(1);
 });
 
 test("alternative brands show honest price differences and leave the shopping list unchanged", async ({
@@ -2419,7 +1679,7 @@ test("alternative brands show honest price differences and leave the shopping li
     "Taste, ingredients and quality may differ",
   );
   await expect(
-    section.getByText("Price up to date", { exact: true }),
+    section.getByText("Observed today", { exact: true }),
   ).toHaveCount(2);
   const baseline = [...listItems.values()].map((item) => structuredClone(item));
   const summary = page.getByRole("region", { name: "Shopping cost summary" });
@@ -2467,4 +1727,40 @@ test("alternative brands show honest price differences and leave the shopping li
     await expect(summary).toHaveText(totalBefore, { useInnerText: true });
     expect([...listItems.values()]).toEqual(baseline);
   }
+});
+
+test("extension guidance replaces URL submission and collection activity on desktop and mobile", async ({ page }) => {
+  const collection: string[] = [];
+  page.on("request", request => {
+    if (/products\/url|product-import-jobs|\/imports|refresh-prices|pack-discovery|brand-discovery|retry-comparison/.test(request.url()))
+      collection.push(request.method() + " " + request.url());
+  });
+  await start(page);
+  await expect(page.getByRole("heading", { name: "Add products with the Chrome extension" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Extension setup and instructions" })).toHaveAttribute("href", "/extension");
+  await expect(page.getByLabel("Product URL")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Add product", exact: true })).toHaveCount(0);
+  await expect(page.getByText("Import activity", { exact: true })).toHaveCount(0);
+  await add(page);
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(page.getByRole("region", { name: "Editable shopping list" }).getByRole("article")).toBeVisible();
+  expect(collection).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+test("saved observation reload preserves note drafts without polling or enqueuing collection", async ({ page }) => {
+  await start(page); await add(page);
+  const card=page.getByRole("region", {name:"Editable shopping list"}).getByRole("article");
+  await card.getByRole("button",{name:"Add note"}).click();
+  await card.getByLabel("Notes").fill("Keep this draft");
+  const saved=mockPlan(listItems.get(1)!.shoppingListId).items[0].prices;
+  planningPrices.set(1,saved.map(price=>({...price,price:17,includedInTotal:true,status:"Fresh"})));
+  await page.getByRole("button",{name:"Refresh items",exact:true}).click();
+  await expect(card).toContainText("$17.00 single-item price");
+  await expect(card.getByLabel("Notes")).toHaveValue("Keep this draft");
+  await expect(card.getByRole("button",{name:/Refresh price|Retry comparison/})).toHaveCount(0);
+  const requests:string[]=[];
+  page.on("request",request=>{if(/\/plan|product-import-jobs/.test(request.url())) requests.push(request.url());});
+  await page.clock.install();
+  await page.clock.fastForward(65000);
+  expect(requests).toEqual([]);
 });

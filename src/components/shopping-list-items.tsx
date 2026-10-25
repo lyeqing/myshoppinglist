@@ -8,10 +8,7 @@ import {
   type ListItem,
   type ListItemUpdate,
   type ShoppingListPlan,
-  type ItemComparison,
 } from "@/lib/api-types";
-import { refreshNotice, refreshProgress, usePriceNow } from "@/lib/price-age";
-import type { PriceRefreshResult } from "@/lib/api-types";
 import ComparisonStoreContextPanel from "./comparison-store-context";
 import ComparisonPreferences from "./comparison-preferences";
 import ShoppingListItemCard from "./shopping-list-item-card";
@@ -32,10 +29,9 @@ export default function ShoppingListItems({
   onExpired: (message: string) => void;
 }) {
   const store = useShoppingStoreApi();
-  const { plan, jobs, loading, error } = useShoppingStore(
+  const { plan, loading, error } = useShoppingStore(
     useShallow((state) => ({
       plan: state.plan,
-      jobs: state.jobs,
       loading: state.itemsLoading,
       error: state.itemsError,
     })),
@@ -46,12 +42,6 @@ export default function ShoppingListItems({
     setItemsError: setError,
     setJobs,
   } = useShoppingStore((state) => state.actions);
-  const now = usePriceNow(plan);
-  const [refreshMessage, setRefreshMessage] = useState<{
-    listId: number;
-    text: string;
-  } | null>(null);
-  const [requestingRefresh, setRequestingRefresh] = useState(false);
   const [saving, setSaving] = useState(false);
   const mutation = useRef(false);
   const lifetime = useRef<AbortController | null>(null);
@@ -107,32 +97,6 @@ export default function ShoppingListItems({
   useEffect(() => {
     void load().catch(() => {});
   }, [load, refreshKey]);
-  const refreshing =
-    plan?.items.some(
-      (row) =>
-        row.comparison?.status === "Checking" ||
-        row.prices.some(
-          (price) =>
-            price.refreshStatus === "Waiting" ||
-            price.refreshStatus === "Updating" ||
-            price.refreshStatus === "Paused",
-        ),
-    ) ?? false;
-  useEffect(() => {
-    let stopped = false;
-    let timer: ReturnType<typeof setTimeout>;
-    const poll = async () => {
-      if (document.visibilityState === "visible")
-        await load({ background: true }).catch(() => {});
-      if (!stopped) timer = setTimeout(poll, refreshing ? 3000 : 30000);
-    };
-    // Idle checks discover refreshes queued by the server after this list was opened.
-    timer = setTimeout(poll, refreshing ? 3000 : 30000);
-    return () => {
-      stopped = true;
-      clearTimeout(timer);
-    };
-  }, [load, refreshing]);
   useEffect(() => {
     const refresh = () => {
       if (document.visibilityState === "visible")
@@ -219,79 +183,6 @@ export default function ShoppingListItems({
   const remove = (id: number, expectedUpdatedDate: string) =>
     change<void>(id, "DELETE", { expectedUpdatedDate });
 
-  async function retryComparison(id: number) {
-    if (mutation.current)
-      throw new Error("Please wait for the current change to finish.");
-    const signal = lifetime.current!.signal;
-    const owner = store.getState().session?.account.id;
-    const current = () =>
-      !signal.aborted &&
-      store.getState().session?.account.id === owner &&
-      store.getState().session?.shoppingListId === listId;
-    mutation.current = true;
-    setSaving(true);
-    readVersion.current++;
-    try {
-      const comparison = await api<ItemComparison>(
-        `/shopping-lists/${listId}/items/${id}/retry-comparison`,
-        {
-          method: "POST",
-          body: "{}",
-          signal,
-        },
-      );
-      if (!current()) throw new DOMException("Aborted", "AbortError");
-      const latest = store.getState().plan;
-      if (latest)
-        setPlan({
-          ...latest,
-          items: latest.items.map((row) =>
-            row.item.id === id ? { ...row, comparison } : row,
-          ),
-        });
-    } catch (e) {
-      if (current() && e instanceof ApiError && e.status === 401)
-        onExpired(e.message);
-      throw e;
-    } finally {
-      mutation.current = false;
-      if (current()) {
-        setSaving(false);
-        void load().catch(() => {});
-      }
-    }
-  }
-
-  async function refreshPrices(itemId?: number) {
-    if (requestingRefresh || mutation.current) return;
-    const signal = lifetime.current?.signal;
-    const owner = store.getState().session?.account.id;
-    setRequestingRefresh(true);
-    try {
-      const result = await api<PriceRefreshResult>(
-        `/shopping-lists/${listId}${itemId ? `/items/${itemId}` : ""}/refresh-prices`,
-        { method: "POST", body: "{}", signal },
-      );
-      if (
-        signal?.aborted ||
-        store.getState().session?.account.id !== owner ||
-        store.getState().session?.shoppingListId !== listId
-      )
-        return;
-      setRefreshMessage({ listId, text: refreshNotice(result) });
-      await load();
-    } catch (e) {
-      if (
-        !signal?.aborted &&
-        store.getState().session?.account.id === owner &&
-        store.getState().session?.shoppingListId === listId
-      )
-        handle(e);
-    } finally {
-      setRequestingRefresh(false);
-    }
-  }
-
   return (
     <section aria-label="Editable shopping list" className="mb-10">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
@@ -305,18 +196,6 @@ export default function ShoppingListItems({
           )}
         </div>
         <div className="flex flex-wrap gap-4">
-          <button
-            disabled={
-              loading ||
-              saving ||
-              requestingRefresh ||
-              !plan?.items.some((r) => !r.item.isPurchased && !r.item.isHidden)
-            }
-            className="min-h-11 rounded-lg border border-sky-700 px-3 py-2 text-sm font-semibold text-sky-700 disabled:opacity-50"
-            onClick={() => void refreshPrices()}
-          >
-            {requestingRefresh ? "Requesting price checks…" : "Refresh list prices"}
-          </button>
           <button
             disabled={loading || saving}
             className="text-sm font-semibold text-sky-700 disabled:opacity-50"
@@ -333,28 +212,12 @@ export default function ShoppingListItems({
         <ComparisonPreferences
           key={`${store.getState().session?.account.id}-${listId}`}
           accountId={store.getState().session?.account.id}
-          disabled={saving || loading || requestingRefresh}
+          disabled={saving || loading}
           onChanged={async () => {
             if (!(await load()))
               throw new Error("Comparison reload is unavailable.");
           }}
         />
-      )}
-      {plan && (
-        <p role="status" className="mb-3 text-sm text-slate-600">
-          {refreshProgress(
-            plan.items,
-            plan.retailers.flatMap((r) =>
-              r.shopId === null ? [] : [r.shopId],
-            ),
-            now,
-          )}
-        </p>
-      )}
-      {refreshMessage?.listId === listId && (
-        <p role="status" className="mb-3 text-sm text-sky-700">
-          {refreshMessage.text}
-        </p>
       )}
       {error && (
         <p role="alert" className="mb-3 text-sm text-amber-800">
@@ -378,15 +241,8 @@ export default function ShoppingListItems({
             accountId={store.getState().session?.account.id}
             onDiscovered={load}
             disabled={saving}
-            checking={Object.values(jobs).some(
-              (job) =>
-                job.shoppingListProductId === row.item.id && isActive(job),
-            )}
             save={save}
             remove={remove}
-            retryComparison={retryComparison}
-            refreshPrices={() => refreshPrices(row.item.id)}
-            refreshBusy={requestingRefresh}
             reload={async (id) =>
               (await load())?.items.find((row) => row.item.id === id)?.item ??
               null
@@ -401,7 +257,7 @@ export default function ShoppingListItems({
       )}
       {!loading && plan?.items.length === 0 && (
         <p className="rounded-xl border border-dashed border-slate-300 p-5 text-sm text-slate-500">
-          Your saved products will appear here after their details are found.
+          Products you save with the Chrome extension will appear here. Use Refresh items after saving.
         </p>
       )}
     </section>

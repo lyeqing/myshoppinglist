@@ -479,34 +479,20 @@ for (const trial of [false, true]) {
     await expect(sizes(page)).toBeVisible();
     await expect(brands(page)).toHaveCount(0);
     expect(state.profiles.get(1)!.branches?.[0].location.id).toBe(91);
-    await card
-      .getByRole("button", { name: "Refresh price", exact: true })
-      .click();
-    await expect(
-      page.getByText(
-        /1 current price already checked today.*1 checked today, but no current comparable price is available/
-      )
-    ).toBeVisible();
+    await expect(card.getByRole("button", { name: "Refresh price", exact: true })).toHaveCount(0);
     state.old = true;
     await page
       .getByRole("button", { name: "Refresh items", exact: true })
       .click();
     await expect(
-      card.getByText("Price last checked 16 Oct 2026", { exact: true }).first()
+      card.getByText("Price observed 16 Oct 2026", { exact: true }).first()
     ).toBeVisible();
-    await page
-      .getByRole("button", { name: "Refresh list prices", exact: true })
-      .click();
-    await expect(
-      page.getByText(
-        /1 price check queued.*1 checked today, but no current comparable price is available/
-      )
-    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Refresh list prices", exact: true })).toHaveCount(0);
     await expect(card.getByLabel("Notes", { exact: true })).toHaveValue(
       "Unsaved pantry note"
     );
     await expect(
-      card.getByText("Price last checked 16 Oct 2026", { exact: true }).first()
+      card.getByText("Price observed 16 Oct 2026", { exact: true }).first()
     ).toBeVisible();
     await page
       .getByRole("link", { name: "Shop in store", exact: true })
@@ -520,7 +506,7 @@ for (const trial of [false, true]) {
     await expect(
       card.getByText(/Previous observed price: \$12\.00/)
     ).toBeVisible();
-    await expect(card.getByText(/Waiting for price update/)).toBeVisible();
+    await expect(card.getByText(/Waiting for price update/)).toHaveCount(0);
     await options(page)
       .getByText("Comparison options", { exact: true })
       .click();
@@ -566,10 +552,7 @@ for (const trial of [false, true]) {
     await expect(sizes(page)).toHaveCount(0);
     await expect(brands(page)).toHaveCount(0);
     await expect(context(page)).toContainText("Comparing My Stores: ALDI");
-    expect(state.refreshes).toEqual([
-      "/api/shopping-lists/1/items/1/refresh-prices",
-      "/api/shopping-lists/1/refresh-prices",
-    ]);
+    expect(state.refreshes).toEqual([]);
     state.account = 2;
     await page.evaluate(() =>
       window.dispatchEvent(new Event("myshoppinglist-session-changed"))
