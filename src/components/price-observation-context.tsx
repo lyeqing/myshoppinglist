@@ -8,7 +8,7 @@ function sourceLabel(source?: string) {
     case "Playwright":
       return "Retailer website";
     case "BrowserExtension":
-      return "Shared observation";
+      return "Chrome extension";
     case "Manual":
       return "Manually recorded";
     default:

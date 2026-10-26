@@ -8,6 +8,10 @@ This version requires the updated private-capture API. `UserExtension:PersonalCa
 
 Do not enable personal mode as an isolated extension update. Website controls and the legacy-data transition must be reviewed first. Enabling personal mode also disables the import, pack discovery, brand discovery and price refresh workers, rejects old collection submissions, and returns no shared work to older extensions. Existing database data is retained.
 
+The approved local rollout has completed its PostgreSQL private-copy conversion. Its ignored API configuration now enables personal captures and explicitly disables legacy import/refresh workers. Start or restart the local API to load that configuration. This does not enable other installations or publish the extension; retain the extension ID already configured for your unpacked installation.
+
+The frontend's separate `playwright.personal.config.ts` tests the unpacked extension with a real API and isolated PostgreSQL schema. It opens a fresh Chromium window to exercise native toolbar/side-panel focus. It owns test ports 5392 and 3001, creates disposable accounts and a temporary Chromium profile, and verifies that the application's public tables remain unchanged. Stop a local API you own before running it. Supply matching `MYSHOPPINGLIST_TEST_CONNECTION` and `PG*` credentials privately as described in the API README, build the API, then run `node node_modules/@playwright/test/cli.js test --config playwright.personal.config.ts`. The ordinary mock-API suite skips this journey. The journey passed during local activation, including two-account isolation and zero collection tasks. These automated retailer pages are controlled fixtures; live retailer extraction and the user's installed Chrome profile still require a separate manual check.
+
 ## Local setup after rollout approval
 
 1. Run the API at http://localhost:5392 and the website at http://localhost:3000. Codex development servers use port 3001; the user's server on 3000 is reserved.

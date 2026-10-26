@@ -227,7 +227,7 @@ for (const view of ["planning", "in-store"]) {
       })
     ).toHaveCount(3);
     await expect(
-      sizes(page).getByText("Source: Shared observation · Online price", {
+      sizes(page).getByText("Source: Chrome extension · Online price", {
         exact: true,
       })
     ).toBeVisible();
@@ -350,7 +350,7 @@ for (const view of ["planning", "in-store"]) {
       })
     ).toBeVisible();
     await expect(
-      sizes(page).getByText("Source: Shared observation · In-store price", {
+      sizes(page).getByText("Source: Chrome extension · In-store price", {
         exact: true,
       })
     ).toBeVisible();
@@ -382,9 +382,13 @@ for (const view of ["planning", "in-store"]) {
     state.pack.original = null;
     state.brand.original = null;
     await open(page, view);
-    await expect(
-      page.getByText("Observation date unavailable", { exact: true })
-    ).toBeVisible();
+    const missingDates = page.getByText("Observation date unavailable", { exact: true });
+    await expect.poll(() => missingDates.evaluateAll((labels) =>
+      labels.length > 0 && labels.every((label) => {
+        const box = label.getBoundingClientRect();
+        return box.width > 0 && box.height > 0 && getComputedStyle(label).visibility !== "hidden";
+      })
+    )).toBe(true);
     await expect(
       page.getByText(
         "Source: Source unavailable · Coverage unknown — estimate",
@@ -436,7 +440,7 @@ for (const view of ["planning", "in-store"]) {
       state.pack.offer.observation!.sourceUrl = url;
       await open(page, view);
       await expect(
-        sizes(page).getByText("Source: Shared observation · Online price", {
+        sizes(page).getByText("Source: Chrome extension · Online price", {
           exact: true,
         })
       ).toBeVisible();
