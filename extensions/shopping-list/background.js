@@ -53,6 +53,22 @@ export function productUrl(value) {
   return null;
 }
 
+export function sameProductUrl(left, right) {
+  const identity = (value) => {
+    const canonical = productUrl(value);
+    if (!canonical) return null;
+    const url = new URL(canonical);
+    // Retailers may add or change a descriptive slug without changing the
+    // product. Keep retailer boundaries and the complete product code intact.
+    const code = url.hostname === "www.woolworths.com.au"
+      ? url.pathname.match(/^\/shop\/productdetails\/(\d+)/)?.[1]
+      : url.pathname.match(/(\d+)$/)?.[1];
+    return code ? `${url.hostname}:${code}` : null;
+  };
+  const expected = identity(right);
+  return expected !== null && identity(left) === expected;
+}
+
 export function createWorker(browser, fetcher = fetch) {
   const storage = browser.storage.session;
   let generation = 0;
@@ -87,7 +103,7 @@ export function createWorker(browser, fetcher = fetch) {
     if (cookie?.value === token) await browser.cookies.remove({ url: WEBSITE_URL, name: SESSION_COOKIE });
     await syncSession();
   }
-  async function request(path, { method = "GET", body, anonymous = false, expectedToken } = {}) {
+  async function request(path, { method = "GET", body, anonymous = false, expectedToken, signal } = {}) {
     const token = await syncSession();
     if (!anonymous && !token) throw new Error("Please sign in to MyShoppingList.");
     if (expectedToken && expectedToken !== token) throw changed();
@@ -101,7 +117,7 @@ export function createWorker(browser, fetcher = fetch) {
         "X-Client-Timezone": Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
         ...(!anonymous ? { Authorization: "Bearer " + token } : {}),
       },
-      signal: AbortSignal.any([AbortSignal.timeout(20000), sessionAbort.signal]),
+      signal: AbortSignal.any([AbortSignal.timeout(20000), sessionAbort.signal, ...(signal ? [signal] : [])]),
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     await syncSession();
@@ -267,18 +283,155 @@ export function createWorker(browser, fetcher = fetch) {
     } finally { busy = false; }
   }
   handle.syncSession = syncSession;
+  handle.request = request;
   handle.restore = async () => {
     // Remove only tabs explicitly owned by the retired worker, never source tabs.
-    const old = await storage.get(["workflow", "sharedTask"]);
-    for (const id of new Set([old.workflow?.temporaryTabId, old.sharedTask?.tabId].filter(Number.isInteger))) {
+    const old = await storage.get(["workflow", "sharedTask", "priceRefreshTab"]);
+    for (const id of new Set([old.workflow?.temporaryTabId, old.sharedTask?.tabId, old.priceRefreshTab].filter(Number.isInteger))) {
       try { await browser.tabs.remove(id); } catch { /* Already closed. */ }
     }
-    await storage.remove(["sharedTask", "contributionPreference"]);
+    await storage.remove(["sharedTask", "contributionPreference", "priceRefreshTab"]);
     if (old.workflow?.temporaryTabId != null || old.workflow?.sessionToken) await storage.remove("workflow");
     return syncSession();
   };
   return handle;
 }
+// The website drives one bounded read at a time, so a suspended worker never
+// silently reports an unfinished batch as completed. Credentials stay here.
+export function createRefreshController(browser, worker) {
+  let run = null;
+  let busy = false;
+  const cancelled = new Set();
+  const snapshot = () => ({ runId: run.id, total: run.targets.length, completed: run.index,
+    updated: run.updated, failed: run.failed, message: run.message,
+    done: run.index === run.targets.length });
+  async function sameAccount(accountId) {
+    const session = await worker.request("/api/auth/me");
+    if (session.account?.id !== accountId) throw new Error("Your account changed. Refresh the website and try again.");
+  }
+  async function validRun(message) {
+    if (!run || run.id !== message.runId || run.accountId !== message.accountId
+        || (await worker.syncSession()) !== run.token)
+      throw new Error("This refresh has ended. Start Refresh items again.");
+  }
+  return async (message) => {
+    if (message.action === "hello") return { available: true, version: 1 };
+    if (message.action === "cancel") {
+      if (typeof message.runId !== "string" || !/^[a-f0-9-]{36}$/i.test(message.runId))
+        throw new Error("Invalid refresh request.");
+      cancelled.add(message.runId);
+      if (cancelled.size > 32) cancelled.delete(cancelled.values().next().value);
+      if (run?.id === message.runId && run.accountId === message.accountId) {
+        run.abort.abort();
+        run = null;
+      }
+      return { cancelled: true };
+    }
+    if (busy) throw new Error("Another price update is still finishing. Try again shortly.");
+    busy = true;
+    try {
+      if (message.action === "start") {
+        if (!Number.isSafeInteger(message.listId) || message.listId <= 0
+            || !Number.isSafeInteger(message.accountId) || typeof message.runId !== "string"
+            || !/^[a-f0-9-]{36}$/i.test(message.runId)) throw new Error("Invalid refresh request.");
+        await sameAccount(message.accountId);
+        const token = await worker.syncSession();
+        if (run?.websiteTabId != null) {
+          try { await browser.tabs.get(run.websiteTabId); }
+          catch { run.abort.abort(); run = null; }
+        }
+        if (run && (run.token !== token || run.websiteTabId === message.websiteTabId)) {
+          run.abort.abort();
+          run = null;
+        }
+        if (run && !run.abort.signal.aborted && run.index < run.targets.length)
+          throw new Error("A price refresh is already running in another website tab. Finish or cancel it first.");
+        const targets = await worker.request(`/api/user-extension/price-refresh/${message.listId}`, { expectedToken: token });
+        if (!Array.isArray(targets) || targets.some(t => !productUrl(t.url)
+            || !Number.isSafeInteger(t.itemId) || !Number.isSafeInteger(t.mappingId)))
+          throw new Error("The product list could not be validated.");
+        if (cancelled.has(message.runId)) throw new Error("Refresh cancelled.");
+        run = { id: message.runId, accountId: message.accountId, listId: message.listId, token,
+          websiteTabId: message.websiteTabId,
+          targets, index: 0, updated: 0, failed: 0, message: "", abort: new AbortController() };
+        return snapshot();
+      }
+      if (message.action !== "next") throw new Error("Unsupported refresh action.");
+      await validRun(message);
+      if (run.index === run.targets.length) return snapshot();
+      const active = run;
+      const target = active.targets[active.index];
+      let tabId;
+      try {
+        const tab = await browser.tabs.create({ url: productUrl(target.url), active: false });
+        tabId = tab.id;
+        await browser.storage.session.set({ priceRefreshTab: tabId });
+        const signal = AbortSignal.any([active.abort.signal, AbortSignal.timeout(20000)]);
+        let reachedProduct = false;
+        const check = async () => {
+          signal.throwIfAborted();
+          if (run !== active || await worker.syncSession() !== active.token)
+            throw new Error("Your account changed. Start a new refresh.");
+          const current = await browser.tabs.get(tabId);
+          if (current.pendingUrl && !sameProductUrl(current.pendingUrl, target.url))
+            throw new Error("The retailer redirected this product. Open its page to check it.");
+          if (!sameProductUrl(current.url, target.url)) {
+            // A newly created Chrome tab can still be blank while its initial
+            // navigation is pending. It is not a retailer redirect.
+            if (!reachedProduct && (!current.url || current.url === "about:blank")
+                && (current.status === "loading" || sameProductUrl(current.pendingUrl, target.url)))
+              return { ...current, status: "loading" };
+            throw new Error("The retailer redirected this product. Open its page to check it.");
+          }
+          reachedProduct = true;
+          return current;
+        };
+        let extracted;
+        let observedAt;
+        // Product data can arrive after document load. Bound the wait and never
+        // interact with verification challenges or execute retailer page scripts.
+        while (!extracted?.ok) {
+          const current = await check();
+          if (current.status === "complete") {
+            observedAt = new Date().toISOString();
+            await browser.scripting.executeScript({ target: { tabId }, files: ["content.js"] });
+            const frames = await browser.scripting.executeScript({ target: { tabId },
+              func: () => globalThis.ColesReader.read(document, location.href) });
+            extracted = frames[0]?.result;
+          }
+          if (!extracted?.ok) await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        await check();
+        const result = await worker.request("/api/user-extension/price-refresh", {
+          method: "POST", expectedToken: active.token, signal: active.abort.signal,
+          body: { listId: active.listId, itemId: target.itemId, mappingId: target.mappingId,
+            evidence: extracted.evidence, observedAt } });
+        if (run !== active) throw new Error("Refresh cancelled.");
+        if (result.updated) active.updated++; else active.failed++;
+        active.message = `${target.name}: ${result.message}`;
+      } catch (error) {
+        if (run !== active || active.abort.signal.aborted) throw new Error("Refresh cancelled.");
+        if (await worker.syncSession() !== active.token || error.status === 401) {
+          run = null;
+          throw new Error("Your session changed. Sign in and start a new refresh.");
+        }
+        if ([403, 429, 503].includes(error.status)) { run = null; throw error; }
+        active.failed++;
+        active.message = `${target.name}: ${error.name === "TimeoutError"
+          ? "Could not read this page. Open it to check for retailer verification, then try again."
+          : error.message}`;
+      } finally {
+        if (tabId != null) {
+          try { await browser.tabs.remove(tabId); } catch { /* User already closed our tab. */ }
+          await browser.storage.session.remove("priceRefreshTab");
+        }
+      }
+      active.index++;
+      return snapshot();
+    } finally { busy = false; }
+  };
+}
+
 export function createPanelController(browser, worker) {
   const storage = browser.storage.session;
   let serial = Promise.resolve();
@@ -481,6 +634,7 @@ if (
   chrome.runtime?.onMessage
 ) {
   const handle = createWorker(chrome);
+  const refresh = createRefreshController(chrome, handle);
   const panels = createPanelController(chrome, handle);
   let toolbarState = {};
   void chrome.storage.session.get(["panelUi", "token"]).then((value) => {
@@ -532,6 +686,13 @@ if (
   chrome.runtime.onMessage.addListener((message, sender, respond) => {
     if (sender.id !== chrome.runtime.id) return false;
     const source = new URL(sender.url || chrome.runtime.getURL("/"));
+    if (sender.tab && sender.frameId === 0
+        && ["http://localhost:3000", "http://localhost:3001"].includes(source.origin)
+        && message.type === "website-price-refresh") {
+      refresh({ ...message, websiteTabId: sender.tab.id }).then(data => respond({ ok: true, data }),
+        error => respond({ ok: false, error: error.message }));
+      return true;
+    }
     const extensionPage =
       source.protocol === "chrome-extension:" &&
       source.host === chrome.runtime.id;

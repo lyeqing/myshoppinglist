@@ -8,14 +8,138 @@ const source = await readFile(
 );
 const {
   productUrl,
+  sameProductUrl,
   createWorker,
   createPanelController,
   retailerPage,
   preferredList,
+  createRefreshController,
 } = await import(
   `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`
 );
 const token = "a".repeat(64);
+
+function refreshFixture() {
+  const tabs = new Map(); const removed = []; const saved = []; const data = {};
+  let owner = token; let redirected = false; let gate;
+  const target = { itemId: 5, mappingId: 6, name: "Coffee", url: "https://www.coles.com.au/product/123456" };
+  const browser = {
+    storage: { session: { set: async v => Object.assign(data, v), remove: async k => { delete data[k]; } } },
+    tabs: {
+      create: async values => { tabs.set(91, { ...values, id: 91, status: "complete" }); return { id: 91 }; },
+      get: async id => ({ ...tabs.get(id), ...(redirected ? { url: "https://www.coles.com.au/product/999999" } : {}) }),
+      remove: async id => { removed.push(id); tabs.delete(id); },
+    },
+    scripting: { executeScript: async options => options.files ? [] : [{ result: { ok: true, evidence: { jsonLd: ["bounded evidence"] } } }] },
+  };
+  const worker = { syncSession: async () => owner,
+    request: async (path, options) => {
+      if (path === "/api/auth/me") return { account: { id: 1 } };
+      if (path.endsWith("/price-refresh/2")) { if (gate) await gate; return [target]; }
+      saved.push(options.body); return { updated: true, message: "Updated." };
+    } };
+  return { handle: createRefreshController(browser, worker), browser, tabs, removed, saved, data,
+    changeAccount: () => { owner = "b".repeat(64); }, redirect: () => { redirected = true; },
+    setGate: value => { gate = value; },
+    message: { accountId: 1, listId: 2, runId: crypto.randomUUID() } };
+}
+
+test("website refresh reads only server-owned targets, updates prices and closes only its temporary tab", async () => {
+  const f = refreshFixture();
+  assert.deepEqual(await f.handle({ action: "hello" }), { available: true, version: 1 });
+  assert.equal(f.tabs.size, 0);
+  const started = await f.handle({ ...f.message, action: "start" });
+  assert.equal(started.total, 1); assert.equal(started.completed, 0);
+  const result = await f.handle({ ...f.message, action: "next" });
+  assert.equal(result.updated, 1); assert.equal(result.done, true);
+  assert.equal(f.saved[0].itemId, 5); assert.equal(f.saved[0].mappingId, 6);
+  assert.equal("quantity" in f.saved[0], false);
+  assert.deepEqual(f.removed, [91]); assert.equal(f.tabs.size, 0);
+  assert.equal("priceRefreshTab" in f.data, false);
+  assert.equal(JSON.stringify(result).includes("bounded evidence"), false);
+  assert.equal(JSON.stringify(result).includes(token), false);
+});
+
+test("refresh rejects changed accounts and redirects without saving a price", async () => {
+  const f = refreshFixture(); await f.handle({ ...f.message, action: "start" });
+  f.redirect();
+  const result = await f.handle({ ...f.message, action: "next" });
+  assert.equal(result.failed, 1); assert.equal(f.saved.length, 0); assert.deepEqual(f.removed, [91]);
+  const g = refreshFixture(); await g.handle({ ...g.message, action: "start" }); g.changeAccount();
+  await assert.rejects(g.handle({ ...g.message, action: "next" }), /refresh has ended/);
+  assert.equal(g.tabs.size, 0); assert.equal(g.saved.length, 0);
+});
+
+test("product redirects may change the slug but must keep the retailer and complete product code", () => {
+  assert.equal(sameProductUrl("https://www.coles.com.au/product/coles-kitchen-supreme-pizza-445g-1435461",
+    "https://www.coles.com.au/product/1435461"), true);
+  assert.equal(sameProductUrl("https://woolworths.com.au/shop/productdetails/123456/new-coffee-name?tracking=1",
+    "https://www.woolworths.com.au/shop/productdetails/123456/old-name"), true);
+  assert.equal(sameProductUrl("https://www.aldi.com.au/product/new-name-000000000000398449",
+    "https://www.aldi.com.au/product/old-name-000000000000398449"), true);
+  for (const other of ["https://www.coles.com.au/product/999999",
+    "https://www.woolworths.com.au/shop/productdetails/1435461",
+    "https://www.coles.com.au.evil.test/product/1435461",
+    "http://www.coles.com.au/product/1435461", "https://www.coles.com.au/search?q=1435461", undefined]) {
+    assert.equal(sameProductUrl(other, "https://www.coles.com.au/product/1435461"), false);
+  }
+  assert.equal(sameProductUrl(undefined, undefined), false);
+  assert.equal(sameProductUrl("https://www.aldi.com.au/product/new-name-398449",
+    "https://www.aldi.com.au/product/old-name-000000000000398449"), false);
+});
+
+test("refresh follows a same-product canonical redirect, including a pending navigation", async () => {
+  for (const pending of [false, true]) {
+    const f = refreshFixture();
+    const get = f.browser.tabs.get;
+    let first = true;
+    f.browser.tabs.get = async id => {
+      const tab = await get(id);
+      const canonical = "https://www.coles.com.au/product/coffee-500g-123456";
+      if (first && pending) { first = false; return { ...tab, status: "loading", pendingUrl: canonical }; }
+      return { ...tab, url: canonical };
+    };
+    await f.handle({ ...f.message, action: "start" });
+    const result = await f.handle({ ...f.message, action: "next" });
+    assert.equal(result.updated, 1); assert.equal(f.saved.length, 1);
+    assert.equal(f.saved[0].mappingId, 6); assert.deepEqual(f.removed, [91]);
+  }
+});
+
+test("refresh rejects a pending redirect to a different product before extraction or saving", async () => {
+  const f = refreshFixture();
+  const get = f.browser.tabs.get;
+  f.browser.tabs.get = async id => ({ ...await get(id), pendingUrl: "https://www.coles.com.au/product/999999" });
+  f.browser.scripting.executeScript = async () => assert.fail("Read a different product");
+  await f.handle({ ...f.message, action: "start" });
+  const result = await f.handle({ ...f.message, action: "next" });
+  assert.equal(result.failed, 1); assert.equal(f.saved.length, 0); assert.deepEqual(f.removed, [91]);
+});
+
+test("refresh waits for a new tab's initial pending navigation before reading", async () => {
+  const f = refreshFixture();
+  const get = f.browser.tabs.get;
+  let first = true;
+  f.browser.tabs.get = async id => {
+    if (first) { first = false; return { id, status: "loading", url: "about:blank",
+      pendingUrl: "https://www.coles.com.au/product/123456" }; }
+    return get(id);
+  };
+  await f.handle({ ...f.message, action: "start" });
+  const result = await f.handle({ ...f.message, action: "next" });
+  assert.equal(result.updated, 1); assert.equal(f.saved.length, 1);
+});
+
+test("cancellation also prevents a late start response from leaving an orphan run", async () => {
+  const f = refreshFixture(); let release;
+  f.setGate(new Promise(resolve => { release = resolve; }));
+  const starting = f.handle({ ...f.message, action: "start" });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  await f.handle({ ...f.message, action: "cancel" }); release();
+  await assert.rejects(starting, /cancelled/);
+  await assert.rejects(f.handle({ ...f.message, action: "next" }), /refresh has ended/);
+  assert.equal(f.tabs.size, 0); assert.equal(f.saved.length, 0);
+});
 const aldiProduct = "https://www.aldi.com.au/product/farmdale-thickened-cream-600ml-000000000000398449";
 test("ALDI reader binds the main product to its URL and heading and preserves leading zeroes", async () => {
   const context = vm.createContext({ URL, Date });
@@ -462,9 +586,20 @@ test("runtime rejects retailer capture messages and forged compact frames, and b
   await new Promise((resolve) => setImmediate(resolve));
   const listener = f.browser.runtime.onMessage.listeners[0];
   const retailer = { id: f.browser.runtime.id, url, frameId: 0, tab: { id: 7 } };
+  assert.equal(listener({ type: "website-price-refresh", action: "start" }, retailer,
+    () => assert.fail("Retailer initiated website refresh")), false);
+  for (const sender of [
+    { ...retailer, url: "http://localhost:5392/" },
+    { ...retailer, url: "http://localhost:3000/", frameId: 1 },
+    { ...retailer, url: "https://localhost:3000/" },
+  ]) assert.equal(listener({ type: "website-price-refresh", action: "hello" }, sender,
+    () => assert.fail("Untrusted website bridge accepted")), false);
   assert.equal(listener({ type: "preview" }, retailer, () => assert.fail("Retailer capture accepted")), false);
   assert.equal(listener({ type: "save" }, { ...retailer, id: "evil" }, () => assert.fail("Foreign extension accepted")), false);
   const send = (message, sender) => new Promise((resolve) => listener(message, sender, resolve));
+  const hello = await send({ type: "website-price-refresh", action: "hello" },
+    { ...retailer, url: "http://localhost:3000/" });
+  assert.equal(hello.ok, true); assert.equal(hello.data.available, true);
   const forged = await send({ type: "save" }, { ...retailer, frameId: 1,
     url: f.browser.runtime.getURL("compact.html?ticket=forged") });
   assert.equal(forged.ok, false);

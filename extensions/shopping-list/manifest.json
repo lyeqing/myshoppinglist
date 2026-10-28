@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "MyShoppingList — Add to list (Local test)",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Review products you choose and save private price observations to your shopping lists.",
   "minimum_chrome_version": "142",
   "permissions": [

@@ -11,6 +11,7 @@ import {
 import Link from "next/link";
 import AppHeader from "./app-header";
 import ComparisonStoreContextPanel from "./comparison-store-context";
+import ExtensionRefreshControl from "./extension-refresh-control";
 import ComparisonPreferences from "./comparison-preferences";
 import AccountForm from "./account-form";
 import PackAlternatives from "./pack-alternatives";
@@ -192,13 +193,9 @@ export default function InStoreApp() {
                 </option>
               ))}
             </select>
-            <button
-              className={button}
-              disabled={disabled}
-              onClick={() => void load()}
-            >
-              Refresh items
-            </button>
+            <ExtensionRefreshControl key={`${accountId}-${state.selectedList}`}
+              accountId={accountId} listId={state.selectedList} disabled={disabled}
+              className={button} onReload={() => load()} />
           </div>
           {!state.loading && !retailers.length && (
             <p className="mt-2 text-sm text-slate-500">

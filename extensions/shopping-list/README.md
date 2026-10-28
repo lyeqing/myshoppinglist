@@ -1,6 +1,18 @@
 # MyShoppingList personal product extension — local test
 
-Version 0.6.0 reads a product only after you click **Read product**. It shows the server-validated name, pack, price and observation date before you click **Save to list**. Products and observations belong to the signed-in account. It does not collect shared prices, search other retailers, open comparison tabs or run timed collection.
+Version 0.7.0 supports two explicit actions: **Read product** to review and save a product, and the website's **Refresh items** to update existing private prices. Products and observations belong to the signed-in account. It does not collect shared prices, search other retailers or run timed collection.
+
+## Refresh saved prices
+
+After updating this folder, reload the unpacked extension in `chrome://extensions`, restart the API with the updated build, and reload the website tab. The extension bridge works on `http://localhost:3000` and `http://localhost:3001` in the same Chrome profile.
+
+On either shopping page, **Refresh items** checks the extension connection, then reads known Coles, Woolworths and ALDI product pages one at a time in temporary inactive tabs. Only existing private mappings for items still to buy are eligible; purchased and hidden items are skipped. This action updates price observations without adding products or changing quantities, notes or item states. The website reloads saved results as they arrive. Prices remain observations from the user's browser; store location is not verified.
+
+Progress shows checked and updated counts. **Cancel refresh** stops further work and retains observations already saved. Navigating away or changing accounts cancels the website's run. An interrupted worker requires starting Refresh items again; it never reports unfinished work as completed. Only temporary tabs created by this workflow are closed.
+
+If the extension cannot be reached, the website offers **Installation instructions** and **Try again**. This is an unpacked local test, not a Web Store release. Enable the extension in `chrome://extensions`, or use Developer mode → Load unpacked with this folder; the API owner must allow the extension ID. Reload the website after installation or extension reload.
+
+Blocked pages, redirects, missing prices and product identity conflicts are reported as unsuccessful updates; previous observations are retained. Open the affected retailer product to complete verification yourself, then try again. The refresh does not bypass retailer challenges, discover new matches or silently fall back to shared workers.
 
 ## Staged rollout
 
@@ -48,7 +60,7 @@ Compact controls run in an isolated extension frame with a per-tab ticket. Retai
 - cookies: share the HTTP-only MyShoppingList session cookie with the website. Sign-out affects both.
 - localhost host permission: Chrome host patterns cannot restrict ports. API calls use the fixed localhost:5392 origin. The website bridge only notifies ports 3000 and 3001 of session changes without sending credentials.
 - Submitted capture data: chosen list, quantity, canonical product URL, bounded product evidence, observation date and a unique request ID. The server derives ownership from authentication. Sign-in sends email/password to the API.
-- No alarms permission, idle collection, analytics, remote executable code or retailer background tabs.
+- No alarms permission, idle collection, analytics or remote executable code. Temporary retailer tabs are opened only for an explicit website price refresh.
 
 ## Checks
 

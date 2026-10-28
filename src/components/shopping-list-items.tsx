@@ -10,6 +10,7 @@ import {
   type ShoppingListPlan,
 } from "@/lib/api-types";
 import ComparisonStoreContextPanel from "./comparison-store-context";
+import ExtensionRefreshControl from "./extension-refresh-control";
 import ComparisonPreferences from "./comparison-preferences";
 import ShoppingListItemCard from "./shopping-list-item-card";
 import PackDiscoveryControls from "./pack-discovery-controls";
@@ -196,13 +197,9 @@ export default function ShoppingListItems({
           )}
         </div>
         <div className="flex flex-wrap gap-4">
-          <button
-            disabled={loading || saving}
-            className="text-sm font-semibold text-sky-700 disabled:opacity-50"
-            onClick={() => void load().catch(() => {})}
-          >
-            Refresh items
-          </button>
+          <ExtensionRefreshControl key={`${store.getState().session?.account.id}-${listId}`}
+            accountId={store.getState().session?.account.id} listId={listId}
+            disabled={loading || saving} onReload={load} />
         </div>
       </div>
       {plan?.storeContext && (
