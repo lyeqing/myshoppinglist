@@ -26,6 +26,7 @@ export default function ShoppingPreferences() {
   }, [store, load, dispose]);
   const disabled = state.loading || state.saving;
   const selected = draft?.shops.filter((s) => s.isEnabled) ?? [];
+  const hasAldiSelection = selected.some(s => draft?.availableShops.find(a => a.id === s.shopId)?.code === "aldi");
   const unsupportedOnly =
     draft?.compareOnlyPreferredShops &&
     selected.length > 0 &&
@@ -40,8 +41,9 @@ export default function ShoppingPreferences() {
       <main className="mx-auto max-w-3xl px-5 py-8">
         <h1 className="text-3xl font-semibold">Settings</h1>
         <p className="mt-3 text-sm leading-6 text-slate-600">
-          Choose your supermarkets for comparisons and automatic, product and
-          list price refreshes. You can also save the branches you visit.
+          Choose your supermarkets for comparisons using saved price observations.
+          Use Refresh items on your list to update saved prices through your
+          Chrome extension. You can also save the branches you visit.
         </p>
         {state.session?.account.isTrial && (
           <p className="mt-3 text-sm text-sky-800">
@@ -132,9 +134,8 @@ export default function ShoppingPreferences() {
                       {shop.code === "aldi" && !shop.comparisonSupported && (
                         <div className="ml-8 text-xs">
                           <p className="mt-1 text-slate-600">
-                            Open an ALDI product page and use the extension to
-                            add it to your list. Automatic ALDI searches and
-                            price refreshes are unavailable. Prices may vary by store.
+                            Use Refresh items with the extension enabled to update
+                            saved ALDI prices. Prices may vary by store.
                           </p>
                           <a
                             href="https://www.aldi.com.au/"
@@ -174,10 +175,10 @@ export default function ShoppingPreferences() {
                       role="status"
                       className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900"
                     >
-                      Automatic comparisons are unavailable for your selected
-                      stores. Your list will still work, but comparison prices
-                      will be unavailable. Add Coles or Woolworths, or compare
-                      all supported stores.
+                      Automatic product searches are unavailable for your selected
+                      stores.{" "}{hasAldiSelection
+                        ? "Saved ALDI prices from your extension can still be compared. Use Refresh items to update them."
+                        : "Comparison prices are not available for these stores yet. You can keep these preferences for later, or choose a supported store."}
                     </p>
                   )}
                   <label className="flex min-h-11 cursor-pointer items-center gap-3 border-t border-slate-200 pt-5">

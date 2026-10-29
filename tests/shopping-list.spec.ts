@@ -557,7 +557,7 @@ test.beforeAll(async () => {
       if (value.url.startsWith("https://www.aldi.com.au/")) {
         send(400, {
           title:
-            "Add ALDI products from an open product page using the extension. Automatic ALDI searches and price refreshes are unavailable.",
+            "Add ALDI products from an open product page using the extension. Use Refresh items to update saved prices through your extension. Automatic product searches are unavailable.",
           errorCode: "source_restricted",
         });
         return;

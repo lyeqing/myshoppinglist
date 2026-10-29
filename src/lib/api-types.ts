@@ -204,7 +204,7 @@ export interface ShoppingPreferences {
     name: string;
     code: string;
     comparisonSupported: boolean;
-    capabilityStatus?: "Supported" | "Restricted" | "NotImplemented" | null;
+    capabilityStatus?: "Supported" | "ExtensionOnly" | "Restricted" | "NotImplemented" | null;
     capabilityMessage?: string | null;
   }[];
   updatedDate: string;

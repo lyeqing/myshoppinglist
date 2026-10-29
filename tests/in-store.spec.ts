@@ -296,6 +296,107 @@ test("shop selection, basket coverage, purchase and undo work without reloading"
   ).toBeTruthy();
 });
 
+test("saved ALDI observations can be selected in store with quantity totals and honest coverage", async ({
+  page,
+}, info) => {
+  const aldi = { id: 3, name: "ALDI" };
+  const retailers = [aldi, ...shops];
+  const product = row(1, "A2 Full Cream Milk 2L", null, null);
+  product.item.product = {
+    ...product.item.product,
+    brand: "A2 THE A2 MILK COMPANY",
+    packSize: 2000,
+    packUnit: "mL",
+  };
+  const observed = new Date().toISOString();
+  product.prices = [
+    {
+      shopId: aldi.id,
+      shopName: aldi.name,
+      price: 7.29,
+      status: "Fresh",
+      checkedDate: observed,
+      observation: {
+        sourceType: "BrowserExtension",
+        priceScope: "Unknown",
+        sourceUrl: null,
+      },
+    },
+  ];
+  const unpriced = row(2, "Unpriced product", null, null);
+  unpriced.prices = [];
+  await page.route("**/api/account/products/preferences?**", (route) =>
+    route.fulfill({
+      json: [product, unpriced].map((row) => ({
+        productId: row.item.product.id,
+        isFavorite: false,
+        isEssential: false,
+      })),
+    }),
+  );
+  await page.route("**/api/shopping-lists**", (route) =>
+    route.fulfill({
+      json: new URL(route.request().url()).pathname.endsWith("/in-store")
+        ? {
+            id: 1,
+            name: "ALDI shop",
+            retailers,
+            items: [product, unpriced],
+            remainingCount: 2,
+            baskets: [
+              {
+                shopId: aldi.id,
+                shopName: aldi.name,
+                subtotal: 14.58,
+                pricedCount: 1,
+                comparableSubtotal: 0,
+                savingsBySplitting: 0,
+              },
+            ],
+            splitSubtotal: 14.58,
+            splitPricedCount: 1,
+            comparableCount: 0,
+            comparableSplitSubtotal: 0,
+          }
+        : [{ id: 1, name: "ALDI shop", remainingCount: 2, retailers }],
+    }),
+  );
+  await page.goto("/in-store");
+  await page
+    .getByLabel("Where are you shopping?")
+    .selectOption(String(aldi.id));
+  await page.getByRole("button", { name: /ALDI shop/ }).click();
+  await expect(page.getByLabel("Where are you shopping?")).toHaveValue(
+    String(aldi.id),
+  );
+  const card = page
+    .locator("article")
+    .filter({ hasText: "A2 Full Cream Milk 2L" });
+  await expect(card.locator("p.text-2xl")).toContainText("$14.58");
+  await expect(card).toContainText("$7.29");
+  await expect(card).toContainText("Observed today");
+  await expect(card).toContainText("Chrome extension");
+  await expect(card).toContainText("Coverage unknown — estimate");
+  await expect(card).not.toContainText("Product settings are unavailable");
+  await expect(
+    page.getByText("Incomplete basket — 1 of 2 items priced"),
+  ).toBeVisible();
+  await expect(
+    page.locator("article").filter({ hasText: "Unpriced product" }),
+  ).toContainText("Price unavailable at ALDI");
+  await expect(
+    page.locator("article").filter({ hasText: "Unpriced product" }),
+  ).toContainText("No saved exact match at this retailer.");
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await card.screenshot({
+    path: `test-results/${info.project.name}-aldi-in-store.png`,
+  });
+});
+
 test("unauthenticated visitors are offered sign in", async ({ page }) => {
   await page.route("**/api/auth/me", (route) =>
     route.fulfill({ status: 401, json: {} }),
@@ -410,13 +511,16 @@ test("selected retailer leads pricing and missing products are distinct from mis
     page.locator("article").filter({ hasText: "Missing product" }),
   ).toHaveClass(/bg-red-50/);
   await expect(
-    page.getByText("Not found at Woolworths", { exact: true }),
+    page.locator("article").filter({ hasText: "Missing product" }).getByText("Price unavailable at Woolworths", { exact: true }),
   ).toBeVisible();
+  await expect(
+    page.locator("article").filter({ hasText: "Missing product" }),
+  ).toContainText("No saved exact match at this retailer.");
   await expect(
     page.getByText("Out of stock at Woolworths", { exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByText("Price unavailable at Woolworths", { exact: true }),
+    page.locator("article").filter({ hasText: "Stale product" }).getByText("Price unavailable at Woolworths", { exact: true }),
   ).toBeVisible();
   await page.getByLabel("Where are you shopping?").selectOption("1");
   await expect(card.locator("p.text-2xl")).toContainText("$2.00");

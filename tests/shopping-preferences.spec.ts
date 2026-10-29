@@ -10,9 +10,9 @@ const availableShops: ShoppingPreferences["availableShops"] = [
     name: "ALDI",
     code: "aldi",
     comparisonSupported: false,
-    capabilityStatus: "Restricted",
+    capabilityStatus: "ExtensionOnly",
     capabilityMessage:
-      "Add ALDI products from an open product page using the extension. Automatic ALDI searches and price refreshes are unavailable.",
+      "Add ALDI products from an open product page using the extension. Use Refresh items to update saved prices through your extension. Automatic product searches are unavailable.",
   },
   { id: 4, name: "IGA", code: "iga", comparisonSupported: false },
   { id: 5, name: "Foodland", code: "foodland", comparisonSupported: false },
@@ -273,7 +273,7 @@ test("My Stores explains empty and unsupported-only selections", async ({
   await page.getByRole("checkbox", { name: "ALDI", exact: true }).check();
   await expect(
     page.getByText(
-      /Automatic comparisons are unavailable for your selected stores/,
+      /Automatic product searches are unavailable for your selected stores/,
     ),
   ).toBeVisible();
   await page
@@ -281,6 +281,11 @@ test("My Stores explains empty and unsupported-only selections", async ({
     .click();
   await expect(page.getByText(/My Stores saved/)).toBeVisible();
   expect(profiles.get(1)!.shops).toEqual([{ shopId: 3, isEnabled: true }]);
+  await expect(page.getByText(/Saved ALDI prices from your extension can still be compared/)).toBeVisible();
+  await page.getByRole("checkbox", { name: "ALDI", exact: true }).uncheck();
+  await page.getByRole("checkbox", { name: "IGA", exact: true }).check();
+  await expect(page.getByText(/Comparison prices are not available for these stores yet/)).toBeVisible();
+  await expect(page.getByText(/Saved ALDI prices from your extension can still be compared/)).toHaveCount(0);
 });
 
 test("My Stores load and save failures can be retried without losing selections", async ({
@@ -494,14 +499,17 @@ test("package size preference persists independently of store selection and bran
   expect(profiles.get(1)!.includeDifferentPackSizes).toBe(true);
 });
 
-test("ALDI extension importing is explained while automatic comparisons remain unavailable", async ({
+test("ALDI extension importing and saved price refresh are explained while automatic searches remain unavailable", async ({
   page,
 }, info) => {
   await page.goto("/settings");
   const aldi = page.getByRole("checkbox", { name: "ALDI", exact: true });
   await expect(aldi).toHaveAccessibleDescription(
-    "Add ALDI products from an open product page using the extension. Automatic ALDI searches and price refreshes are unavailable.",
+    "Add ALDI products from an open product page using the extension. Use Refresh items to update saved prices through your extension. Automatic product searches are unavailable.",
   );
+  await expect(page.getByText("Use Refresh items with the extension enabled to update saved ALDI prices. Prices may vary by store.")).toBeVisible();
+  await expect(page.getByText(/Automatic ALDI searches and price refreshes are unavailable/)).toHaveCount(0);
+  await expect(page.getByText(/comparison prices will be unavailable/)).toHaveCount(0);
   const link = page.getByRole("link", {
     name: "Visit ALDI’s website",
     exact: true,
@@ -525,7 +533,7 @@ test("ALDI extension importing is explained while automatic comparisons remain u
   ).toBe(false);
   await expect(
     page.getByText(
-      /Automatic comparisons are unavailable for your selected stores/,
+      /Automatic product searches are unavailable for your selected stores/,
     ),
   ).toBeVisible();
   expect(

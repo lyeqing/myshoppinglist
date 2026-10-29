@@ -564,7 +564,7 @@ export default function InStoreApp() {
                                 {(row.brandAlternatives ?? []).some(a => a.offer.shopId === selected.id && a.offer.status === "Fresh") && !current?.substitution
                                   ? `Alternative available at ${selected.name} — choose below`
                                   : !current
-                                  ? `Not found at ${selected.name}`
+                                  ? `Price unavailable at ${selected.name}`
                                   : current.status === "Out of stock"
                                     ? `Out of stock at ${selected.name}`
                                     : `Price unavailable at ${selected.name}`}
