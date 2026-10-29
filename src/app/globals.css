@@ -1,6 +1,15 @@
 @import "tailwindcss";
-@theme inline { --font-sans: "Geist", "Segoe UI", Arial, sans-serif; }
+@theme inline {
+  --font-sans: "Geist", "Segoe UI", Arial, sans-serif;
+  --color-primary-50: var(--color-emerald-50);
+  --color-primary-100: var(--color-emerald-100);
+  --color-primary-300: var(--color-emerald-300);
+  --color-primary-600: var(--color-emerald-600);
+  --color-primary-700: var(--color-emerald-700);
+  --color-primary-800: var(--color-emerald-800);
+}
 body { margin: 0; background: var(--color-slate-50); color: var(--color-slate-900); font-family: var(--font-sans); }
 button:not(:disabled), summary { cursor: pointer; }
-:focus-visible { outline: 3px solid var(--color-sky-500); outline-offset: 4px; }
-::selection { background: var(--color-sky-100); }
+:focus-visible { outline: 3px solid var(--color-primary-600); outline-offset: 4px; }
+input[type="checkbox"], input[type="radio"] { accent-color: var(--color-primary-600); }
+::selection { background: var(--color-primary-100); }

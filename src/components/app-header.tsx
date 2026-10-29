@@ -16,7 +16,7 @@ type Props = {
   showSignIn?: boolean;
 };
 
-const button = "inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-sky-700 disabled:opacity-50";
+const button = "inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary-600 disabled:opacity-50";
 
 export default function AppHeader({ session, active, loading = false, disabled = false, onSignOut, onSignIn, showSignIn = true }: Props) {
   const [signingOut, setSigningOut] = useState(false);
@@ -55,12 +55,12 @@ export default function AppHeader({ session, active, loading = false, disabled =
     <header className="border-b border-slate-200 bg-white">
       <div className="mx-auto max-w-7xl px-5 py-4 sm:px-8">
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-          <Link href="/" className="shrink-0 text-sm font-semibold text-sky-800 sm:text-base">MyShoppingList</Link>
+          <Link href="/" className="shrink-0 text-sm font-semibold text-primary-700 sm:text-base">MyShoppingList</Link>
           <div className="flex max-w-full flex-wrap items-center justify-end gap-3">
             {session && (
               <>
                 <div role="group" aria-label={session.account.isTrial ? "Trial session" : `Signed in as ${name}`} title={session.account.isTrial ? "Trial session" : name} className="flex min-w-0 items-center gap-2">
-                  <span aria-hidden="true" className="hidden size-9 shrink-0 items-center justify-center rounded-full bg-sky-100 text-xs font-semibold text-sky-800 sm:flex">{session.account.isTrial ? "T" : initials}</span>
+                  <span aria-hidden="true" className="hidden size-9 shrink-0 items-center justify-center rounded-full bg-primary-100 text-xs font-semibold text-primary-700 sm:flex">{session.account.isTrial ? "T" : initials}</span>
                   <span className="max-w-32 truncate text-sm font-medium text-slate-700 sm:max-w-56">{session.account.isTrial ? "Trial session" : name}</span>
                 </div>
                 <button type="button" className={button} disabled={disabled || signingOut} onClick={() => void signOut()}>

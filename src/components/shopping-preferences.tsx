@@ -46,7 +46,7 @@ export default function ShoppingPreferences() {
           Chrome extension. You can also save the branches you visit.
         </p>
         {state.session?.account.isTrial && (
-          <p className="mt-3 text-sm text-sky-800">
+          <p className="mt-3 text-sm text-primary-700">
             Settings are saved for this trial. Create an account before it
             expires to keep them with your list.
           </p>
@@ -66,7 +66,7 @@ export default function ShoppingPreferences() {
         )}
         {state.unauthorized ? (
           <p className="mt-5">
-            <Link href="/" className="font-semibold text-sky-700 underline">
+            <Link href="/" className="font-semibold text-primary-700 underline">
               Sign in or start a trial
             </Link>{" "}
             to choose your stores.
@@ -108,7 +108,7 @@ export default function ShoppingPreferences() {
                       <label className="flex min-h-11 cursor-pointer items-start gap-3">
                         <input
                           type="checkbox"
-                          className="mt-1 size-5 shrink-0 accent-sky-700"
+                          className="mt-1 size-5 shrink-0 accent-primary-600"
                           checked={selected.some((s) => s.shopId === shop.id)}
                           onChange={(e) =>
                             state.toggleShop(shop.id, e.target.checked)
@@ -141,7 +141,7 @@ export default function ShoppingPreferences() {
                             href="https://www.aldi.com.au/"
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="mt-1 inline-block min-h-11 py-3 font-semibold text-sky-700 underline"
+                            className="mt-1 inline-block min-h-11 py-3 font-semibold text-primary-700 underline"
                           >
                             Visit ALDI’s website
                           </a>
@@ -153,7 +153,7 @@ export default function ShoppingPreferences() {
                   <label className="mt-5 flex min-h-11 cursor-pointer items-center gap-3 border-t border-slate-200 pt-5">
                     <input
                       type="checkbox"
-                      className="size-5 accent-sky-700"
+                      className="size-5 accent-primary-600"
                       checked={draft.compareOnlyPreferredShops}
                       onChange={(e) => state.setPreferredOnly(e.target.checked)}
                     />
@@ -184,7 +184,7 @@ export default function ShoppingPreferences() {
                   <label className="flex min-h-11 cursor-pointer items-center gap-3 border-t border-slate-200 pt-5">
                     <input
                       type="checkbox"
-                      className="size-5 shrink-0 accent-sky-700"
+                      className="size-5 shrink-0 accent-primary-600"
                       checked={draft.includeDifferentPackSizes}
                       onChange={(e) =>
                         state.setDifferentPackSizes(e.target.checked)
@@ -200,7 +200,7 @@ export default function ShoppingPreferences() {
                   <label className="flex min-h-11 cursor-pointer items-center gap-3 border-t border-slate-200 pt-5">
                     <input
                       type="checkbox"
-                      className="size-5 shrink-0 accent-sky-700"
+                      className="size-5 shrink-0 accent-primary-600"
                       checked={draft.includeDifferentBrands}
                       onChange={(e) =>
                         state.setDifferentBrands(e.target.checked)
@@ -223,7 +223,7 @@ export default function ShoppingPreferences() {
                       disabled ||
                       (draft.compareOnlyPreferredShops && !selected.length)
                     }
-                    className="min-h-11 rounded-xl bg-sky-700 px-5 py-3 font-semibold text-white disabled:opacity-50"
+                    className="min-h-11 rounded-xl bg-primary-700 hover:bg-primary-800 active:bg-primary-800 px-5 py-3 font-semibold text-white disabled:opacity-50"
                   >
                     {state.saving ? "Saving…" : "Save My Stores"}
                   </button>
@@ -242,7 +242,7 @@ export default function ShoppingPreferences() {
         )}
         <Link
           href="/"
-          className="mt-7 inline-block min-h-11 font-semibold text-sky-700 underline"
+          className="mt-7 inline-block min-h-11 font-semibold text-primary-700 underline"
         >
           Back to my lists
         </Link>

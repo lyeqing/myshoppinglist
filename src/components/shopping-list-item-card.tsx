@@ -53,7 +53,7 @@ function PriceDetail({
   const link = safeLink(price.productUrl);
   return (
     <div className="text-sm text-slate-500">
-      {price.substitution && <p className="mb-1 font-semibold text-sky-800">Chosen alternative: {price.substitution.product.name} · {price.substitution.quantity} packages</p>}
+      {price.substitution && <p className="mb-1 font-semibold text-primary-700">Chosen alternative: {price.substitution.product.name} · {price.substitution.quantity} packages</p>}
       <p>
         {link ? (
           <a
@@ -355,7 +355,7 @@ export default function ShoppingListItemCard({
         <div className="flex items-center gap-4 text-sm">
           {!draft && (
             <button
-              className="font-semibold text-sky-700 disabled:opacity-50"
+              className="font-semibold text-primary-700 disabled:opacity-50"
               disabled={locked}
               onClick={() =>
                 setDraft({ notes: item.notes ?? "", version: item.updatedDate })

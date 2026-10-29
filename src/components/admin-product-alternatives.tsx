@@ -94,7 +94,7 @@ export default function AdminProductAlternatives() {
     <main className="mx-auto max-w-6xl space-y-6 p-4 text-slate-900 sm:p-6">
       <nav
         aria-label="Administration"
-        className="flex flex-wrap gap-5 text-sm font-semibold text-sky-700 underline"
+        className="flex flex-wrap gap-5 text-sm font-semibold text-primary-700 underline"
       >
         <Link href="/admin">Account administration</Link>
         <Link href="/admin/shop-locations">Branch administration</Link>
@@ -333,7 +333,7 @@ export default function AdminProductAlternatives() {
                   <div className="flex flex-wrap gap-3">
                     <button
                       type="submit"
-                      className={`${button} bg-sky-700 text-white`}
+                      className={`${button} bg-primary-700 hover:bg-primary-800 active:bg-primary-800 text-white`}
                       disabled={
                         !evidenceValid ||
                         !state.sameUse ||

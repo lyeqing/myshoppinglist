@@ -2,12 +2,12 @@ import Link from "next/link";
 
 export default function ExtensionPage() {
   return <main className="mx-auto max-w-3xl px-5 py-10 text-slate-800">
-    <Link href="/" className="text-sky-700 underline">← MyShoppingList</Link>
-    <p className="mt-8 text-xs font-semibold uppercase tracking-widest text-sky-700">Chrome extension · Local testing</p>
+    <Link href="/" className="text-primary-700 underline">← MyShoppingList</Link>
+    <p className="mt-8 text-xs font-semibold uppercase tracking-widest text-primary-700">Chrome extension · Local testing</p>
     <h1 className="mt-3 text-3xl font-semibold">Save products you choose</h1>
     <p className="mt-4 leading-7">Open a Coles, Woolworths or ALDI product page. Choose your list and quantity, click <strong>Read product</strong>, review the details, then <strong>Save to list</strong>. Products and price observations are private to your account.</p>
     <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">Personal capture is being prepared. The server owner must enable this staged update after the website and existing-data transition are ready. Until then, the extension reports that personal capture is unavailable. Existing lists remain stored.</p>
-    <section className="mt-7 rounded-2xl border border-sky-200 bg-sky-50 p-6"><h2 className="text-xl font-semibold">Install the local test extension</h2>
+    <section className="mt-7 rounded-2xl border border-primary-300 bg-primary-50 p-6"><h2 className="text-xl font-semibold">Install the local test extension</h2>
       <p className="mt-3">The extension is not published in the Chrome Web Store yet. For now, install it from this project on your computer.</p>
       <ol className="mt-4 list-decimal space-y-3 pl-5">
         <li>Start your API on <code>http://localhost:5392</code>.</li>

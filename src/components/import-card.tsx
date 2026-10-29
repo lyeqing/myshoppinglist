@@ -108,7 +108,7 @@ export default function ImportCard({
           IMPORT #{job.jobId}
         </span>
         <span
-          className={`flex items-center gap-2 text-right font-medium ${job.status === "Failed" ? "text-amber-800" : active ? "text-sky-700" : "text-emerald-800"}`}
+          className={`flex items-center gap-2 text-right font-medium ${job.status === "Failed" ? "text-amber-800" : active ? "text-primary-700" : "text-emerald-800"}`}
         >
           {active && !error && <Spinner />}
           {error
@@ -121,7 +121,7 @@ export default function ImportCard({
       <div className="flex gap-4 p-5 sm:p-6">
         <div
           aria-hidden="true"
-          className="flex size-16 shrink-0 items-center justify-center rounded-2xl bg-sky-50 text-2xl font-semibold text-sky-700"
+          className="flex size-16 shrink-0 items-center justify-center rounded-2xl bg-primary-50 text-2xl font-semibold text-primary-700"
         >
           {product?.brand?.slice(0, 2).toUpperCase() ?? "↗"}
         </div>
@@ -315,7 +315,7 @@ export default function ImportCard({
                   )}
                   {price.sourceUrl.startsWith("https://") && (
                     <a
-                      className="mt-2 inline-block text-xs font-medium text-sky-700 underline underline-offset-4"
+                      className="mt-2 inline-block text-xs font-medium text-primary-700 underline underline-offset-4"
                       href={price.sourceUrl}
                       target="_blank"
                       rel="noopener noreferrer"

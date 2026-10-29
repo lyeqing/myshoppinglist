@@ -76,7 +76,7 @@ function AccountEditor({ account }: { account: AdminAccount }) {
         <div className="flex gap-3">
           <button
             disabled={busy || !reason.trim()}
-            className="rounded bg-sky-700 px-4 py-2 text-white disabled:opacity-50"
+            className="rounded bg-primary-700 hover:bg-primary-800 active:bg-primary-800 px-4 py-2 text-white disabled:opacity-50"
           >
             Save reviewed decision
           </button>
@@ -104,25 +104,25 @@ export function AdminAccounts() {
   }, [load]);
   return (
     <main className="mx-auto max-w-5xl space-y-6 p-6">
-      <Link href="/" className="text-sky-700 underline">
+      <Link href="/" className="text-primary-700 underline">
         ← MyShoppingList / sign in
       </Link>
       <h1 className="text-3xl font-bold">Account administration</h1>
       <Link
         href="/admin/shop-locations"
-        className="inline-block min-h-11 py-2 text-sky-700 underline"
+        className="inline-block min-h-11 py-2 text-primary-700 underline"
       >
         Branch administration
       </Link>
       <Link
         href="/admin/product-alternatives"
-        className="inline-block min-h-11 py-2 text-sky-700 underline"
+        className="inline-block min-h-11 py-2 text-primary-700 underline"
       >
         Product alternative reviews
       </Link>
       <Link
         href="/admin/health"
-        className="inline-block text-sky-700 underline"
+        className="inline-block text-primary-700 underline"
       >
         Retailer health
       </Link>

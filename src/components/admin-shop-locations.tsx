@@ -148,7 +148,7 @@ export default function AdminShopLocations() {
     <main className="mx-auto max-w-6xl space-y-6 p-4 text-slate-900 sm:p-6">
       <nav
         aria-label="Administration"
-        className="flex flex-wrap gap-5 text-sm font-semibold text-sky-700 underline"
+        className="flex flex-wrap gap-5 text-sm font-semibold text-primary-700 underline"
       >
         <Link href="/admin">Account administration</Link>
         <Link href="/admin/health">Retailer health</Link>
@@ -528,7 +528,7 @@ export default function AdminShopLocations() {
                   </label>
                   <div className="flex flex-wrap gap-3">
                     <button
-                      className={`${button} bg-sky-700 text-white`}
+                      className={`${button} bg-primary-700 hover:bg-primary-800 active:bg-primary-800 text-white`}
                       disabled={!valid}
                     >
                       {action}

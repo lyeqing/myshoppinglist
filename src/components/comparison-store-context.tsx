@@ -21,7 +21,7 @@ export default function ComparisonStoreContextPanel({
           ? `Comparing My Stores: ${context.shopNames.join(", ") || "No active stores"}`
           : "Comparing all supported stores"}
         .{" "}
-        <Link href="/settings" className="font-semibold text-sky-700 underline">
+        <Link href="/settings" className="font-semibold text-primary-700 underline">
           Manage My Stores
         </Link>
       </p>
@@ -44,7 +44,7 @@ export default function ComparisonStoreContextPanel({
             </p>
           )}
           <details className="mt-2">
-            <summary className="min-h-11 cursor-pointer py-3 font-semibold text-sky-700">
+            <summary className="min-h-11 cursor-pointer py-3 font-semibold text-primary-700">
               Saved branches ({branches.length})
             </summary>
             <ul className="space-y-3 pt-1">

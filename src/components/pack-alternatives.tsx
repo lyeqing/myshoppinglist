@@ -80,7 +80,7 @@ export default function PackAlternatives({
           aria-expanded={expanded}
           aria-controls={detailsId}
           onClick={() => setExpanded((value) => !value)}
-          className="min-h-11 py-2 text-sm font-semibold text-sky-700 underline"
+          className="min-h-11 py-2 text-sm font-semibold text-primary-700 underline"
         >
           {expanded ? "Hide other sizes" : "Show other sizes"}
         </button>
@@ -149,7 +149,7 @@ export default function PackAlternatives({
                     href={link}
                     target="_blank"
                     rel="noreferrer"
-                    className="mt-2 inline-block min-h-11 py-2 text-sm font-semibold text-sky-700 underline"
+                    className="mt-2 inline-block min-h-11 py-2 text-sm font-semibold text-primary-700 underline"
                   >
                     Check this size at {offer.shopName}
                   </a>
@@ -165,7 +165,7 @@ export default function PackAlternatives({
         </p>
         <Link
           href="/settings"
-          className="mt-2 inline-block min-h-11 py-2 text-sm text-sky-700 underline"
+          className="mt-2 inline-block min-h-11 py-2 text-sm text-primary-700 underline"
         >
           Manage package-size comparisons
         </Link>

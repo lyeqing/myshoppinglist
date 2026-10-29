@@ -15,7 +15,7 @@ import { useShallow } from "zustand/react/shallow";
 import { useShoppingStore } from "./shopping-store-provider";
 
 const primary =
-  "inline-flex items-center justify-center gap-2 rounded-xl bg-sky-700 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-800 disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex items-center justify-center gap-2 rounded-xl bg-primary-700 hover:bg-primary-800 active:bg-primary-800 px-5 py-3 text-sm font-semibold text-white shadow-sm transition disabled:cursor-not-allowed disabled:opacity-50";
 const secondary =
   "rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50";
 const message = (e: unknown) =>
@@ -333,7 +333,7 @@ export default function ShoppingListApp() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-lg font-semibold">Your lists</h2>
               {session.account.isPaid && (
-                <Link href="/history" className="font-semibold text-sky-700">
+                <Link href="/history" className="font-semibold text-primary-700">
                   History
                 </Link>
               )}
@@ -445,11 +445,11 @@ export default function ShoppingListApp() {
 
         <div className="mb-9 flex flex-wrap items-end justify-between gap-5">
           <div>
-            <p className="mb-3 text-xs font-semibold tracking-widest text-sky-700">
+            <p className="mb-3 text-xs font-semibold tracking-widest text-primary-700">
               LESS GUESSWORK. BETTER SHOPPING.
             </p>
             <h1 className="text-4xl font-semibold leading-tight tracking-tight sm:text-5xl">
-              Your list. <span className="text-sky-700">A clearer price.</span>
+              Your list. <span className="text-primary-700">A clearer price.</span>
             </h1>
             <p className="mt-4 max-w-xl text-base leading-7 text-slate-500">
               Save products with the Chrome extension. Keep observed prices
@@ -474,7 +474,7 @@ export default function ShoppingListApp() {
         {notice && (
           <p
             role="status"
-            className="mb-6 rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-sm text-sky-900"
+            className="mb-6 rounded-xl border border-primary-300 bg-primary-50 px-4 py-3 text-sm text-primary-700"
           >
             {notice}
           </p>
@@ -561,7 +561,7 @@ export default function ShoppingListApp() {
                 Collect Coles, Woolworths and ALDI products with the extension.
               </p>
             </div>
-            <div className="border-t border-slate-100 bg-sky-50/60 p-7 sm:p-10 md:border-l md:border-t-0">
+            <div className="border-t border-slate-100 bg-primary-50/60 p-7 sm:p-10 md:border-l md:border-t-0">
               <p className="text-xs font-semibold tracking-widest text-slate-500">
                 THREE SIMPLE STEPS
               </p>
@@ -581,7 +581,7 @@ export default function ShoppingListApp() {
                   ],
                 ].map(([title, detail], i) => (
                   <li key={title} className="flex gap-4">
-                    <span className="flex size-9 shrink-0 items-center justify-center rounded-full border border-sky-200 bg-white text-sm font-semibold text-sky-700">
+                    <span className="flex size-9 shrink-0 items-center justify-center rounded-full border border-primary-300 bg-white text-sm font-semibold text-primary-700">
                       {i + 1}
                     </span>
                     <div>

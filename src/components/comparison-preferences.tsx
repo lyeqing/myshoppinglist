@@ -134,7 +134,7 @@ function Controls({
           )}
           {state.unauthorized ? (
             <p>
-              <Link href="/" className="font-semibold text-sky-700 underline">
+              <Link href="/" className="font-semibold text-primary-700 underline">
                 Sign in to change comparison options
               </Link>
             </p>
@@ -151,7 +151,7 @@ function Controls({
                   <label className="flex min-h-11 items-center gap-3">
                     <input
                       type="checkbox"
-                      className="size-5 shrink-0 accent-sky-700"
+                      className="size-5 shrink-0 accent-primary-600"
                       checked={draft.includeDifferentPackSizes}
                       onChange={(event) =>
                         store
@@ -164,7 +164,7 @@ function Controls({
                   <label className="flex min-h-11 items-center gap-3">
                     <input
                       type="checkbox"
-                      className="size-5 shrink-0 accent-sky-700"
+                      className="size-5 shrink-0 accent-primary-600"
                       checked={draft.includeDifferentBrands}
                       onChange={(event) =>
                         store
@@ -181,7 +181,7 @@ function Controls({
                   </p>
                   <button
                     type="button"
-                    className={`${button} bg-sky-700 text-white`}
+                    className={`${button} bg-primary-700 hover:bg-primary-800 active:bg-primary-800 text-white`}
                     disabled={!changed}
                     onClick={() => void save()}
                   >
@@ -240,7 +240,7 @@ function Controls({
           )}
           <Link
             href="/settings"
-            className="inline-block min-h-11 py-3 font-semibold text-sky-700 underline"
+            className="inline-block min-h-11 py-3 font-semibold text-primary-700 underline"
           >
             Manage supermarkets and branches
           </Link>

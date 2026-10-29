@@ -29,7 +29,7 @@ export default function HistoryApp() {
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <AppHeader session={state.session} active="archives" loading={state.loading} disabled={state.loading} onSignOut={state.logout} />
       <main className="mx-auto max-w-5xl px-5 py-10">
-        <p className="text-xs font-semibold tracking-widest text-sky-700">
+        <p className="text-xs font-semibold tracking-widest text-primary-700">
           YOUR PAST LISTS
         </p>
         <h1 className="mt-2 text-3xl font-semibold">Archived lists</h1>
@@ -58,7 +58,7 @@ export default function HistoryApp() {
           </div>
         )}
         {!state.loading && !canSee && (
-          <p className="mt-6 rounded-xl bg-sky-50 p-5">
+          <p className="mt-6 rounded-xl bg-primary-50 p-5">
             {state.session
               ? "Archived lists are available to paid accounts only."
               : "Sign in with a paid account to view your archived lists."}
@@ -126,7 +126,7 @@ export default function HistoryApp() {
                 {state.lists.map((list) => (
                   <li key={list.id}>
                     <button
-                      className="w-full rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm hover:border-sky-500"
+                      className="w-full rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm hover:border-primary-300"
                       onClick={() => void state.load(list.id)}
                     >
                       <span className="block font-semibold">{list.name}</span>

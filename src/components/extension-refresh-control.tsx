@@ -103,7 +103,7 @@ export default function ExtensionRefreshControl({ accountId, listId, disabled, o
   }
   return <div className="max-w-xl space-y-2">
     <div className="flex flex-wrap items-center gap-3">
-      <button className={className ?? "text-sm font-semibold text-sky-700 disabled:opacity-50"}
+      <button className={className ?? "text-sm font-semibold text-primary-700 disabled:opacity-50"}
         disabled={disabled || busy || !accountId || !listId} onClick={() => void refresh()}>
         {busy ? "Updating items…" : "Refresh items"}
       </button>
@@ -128,7 +128,7 @@ export default function ExtensionRefreshControl({ accountId, listId, disabled, o
       </li>)}</ul>
     </section>}
     {!busy && !!((progress?.failures?.length ?? 0) + (progress?.pending?.length ?? 0)) && <button
-      disabled={disabled || missing} className="text-sm font-semibold text-sky-700 underline disabled:opacity-50"
+      disabled={disabled || missing} className="text-sm font-semibold text-primary-700 underline disabled:opacity-50"
       onClick={() => void refresh([...(progress?.failures ?? []), ...(progress?.pending ?? [])])}>
       {progress?.pending?.length ? "Retry unfinished items" : "Retry failed items"}
     </button>}

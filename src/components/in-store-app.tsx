@@ -157,7 +157,7 @@ export default function InStoreApp() {
             />
           )}
         </div>
-        <p className="text-xs font-bold uppercase tracking-widest text-sky-700">
+        <p className="text-xs font-bold uppercase tracking-widest text-primary-700">
           Your shopping companion
         </p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight">
@@ -251,7 +251,7 @@ export default function InStoreApp() {
                   key={list.id}
                   disabled={disabled}
                   onClick={() => void load(list.id)}
-                  className="rounded-2xl border border-slate-200 bg-white p-6 text-left shadow-sm transition hover:border-sky-500 disabled:opacity-50"
+                  className="rounded-2xl border border-slate-200 bg-white p-6 text-left shadow-sm transition hover:border-primary-300 disabled:opacity-50"
                 >
                   <span className="block text-lg font-semibold">
                     {list.name}
@@ -259,7 +259,7 @@ export default function InStoreApp() {
                   <span className="mt-2 block text-sm text-slate-500">
                     {list.remainingCount} items remaining
                   </span>
-                  <span className="mt-3 block text-xs text-sky-700">
+                  <span className="mt-3 block text-xs text-primary-700">
                     {list.retailers.map((s) => s.name).join(" · ") ||
                       "Awaiting retailer matches"}
                   </span>
@@ -521,7 +521,7 @@ export default function InStoreApp() {
                         <label className="flex min-h-11 shrink-0 cursor-pointer flex-col items-center gap-1 text-xs">
                           <input
                             type="checkbox"
-                            className="size-6 accent-sky-700"
+                            className="size-6 accent-primary-600"
                             checked={row.item.isPurchased}
                             disabled={disabled}
                             aria-label={`Purchased ${row.item.product.name}`}
@@ -530,7 +530,7 @@ export default function InStoreApp() {
                           Purchased
                         </label>
                       </div>
-                      {current?.substitution && <p className="mt-3 text-sm font-semibold text-sky-800">Buying {current.substitution.product.name} instead · {current.substitution.quantity} packages</p>}
+                      {current?.substitution && <p className="mt-3 text-sm font-semibold text-primary-700">Buying {current.substitution.product.name} instead · {current.substitution.quantity} packages</p>}
                       {selected ? (
                         <div className="mt-4">
                           <p className="text-sm font-medium">{selected.name}</p>

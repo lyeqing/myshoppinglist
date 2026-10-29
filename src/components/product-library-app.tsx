@@ -46,7 +46,7 @@ export default function ProductLibraryApp({ view }: { view: View }) {
     <main className="mx-auto max-w-5xl px-5 py-8">
       <nav aria-label="Product pages" className="mb-6 flex flex-wrap gap-2">
         {tabs.map((tab) => <Link key={tab.view} href={tab.href} aria-current={tab.view === view ? "page" : undefined}
-          className={`min-h-11 rounded-xl border px-4 py-2 text-sm font-semibold ${tab.view === view ? "border-sky-700 bg-sky-700 text-white" : "border-slate-300 bg-white text-slate-600"}`}>{tab.label}</Link>)}
+          className={`min-h-11 rounded-xl border px-4 py-2 text-sm font-semibold ${tab.view === view ? "border-primary-300 bg-primary-100 text-primary-700" : "border-slate-300 bg-white text-slate-600"}`}>{tab.label}</Link>)}
       </nav>
       <h1 className="text-3xl font-semibold">{title}</h1>
       <p className="mt-3 text-sm leading-6 text-slate-600">{view === "essentials"
@@ -55,7 +55,7 @@ export default function ProductLibraryApp({ view }: { view: View }) {
         : "Products you have added to your shopping lists. Filter by products marked purchased. This is not a record of receipts or purchase prices."}</p>
       {loading && <p role="status" className="mt-6">Loading your account…</p>}
       {error && <div role="alert" className="mt-6 rounded-xl bg-amber-50 p-4">{error} <button type="button" className={button} onClick={() => setRetry((n) => n + 1)}>Retry</button> <Link href="/" className="underline">Sign in</Link></div>}
-      {session?.account.isTrial && <p className="mt-6 rounded-xl bg-sky-50 p-4"><Link href="/" className="font-semibold underline">Create an account</Link> to keep product history and save Favorites and Essentials.</p>}
+      {session?.account.isTrial && <p className="mt-6 rounded-xl bg-primary-50 p-4"><Link href="/" className="font-semibold underline">Create an account</Link> to keep product history and save Favorites and Essentials.</p>}
       {session && !session.account.isTrial && <Library key={`${session.account.id}-${view}`} session={session} view={view} />}
     </main>
   </div>;
@@ -141,9 +141,9 @@ function Library({ session, view }: { session: Session; view: View }) {
       {view === "history" && <label className="text-sm font-medium">Purchase history<select value={filter} onChange={(e) => { setFilter(e.target.value); setOffset(0); }} className="mt-1 block min-h-11 rounded-xl border border-slate-300 bg-white px-3"><option value="all">All products</option><option value="purchased">Previously marked purchased</option><option value="unpurchased">Not marked purchased</option></select></label>}
       <label className="text-sm font-medium">Add to shopping list<select value={listId} disabled={adding !== null || !management?.lists.length} onChange={(e) => { setListId(Number(e.target.value)); setNotice(""); }} className="mt-1 block min-h-11 max-w-full rounded-xl border border-slate-300 bg-white px-3">{!management?.lists.length && <option value={0}>No active lists</option>}{management?.lists.map((list) => <option key={list.id} value={list.id}>{list.name}</option>)}</select></label>
     </div>
-    {management?.lists.length === 0 && <p className="mt-3 text-sm"><Link href="/" className="font-semibold text-sky-700 underline">Create a shopping list</Link> to add saved products.</p>}
-    {notice && <p role="status" className="mt-4 text-sm text-sky-800">{notice}</p>}
-    {revision > 0 && <p role="status" className="mt-2 text-sm text-sky-800">Saved product settings updated.</p>}
+    {management?.lists.length === 0 && <p className="mt-3 text-sm"><Link href="/" className="font-semibold text-primary-700 underline">Create a shopping list</Link> to add saved products.</p>}
+    {notice && <p role="status" className="mt-4 text-sm text-primary-700">{notice}</p>}
+    {revision > 0 && <p role="status" className="mt-2 text-sm text-primary-700">Saved product settings updated.</p>}
     {error && <div role="alert" className="mt-4 rounded-xl bg-amber-50 p-4 text-sm">{error} <button type="button" className={button} onClick={retry}>Retry products</button></div>}
     {(loading || !data && !error) && <p role="status" className="mt-4 text-sm text-slate-500">Loading products…</p>}
     {data && <p className="mt-4 text-sm text-slate-500">{data.total} {data.total === 1 ? "product" : "products"}</p>}
@@ -155,7 +155,7 @@ function Library({ session, view }: { session: Session; view: View }) {
         {item.lastAddedDate && <p className="mt-2 text-xs text-slate-500">Last added {date(item.lastAddedDate)} · Added {item.timesAdded} {item.timesAdded === 1 ? "time" : "times"}</p>}
         {item.lastPurchasedDate && <p className="mt-1 text-xs text-slate-500">Last marked purchased {date(item.lastPurchasedDate)}</p>}
         <ProductBadges accountId={accountId} productId={item.product.id} name={item.product.name} />
-        <button type="button" className={`${button} mt-4 text-sky-800`} disabled={!listId || adding !== null} onClick={() => void add(item.product.id)}>{adding === item.product.id ? "Adding…" : "Add to list"}</button>
+        <button type="button" className={`${button} mt-4 text-primary-700`} disabled={!listId || adding !== null} onClick={() => void add(item.product.id)}>{adding === item.product.id ? "Adding…" : "Add to list"}</button>
       </article>)}
     </div>
     {data?.nextOffset != null && <button type="button" className={`${button} mt-6`} disabled={loading} onClick={() => setOffset(data.nextOffset!)}>Load more products</button>}

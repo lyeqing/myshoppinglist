@@ -129,11 +129,11 @@ function AlternativeChoices({ alternatives, choices, item, accountId, selectedSh
         and quality may differ. Automatic suggestions have not been reviewed for suitability; check the product details for your needs. These
         options only enter a store’s subtotal after you choose one. Your original product stays saved.
       </p>
-      {saved.map(choice => <div key={choice.shopId} className="mt-3 rounded-lg border border-sky-200 bg-sky-50 p-3">
+      {saved.map(choice => <div key={choice.shopId} className="mt-3 rounded-lg border border-primary-300 bg-primary-100 p-3">
         <p className="font-semibold">Chosen for {choice.shopName}: {choice.product.name}</p>
         <p className="mt-1 text-sm">{choice.quantity} {choice.quantity === 1 ? "package" : "packages"} · {choice.status === "Fresh" ? "Included in this store’s subtotal" : `${choice.status} — excluded from subtotal`}</p>
         {choice.status !== "Fresh" && <p className="mt-1 text-xs">Review the product and its current price before choosing again.</p>}
-        {canEdit && <button type="button" disabled={disabled || busy} onClick={() => void choose(choice.shopId, null, choice.quantity)} className="mt-2 min-h-11 font-semibold text-sky-800 underline disabled:opacity-50">Undo choice for {choice.shopName}</button>}
+        {canEdit && <button type="button" disabled={disabled || busy} onClick={() => void choose(choice.shopId, null, choice.quantity)} className="mt-2 min-h-11 font-semibold text-primary-700 underline disabled:opacity-50">Undo choice for {choice.shopName}</button>}
       </div>)}
       <ul className="mt-3 space-y-4">
         {visible.map((alternative) => {
@@ -155,7 +155,7 @@ function AlternativeChoices({ alternatives, choices, item, accountId, selectedSh
               key={`${product.id}-${offer.shopId}`}
               className="border-t border-slate-100 pt-3"
             >
-              <p className="text-xs font-semibold text-sky-800">
+              <p className="text-xs font-semibold text-primary-700">
                 {alternative.label}
               </p>
               <p className="mt-1 wrap-break-word font-medium">{product.name}</p>
@@ -213,7 +213,7 @@ function AlternativeChoices({ alternatives, choices, item, accountId, selectedSh
                     <input name="quantity" aria-label={`Packages of ${product.name} at ${offer.shopName}`} type="number" min={1} max={999} step={1} required defaultValue={saved.find(c => c.shopId === offer.shopId && c.product.id === product.id)?.quantity ?? Math.min(item.quantity, 999)} disabled={disabled || busy || reloadNeeded} className="ml-2 min-h-11 w-24 rounded border border-slate-300 bg-white px-3" />
                   </label>
                   <p className="mt-2 text-xs">This is the number of alternative packages to buy, not an automatic size conversion.</p>
-                  <button type="submit" disabled={disabled || busy || reloadNeeded || !priceCurrent(offer, now)} className="mt-2 min-h-11 rounded-lg bg-sky-700 px-4 py-2 font-semibold text-white disabled:opacity-50">
+                  <button type="submit" disabled={disabled || busy || reloadNeeded || !priceCurrent(offer, now)} className="mt-2 min-h-11 rounded-lg bg-primary-700 hover:bg-primary-800 active:bg-primary-800 px-4 py-2 font-semibold text-white disabled:opacity-50">
                     {saved.some(c => c.shopId === offer.shopId && c.product.id === product.id) ? `Update choice for ${offer.shopName}` : `Use this alternative at ${offer.shopName}`}
                   </button>
                   {!priceCurrent(offer, now) && <p className="mt-1 text-xs">A current, comparable price is required to choose this alternative.</p>}
@@ -224,7 +224,7 @@ function AlternativeChoices({ alternatives, choices, item, accountId, selectedSh
                   href={link}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mt-2 inline-block min-h-11 py-2 text-sm font-semibold text-sky-700 underline"
+                  className="mt-2 inline-block min-h-11 py-2 text-sm font-semibold text-primary-700 underline"
                 >
                   Check this alternative at {offer.shopName}
                 </a>
@@ -234,8 +234,8 @@ function AlternativeChoices({ alternatives, choices, item, accountId, selectedSh
         })}
       </ul>
       {error && <p role="alert" className="mt-3 text-sm text-red-800">{error}</p>}
-      {notice && <p role="status" className="mt-3 text-sm text-sky-800">{notice}</p>}
-      {reloadNeeded && <button type="button" disabled={busy || disabled} className="mt-2 min-h-11 font-semibold text-sky-800 underline" onClick={async () => {
+      {notice && <p role="status" className="mt-3 text-sm text-primary-700">{notice}</p>}
+      {reloadNeeded && <button type="button" disabled={busy || disabled} className="mt-2 min-h-11 font-semibold text-primary-700 underline" onClick={async () => {
         try { await onChanged?.(); if (alive.current) { setReloadNeeded(false); setError(""); } } catch { if (alive.current) setError("Unable to reload prices. Please try again."); }
       }}>Reload choices</button>}
       <p className="mt-3 text-xs text-slate-600">
@@ -245,7 +245,7 @@ function AlternativeChoices({ alternatives, choices, item, accountId, selectedSh
       </p>
       <Link
         href="/settings"
-        className="mt-2 inline-block min-h-11 py-2 text-sm text-sky-700 underline"
+        className="mt-2 inline-block min-h-11 py-2 text-sm text-primary-700 underline"
       >
         Manage alternative-brand comparisons
       </Link>

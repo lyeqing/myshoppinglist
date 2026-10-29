@@ -56,7 +56,7 @@ export default function AdminHealth() {
     <main className="mx-auto max-w-6xl space-y-6 p-4 text-slate-900 sm:p-6">
       <nav
         aria-label="Administration"
-        className="flex flex-wrap gap-5 text-sm text-sky-700 underline"
+        className="flex flex-wrap gap-5 text-sm text-primary-700 underline"
       >
         <Link href="/admin">Account administration</Link>
         <Link href="/admin/shop-locations">Branch administration</Link>
@@ -75,7 +75,7 @@ export default function AdminHealth() {
         <button
           onClick={() => void store.getState().load()}
           disabled={busy}
-          className="min-h-11 rounded-xl bg-sky-700 px-4 py-2 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+          className="min-h-11 rounded-xl bg-primary-700 hover:bg-primary-800 active:bg-primary-800 px-4 py-2 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
         >
           {busy ? "Refreshing…" : "Refresh health"}
         </button>

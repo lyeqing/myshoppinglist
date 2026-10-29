@@ -25,13 +25,13 @@ export default function ProductBadges({ accountId, productId, name }: { accountI
             title={kind === "essential" ? "Automatically add quantity 1 to each new shopping list" : "Save this product for easy reuse"}
             disabled={!accountId || !entry?.value || entry.loading || entry.saving}
             onClick={() => void store.getState().toggle(accountId!, productId, kind)}
-            className={`min-h-11 rounded-full border px-3 py-2 text-xs font-semibold disabled:opacity-60 ${selected ? kind === "favorite" ? "border-amber-500 bg-amber-50 text-amber-900" : "border-sky-600 bg-sky-50 text-sky-900" : "border-slate-300 bg-white text-slate-600"}`}>
+            className={`min-h-11 rounded-full border px-3 py-2 text-xs font-semibold disabled:opacity-60 ${selected ? kind === "favorite" ? "border-amber-500 bg-amber-50 text-amber-900" : "border-primary-300 bg-primary-100 text-primary-700" : "border-slate-300 bg-white text-slate-600"}`}>
             <span aria-hidden="true">{kind === "favorite" ? selected ? "★" : "☆" : selected ? "✓" : "+"}</span> {label}
           </button>;
         })}
       </div>
       {(entry?.loading || entry?.saving) && <p role="status" className="mt-1 text-xs text-slate-500">{entry.saving ? "Saving product settings…" : "Loading product settings…"}</p>}
-      {entry?.notice && <p role="status" className="mt-1 text-xs text-sky-800">{entry.notice}</p>}
+      {entry?.notice && <p role="status" className="mt-1 text-xs text-primary-700">{entry.notice}</p>}
       {entry?.error && <p role={entry.value ? "alert" : "status"} className="mt-1 text-xs text-amber-900">{entry.error}{" "}
         {entry.needsAccount ? <Link href="/" className="underline">Create an account</Link> : !entry.value && <button type="button" className="min-h-11 underline" onClick={() => store.getState().ensure(accountId!, productId)}>Retry product settings</button>}
       </p>}

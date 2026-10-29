@@ -85,7 +85,7 @@ export default function PriceObservationContextPanel({
           href={link}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex min-h-11 items-center py-2 font-semibold text-sky-700 underline underline-offset-2"
+          className="inline-flex min-h-11 items-center py-2 font-semibold text-primary-700 underline underline-offset-2"
         >
           View price source
           <span className="sr-only"> at {shopName} (opens in a new tab)</span>
