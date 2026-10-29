@@ -69,6 +69,18 @@ export function sameProductUrl(left, right) {
   return expected !== null && identity(left) === expected;
 }
 
+export async function attachWebsiteBridges(browser) {
+  for (const tab of await browser.tabs.query({ url: "http://localhost/*" })) {
+    try {
+      if (!["http://localhost:3000", "http://localhost:3001"].includes(new URL(tab.url).origin)) continue;
+      let connected;
+      try { connected = await browser.tabs.sendMessage(tab.id, { type: "website-bridge-ping" }); } catch { /* No active bridge. */ }
+      if (connected?.version !== 2)
+        await browser.scripting.executeScript({ target: { tabId: tab.id }, files: ["website-session.js"] });
+    } catch { /* Closed or navigating tabs receive the manifest script on their next load. */ }
+  }
+}
+
 export function createWorker(browser, fetcher = fetch) {
   const storage = browser.storage.session;
   let generation = 0;
@@ -81,14 +93,21 @@ export function createWorker(browser, fetcher = fetch) {
     syncing = (async () => {
       const cookie = await browser.cookies.get({ url: WEBSITE_URL, name: SESSION_COOKIE });
       const token = cookie?.path === "/" && /^[a-f0-9]{64}$/.test(cookie.value) ? cookie.value : null;
-      if (((await storage.get("token")).token || null) === token) return token;
+      const previous = await storage.get("token");
+      const initial = !Object.hasOwn(previous, "token");
+      if ((previous.token || null) === token) {
+        if (initial) await storage.set({ token });
+        return token;
+      }
       generation++;
       sessionAbort.abort();
       sessionAbort = new AbortController();
       const { panelUi } = await storage.get("panelUi");
       await storage.clear();
       await storage.set({ token, ...(panelUi ? { panelUi } : {}) });
-      for (const tab of await browser.tabs.query({ url: "http://localhost/*" })) {
+      // Recovering the same website cookie after an extension reload is not a
+      // website account change. Avoid resetting open editors during reconnect.
+      for (const tab of initial ? [] : await browser.tabs.query({ url: "http://localhost/*" })) {
         try {
           if (["http://localhost:3000", "http://localhost:3001"].includes(new URL(tab.url).origin))
             await browser.tabs.sendMessage(tab.id, { type: "myshoppinglist-session-changed" });
@@ -304,6 +323,7 @@ export function createRefreshController(browser, worker) {
   const cancelled = new Set();
   const snapshot = () => ({ runId: run.id, total: run.targets.length, completed: run.index,
     updated: run.updated, failed: run.failed, message: run.message,
+    failures: run.failures.map(f => ({ ...f })), pending: run.targets.slice(run.index).map(t => ({ ...t })),
     done: run.index === run.targets.length });
   async function sameAccount(accountId) {
     const session = await worker.request("/api/auth/me");
@@ -315,7 +335,8 @@ export function createRefreshController(browser, worker) {
       throw new Error("This refresh has ended. Start Refresh items again.");
   }
   return async (message) => {
-    if (message.action === "hello") return { available: true, version: 1 };
+    if (message.action === "hello") return { available: true, version: 2,
+      ...(browser.runtime?.id ? { extensionId: browser.runtime.id } : {}) };
     if (message.action === "cancel") {
       if (typeof message.runId !== "string" || !/^[a-f0-9-]{36}$/i.test(message.runId))
         throw new Error("Invalid refresh request.");
@@ -334,6 +355,10 @@ export function createRefreshController(browser, worker) {
         if (!Number.isSafeInteger(message.listId) || message.listId <= 0
             || !Number.isSafeInteger(message.accountId) || typeof message.runId !== "string"
             || !/^[a-f0-9-]{36}$/i.test(message.runId)) throw new Error("Invalid refresh request.");
+        if (message.targets !== undefined && (!Array.isArray(message.targets) || !message.targets.length
+            || message.targets.length > 5000 || message.targets.some(t => !t || !Number.isSafeInteger(t.itemId)
+              || t.itemId <= 0 || !Number.isSafeInteger(t.mappingId) || t.mappingId <= 0)))
+          throw new Error("Choose the products to retry from your refresh results.");
         await sameAccount(message.accountId);
         const token = await worker.syncSession();
         if (run?.websiteTabId != null) {
@@ -346,14 +371,18 @@ export function createRefreshController(browser, worker) {
         }
         if (run && !run.abort.signal.aborted && run.index < run.targets.length)
           throw new Error("A price refresh is already running in another website tab. Finish or cancel it first.");
-        const targets = await worker.request(`/api/user-extension/price-refresh/${message.listId}`, { expectedToken: token });
+        let targets = await worker.request(`/api/user-extension/price-refresh/${message.listId}`, { expectedToken: token });
         if (!Array.isArray(targets) || targets.some(t => !productUrl(t.url)
             || !Number.isSafeInteger(t.itemId) || !Number.isSafeInteger(t.mappingId)))
           throw new Error("The product list could not be validated.");
+        if (message.targets) {
+          const selected = new Set(message.targets.map(t => `${t.itemId}:${t.mappingId}`));
+          targets = targets.filter(t => selected.has(`${t.itemId}:${t.mappingId}`));
+        }
         if (cancelled.has(message.runId)) throw new Error("Refresh cancelled.");
         run = { id: message.runId, accountId: message.accountId, listId: message.listId, token,
           websiteTabId: message.websiteTabId,
-          targets, index: 0, updated: 0, failed: 0, message: "", abort: new AbortController() };
+          targets, index: 0, updated: 0, failed: 0, failures: [], message: "", abort: new AbortController() };
         return snapshot();
       }
       if (message.action !== "next") throw new Error("Unsupported refresh action.");
@@ -409,6 +438,7 @@ export function createRefreshController(browser, worker) {
         if (run !== active) throw new Error("Refresh cancelled.");
         if (result.updated) active.updated++; else active.failed++;
         active.message = `${target.name}: ${result.message}`;
+        if (!result.updated) active.failures.push({ ...target, message: result.message });
       } catch (error) {
         if (run !== active || active.abort.signal.aborted) throw new Error("Refresh cancelled.");
         if (await worker.syncSession() !== active.token || error.status === 401) {
@@ -417,9 +447,11 @@ export function createRefreshController(browser, worker) {
         }
         if ([403, 429, 503].includes(error.status)) { run = null; throw error; }
         active.failed++;
-        active.message = `${target.name}: ${error.name === "TimeoutError"
+        const reason = error.name === "TimeoutError"
           ? "Could not read this page. Open it to check for retailer verification, then try again."
-          : error.message}`;
+          : error.message;
+        active.message = `${target.name}: ${reason}`;
+        active.failures.push({ ...target, message: reason });
       } finally {
         if (tabId != null) {
           try { await browser.tabs.remove(tabId); } catch { /* User already closed our tab. */ }
@@ -636,6 +668,11 @@ if (
   const handle = createWorker(chrome);
   const refresh = createRefreshController(chrome, handle);
   const panels = createPanelController(chrome, handle);
+  // Updating an extension invalidates scripts in already-open tabs. Reconnect
+  // without reloading the user's page or starting price collection.
+  void attachWebsiteBridges(chrome).catch(() => {});
+  chrome.runtime.onInstalled?.addListener(() => { void attachWebsiteBridges(chrome).catch(() => {}); });
+  chrome.runtime.onStartup?.addListener(() => { void attachWebsiteBridges(chrome).catch(() => {}); });
   let toolbarState = {};
   void chrome.storage.session.get(["panelUi", "token"]).then((value) => {
     toolbarState = value;
@@ -682,6 +719,16 @@ if (
   });
   chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
     if (change.url) void panels.navigation(tabId, tab.url);
+  });
+  chrome.runtime.onMessageExternal?.addListener((message, sender, respond) => {
+    let origin;
+    try { origin = new URL(sender.url).origin; } catch { return false; }
+    if (sender.id || !sender.tab || sender.frameId != null && sender.frameId !== 0
+        || !["http://localhost:3000", "http://localhost:3001"].includes(origin)
+        || message?.type !== "website-price-refresh") return false;
+    refresh({ ...message, websiteTabId: sender.tab.id }).then(data => respond({ ok: true, data }),
+      error => respond({ ok: false, error: error.message }));
+    return true;
   });
   chrome.runtime.onMessage.addListener((message, sender, respond) => {
     if (sender.id !== chrome.runtime.id) return false;

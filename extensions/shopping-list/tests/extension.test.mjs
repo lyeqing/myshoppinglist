@@ -14,6 +14,7 @@ const {
   retailerPage,
   preferredList,
   createRefreshController,
+  attachWebsiteBridges,
 } = await import(
   `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`
 );
@@ -23,6 +24,8 @@ function refreshFixture() {
   const tabs = new Map(); const removed = []; const saved = []; const data = {};
   let owner = token; let redirected = false; let gate;
   const target = { itemId: 5, mappingId: 6, name: "Coffee", url: "https://www.coles.com.au/product/123456" };
+  let targets = [target];
+  let result = () => ({ updated: true, message: "Updated." });
   const browser = {
     storage: { session: { set: async v => Object.assign(data, v), remove: async k => { delete data[k]; } } },
     tabs: {
@@ -35,18 +38,19 @@ function refreshFixture() {
   const worker = { syncSession: async () => owner,
     request: async (path, options) => {
       if (path === "/api/auth/me") return { account: { id: 1 } };
-      if (path.endsWith("/price-refresh/2")) { if (gate) await gate; return [target]; }
-      saved.push(options.body); return { updated: true, message: "Updated." };
+      if (path.endsWith("/price-refresh/2")) { if (gate) await gate; return targets; }
+      saved.push(options.body); return result(options.body);
     } };
   return { handle: createRefreshController(browser, worker), browser, tabs, removed, saved, data,
     changeAccount: () => { owner = "b".repeat(64); }, redirect: () => { redirected = true; },
     setGate: value => { gate = value; },
+    setTargets: value => { targets = value; }, setResult: value => { result = value; }, target,
     message: { accountId: 1, listId: 2, runId: crypto.randomUUID() } };
 }
 
 test("website refresh reads only server-owned targets, updates prices and closes only its temporary tab", async () => {
   const f = refreshFixture();
-  assert.deepEqual(await f.handle({ action: "hello" }), { available: true, version: 1 });
+  assert.deepEqual(await f.handle({ action: "hello" }), { available: true, version: 2 });
   assert.equal(f.tabs.size, 0);
   const started = await f.handle({ ...f.message, action: "start" });
   assert.equal(started.total, 1); assert.equal(started.completed, 0);
@@ -58,6 +62,89 @@ test("website refresh reads only server-owned targets, updates prices and closes
   assert.equal("priceRefreshTab" in f.data, false);
   assert.equal(JSON.stringify(result).includes("bounded evidence"), false);
   assert.equal(JSON.stringify(result).includes(token), false);
+});
+
+test("failure details survive a later success and retries select only currently eligible server targets", async () => {
+  const f = refreshFixture();
+  const second = { ...f.target, itemId: 7, mappingId: 8, name: "Tea", url: "https://www.coles.com.au/product/234567" };
+  f.setTargets([f.target, second]);
+  f.setResult(body => ({ updated: body.mappingId === 8, message: body.mappingId === 8 ? "Updated." : "No verified price found." }));
+  const start = await f.handle({ ...f.message, action: "start" });
+  assert.equal(start.pending.length, 2);
+  await f.handle({ ...f.message, action: "next" });
+  const completed = await f.handle({ ...f.message, action: "next" });
+  assert.equal(completed.failed, 1); assert.equal(completed.updated, 1);
+  assert.equal(completed.failures[0].name, "Coffee");
+  assert.equal(completed.failures[0].message, "No verified price found.");
+  assert.equal(completed.pending.length, 0);
+  f.setResult(() => ({ updated: true, message: "Updated." }));
+  const retry = { ...f.message, runId: crypto.randomUUID(), targets: [{ itemId: 5, mappingId: 6 }] };
+  assert.equal((await f.handle({ ...retry, action: "start" })).total, 1);
+  assert.equal((await f.handle({ ...retry, action: "next" })).updated, 1);
+  assert.deepEqual(f.saved.map(body => body.mappingId), [6, 8, 6]);
+  // A removed/purchased/hidden product is absent from the newly fetched targets.
+  f.setTargets([second]);
+  assert.equal((await f.handle({ ...retry, runId: crypto.randomUUID(), action: "start" })).total, 0);
+  const foreign = { ...retry, runId: crypto.randomUUID(), targets: [{ itemId: 99, mappingId: 100, url: "https://evil.test" }] };
+  assert.equal((await f.handle({ ...foreign, action: "start" })).total, 0);
+  assert.equal(f.saved.length, 3);
+  await assert.rejects(f.handle({ ...retry, runId: crypto.randomUUID(), action: "start", targets: [] }), /products to retry/);
+});
+
+test("reattachment targets only shopping website tabs and skips an already active bridge", async () => {
+  const scripts = [];
+  const browser = {
+    tabs: { query: async () => [
+      { id: 1, url: "http://localhost:3000/" }, { id: 2, url: "http://localhost:3001/in-store" },
+      { id: 3, url: "http://localhost:5392/" }, { id: 4, url: "https://www.coles.com.au/product/123456" },
+    ], sendMessage: async id => { if (id === 1) return { version: 2 }; throw new Error("No bridge"); } },
+    scripting: { executeScript: async options => scripts.push(options) },
+  };
+  await attachWebsiteBridges(browser);
+  assert.deepEqual(scripts, [{ target: { tabId: 2 }, files: ["website-session.js"] }]);
+});
+
+test("initial cookie recovery after extension reload does not reset the website session", async () => {
+  const f = fixture();
+  await f.browser.storage.session.clear();
+  let notifications = 0;
+  f.browser.tabs.query = async () => [{ id: 100, url: "http://localhost:3000" }];
+  f.browser.tabs.sendMessage = async () => { notifications++; };
+  await f.handle.restore();
+  assert.equal(f.data().token, token);
+  assert.equal(notifications, 0);
+  // A subsequent, actual cookie change still notifies the website.
+  await f.browser.cookies.remove({});
+  await f.handle.syncSession();
+  assert.equal(notifications, 1);
+});
+
+test("reinjecting the website bridge replaces listeners and never forwards credentials or stale protocol messages", async () => {
+  const messages = new Set(), runtimeListeners = new Set(), calls = [], replies = [];
+  const window = { addEventListener: (type, fn) => messages.add(fn), removeEventListener: (type, fn) => messages.delete(fn),
+    postMessage: value => replies.push(value), dispatchEvent: () => {} };
+  const chrome = { runtime: { id: "a".repeat(32), sendMessage: async message => { calls.push(message); return { ok: true, data: { available: true, version: 2 } }; },
+    onMessage: { addListener: fn => runtimeListeners.add(fn), removeListener: fn => runtimeListeners.delete(fn) } } };
+  const context = vm.createContext({ window, location: { origin: "http://localhost:3000" }, chrome });
+  const bridge = await readFile(new URL("../website-session.js", import.meta.url), "utf8");
+  vm.runInContext(bridge, context); vm.runInContext(bridge, context);
+  assert.equal(messages.size, 1); assert.equal(runtimeListeners.size, 1);
+  const data = { channel: "myshoppinglist-price-refresh-request-v2", requestId: "one", action: "start", accountId: 1,
+    listId: 2, runId: crypto.randomUUID(), targets: [{ itemId: 5, mappingId: 6 }], token: "do not forward" };
+  const receive = [...messages][0];
+  await receive({ source: window, origin: "http://localhost:3000", data });
+  assert.equal(calls.length, 1); assert.equal(calls[0].targets[0].mappingId, 6);
+  assert.equal("token" in calls[0], false);
+  await receive({ source: window, origin: "https://evil.test", data });
+  await receive({ source: window, origin: "http://localhost:3000", data: { ...data, channel: "myshoppinglist-price-refresh-request" } });
+  assert.equal(calls.length, 1);
+  let ping;
+  [...runtimeListeners][0]({ type: "website-bridge-ping" }, { id: chrome.runtime.id }, value => { ping = value; });
+  assert.equal(ping.version, 2);
+  assert.equal(replies.filter(r => r.channel === "myshoppinglist-price-refresh-response-v2").length, 1);
+  chrome.runtime.id = undefined;
+  await receive({ source: window, origin: "http://localhost:3000", data });
+  assert.equal(calls.length, 1);
 });
 
 test("refresh rejects changed accounts and redirects without saving a price", async () => {
@@ -576,6 +663,7 @@ test("runtime rejects retailer capture messages and forged compact frames, and b
   const event = () => ({ listeners: [], addListener(fn) { this.listeners.push(fn); } });
   f.browser.runtime.getURL = (path) => "chrome-extension://" + f.browser.runtime.id + "/" + path;
   f.browser.runtime.onMessage = event();
+  f.browser.runtime.onMessageExternal = event();
   f.browser.action = { onClicked: event() };
   f.browser.tabs.onActivated = event(); f.browser.tabs.onUpdated = event();
   f.browser.storage.onChanged = event(); f.browser.cookies.onChanged = event();
@@ -585,6 +673,17 @@ test("runtime rejects retailer capture messages and forged compact frames, and b
   vm.runInContext(source.replace(/^export /gm, ""), context);
   await new Promise((resolve) => setImmediate(resolve));
   const listener = f.browser.runtime.onMessage.listeners[0];
+  const external = f.browser.runtime.onMessageExternal.listeners[0];
+  for (const sender of [
+    { url: "http://localhost:5392/", tab: { id: 7 } },
+    { url: "http://localhost:3000/", tab: { id: 7 }, frameId: 1 },
+    { url: "http://localhost:3000/", tab: { id: 7 }, id: "foreign-extension" },
+    { url: "https://evil.test/", tab: { id: 7 } },
+  ]) assert.equal(external({ type: "website-price-refresh", action: "hello" }, sender,
+    () => assert.fail("Untrusted external connection accepted")), false);
+  const direct = await new Promise(resolve => external({ type: "website-price-refresh", action: "hello" },
+    { url: "http://localhost:3001/", frameId: 0, tab: { id: 7 } }, resolve));
+  assert.equal(direct.ok, true); assert.equal(direct.data.extensionId, f.browser.runtime.id);
   const retailer = { id: f.browser.runtime.id, url, frameId: 0, tab: { id: 7 } };
   assert.equal(listener({ type: "website-price-refresh", action: "start" }, retailer,
     () => assert.fail("Retailer initiated website refresh")), false);
