@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { createServer, type Server } from "node:http";
+import { adminCookie } from "./admin-session-fixture";
 import type {
   BrandAlternativeReviewContext,
   BrandAlternativeReviewRequest,
@@ -54,6 +55,7 @@ test.beforeAll(async () => {
       res.setHeader("Content-Type", "application/json");
       res.end(JSON.stringify(value));
     };
+    if (url.pathname === "/api/admin/session") return send(access, { administrator: access === 200 });
     if (url.pathname === "/api/auth/me")
       return send(access === 401 ? 401 : 200, {
         account: {
@@ -144,7 +146,8 @@ test.afterAll(async () => {
     server.close((error) => (error ? reject(error) : resolve())),
   );
 });
-test.beforeEach(() => {
+test.beforeEach(async ({ page }) => {
+  await adminCookie(page);
   data = initial();
   access = 200;
   account = 1;

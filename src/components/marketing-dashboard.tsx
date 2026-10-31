@@ -1,0 +1,22 @@
+"use client";
+import { useEffect, useState } from "react";
+import { api } from "@/lib/api-client";
+type Metrics = { accounts: { registered: number; activated: number; observedActive7Days: number; observedActive30Days: number };
+  acquisition: { source: string | null; visitors: number; pageViews: number; ctaClicks: number; signupStarts: number; signupCompletions: number }[] };
+export default function MarketingDashboard() {
+  const [data, setData] = useState<Metrics | null>(null), [error, setError] = useState(""), [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    const abort = new AbortController();
+    api<Metrics>("/admin/operations", { signal: abort.signal }).then(value => { if (!abort.signal.aborted) { setData(value); setError(""); } })
+      .catch(e => { if (!abort.signal.aborted) { setData(null); setError(e instanceof Error ? e.message : "Unable to load marketing metrics."); } });
+    const changed = () => { abort.abort(); setData(null); setError("Your account changed. Reload to verify administrator access."); };
+    window.addEventListener("myshoppinglist-session-changed", changed);
+    return () => { abort.abort(); window.removeEventListener("myshoppinglist-session-changed", changed); };
+  }, [attempt]);
+  return <main className="mx-auto max-w-6xl space-y-6 px-5 py-8"><h1 className="text-3xl font-semibold">Acquisition and activation</h1><p className="text-slate-600">Consent-based campaign estimates and persisted account activity. Different windows and populations are labelled separately; these are not a matched advertising-conversion cohort.</p><button onClick={() => setAttempt(v => v + 1)} className="min-h-11 font-semibold underline">Refresh marketing metrics</button>{error && <p role="alert" className="text-red-700">{error}</p>}{!data && !error && <p role="status">Loading marketing metrics…</p>}
+    {data && <><section><h2 className="text-xl font-semibold">Campaign activity · retained last 30 days</h2><p className="mt-2 text-sm text-slate-600">Up to 25 sources by page views. Signups below are consented browser reports; registered totals use server records. A visitor can appear under more than one source. Unknown/direct is not evidence of a specific campaign.</p><div className="mt-4 overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr>{["Source", "Visitor estimates", "Page views", "CTA clicks", "Signup attempts", "Signup completions"].map(h => <th key={h} className="p-3">{h}</th>)}</tr></thead><tbody>{data.acquisition.map(row => <tr key={row.source === null ? "none" : `source:${row.source}`} className="border-t"><td className="p-3">{row.source || "Unknown / direct"}</td><td className="p-3">{row.visitors}</td><td className="p-3">{row.pageViews}</td><td className="p-3">{row.ctaClicks}</td><td className="p-3">{row.signupStarts}</td><td className="p-3">{row.signupCompletions}</td></tr>)}</tbody></table></div>{!data.acquisition.length && <p className="mt-4">No consented acquisition events are retained.</p>}</section>
+      <section><h2 className="text-xl font-semibold">Activation and return activity</h2><dl className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{[["Registered accounts · all records", data.accounts.registered], ["Registered accounts with a saved item · current history", data.accounts.activated], ["Observed active accounts · 7 days", data.accounts.observedActive7Days], ["Observed active accounts · 30 days", data.accounts.observedActive30Days]].map(([label, value]) => <div key={label} className="rounded-xl border bg-white p-4"><dt className="text-sm text-slate-600">{label}</dt><dd className="mt-2 text-3xl font-semibold">{value}</dd></div>)}</dl><p className="mt-3 text-sm text-slate-600">Saved-item presence is an activation proxy. Active-account counts indicate observed service use, not seven- or thirty-day cohort retention. Missing instrumentation/consent and elapsed retention limit attribution. Do not divide unlike populations to claim an ad conversion rate.</p></section>
+      <section className="rounded-xl border bg-white p-5"><h2 className="text-xl font-semibold">Revenue measurement</h2><p className="mt-2">Live checkout and commercial prices are not active. Paid/complimentary status is not recognised revenue. Payment conversion, MRR, refunds and churn must use confirmed billing records once the test-only billing groundwork is configured and verified.</p></section>
+    </>}
+  </main>;
+}

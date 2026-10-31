@@ -158,6 +158,19 @@ test("installed extension saves private observations through the real API and we
     // rendered account, not merely an enabled server-rendered button.
     await expect(panel.locator("#name")).toHaveText("JourneyA");
     await expect(panel.getByRole("button", { name: "Read product", exact: true })).toBeEnabled();
+    const requestHeaders = { "X-MyShoppingList-Request": "1" };
+    expect((await context.request.post(`${frontend}/api/shopping-lists`, { headers: requestHeaders, data: { name: "Shared extension current list" } })).ok()).toBe(true);
+    const management = await (await context.request.get(`${frontend}/api/shopping-lists/manage`)).json();
+    const sharedList = management.lists.find((list: { name: string }) => list.name === "Shared extension current list");
+    expect(sharedList).toBeTruthy();
+    expect((await context.request.put(`${frontend}/api/account/current-list`, { headers: requestHeaders,
+      data: { expectedAccountId: sessionA.account.id, shoppingListId: sharedList.id, expectedSelectionVersion: 0 } })).ok()).toBe(true);
+    await retailer.reload(); panel = await compactFrame(retailer);
+    await expect(panel.locator("#list")).toHaveValue(String(sharedList.id));
+    expect((await context.request.put(`${frontend}/api/account/current-list`, { headers: requestHeaders,
+      data: { expectedAccountId: sessionA.account.id, shoppingListId: sessionA.shoppingListId, expectedSelectionVersion: 1 } })).ok()).toBe(true);
+    await retailer.reload(); panel = await compactFrame(retailer);
+    await expect(panel.locator("#list")).toHaveValue(String(sessionA.shoppingListId));
     await panel.getByRole("button", { name: "Read product", exact: true }).click();
     await expect(panel.locator("#review-name")).toHaveText(productName);
     await expect(panel.locator("#review-price")).toHaveText("$4.00");

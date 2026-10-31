@@ -6,6 +6,7 @@ import { AdminAccount, useAdminStore } from "@/stores/admin-store";
 function AccountEditor({ account }: { account: AdminAccount }) {
   const [draft, setDraft] = useState(account);
   const [reason, setReason] = useState("");
+  const [confirm, setConfirm] = useState(false);
   const { busy, save, inspect } = useAdminStore();
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
@@ -17,10 +18,11 @@ function AccountEditor({ account }: { account: AdminAccount }) {
         {account.contributionEnabled ? "enabled" : "off"}
       </p>
       <form
+        onChangeCapture={() => setConfirm(false)}
         className="space-y-4"
         onSubmit={(e) => {
           e.preventDefault();
-          void save(draft, reason);
+          if (!confirm) setConfirm(true); else void save(draft, reason);
         }}
       >
         <div className="flex flex-wrap gap-6">
@@ -31,7 +33,7 @@ function AccountEditor({ account }: { account: AdminAccount }) {
               checked={draft.isPaid}
               onChange={(e) => setDraft({ ...draft, isPaid: e.target.checked })}
             />{" "}
-            Paid customer
+            Paid / complimentary entitlement
           </label>
           <label>
             <input
@@ -78,8 +80,9 @@ function AccountEditor({ account }: { account: AdminAccount }) {
             disabled={busy || !reason.trim()}
             className="rounded bg-primary-700 hover:bg-primary-800 active:bg-primary-800 px-4 py-2 text-white disabled:opacity-50"
           >
-            Save reviewed decision
+            {confirm ? "Confirm reviewed decision" : "Save reviewed decision"}
           </button>
+          {confirm && <button type="button" disabled={busy} onClick={() => setConfirm(false)} className="min-h-11 underline">Cancel change</button>}
           <button
             type="button"
             disabled={busy}
@@ -93,14 +96,21 @@ function AccountEditor({ account }: { account: AdminAccount }) {
           <p>Last reason: {account.restrictionReason}</p>
         )}
       </form>
+      {confirm && <p role="alert">Confirm this account change. {draft.isActive ? "The account will be active." : "Suspension ends its sign-in sessions and stops account access."}</p>}
+      <p className="text-sm text-slate-500">{account.isTrial ? "Trial" : account.isPaid ? "Paid / complimentary" : "Free"} · {account.lastSessionContact ? `Last sign-in/contact ${new Date(account.lastSessionContact).toLocaleString()}` : "No session contact recorded"}{account.lastItemSave ? ` · Last item save ${new Date(account.lastItemSave).toLocaleString()}` : ""}</p>
+      <Link href={`/superadmin/account/${account.id}`} className="inline-block min-h-11 text-primary-700 underline">Review limited customer journey</Link>
     </article>
   );
 }
 export function AdminAccounts() {
   const { accounts, review, selected, busy, error, load } = useAdminStore();
   const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("");
   useEffect(() => {
+    const changed = () => { useAdminStore.getState().clear(); void load(); };
+    window.addEventListener("myshoppinglist-session-changed", changed);
     void load();
+    return () => { window.removeEventListener("myshoppinglist-session-changed", changed); useAdminStore.getState().clear(); };
   }, [load]);
   return (
     <main className="mx-auto max-w-5xl space-y-6 p-6">
@@ -135,7 +145,7 @@ export function AdminAccounts() {
         className="flex gap-3"
         onSubmit={(e) => {
           e.preventDefault();
-          void load(search);
+            void load(search, filter);
         }}
       >
         <input
@@ -145,6 +155,7 @@ export function AdminAccounts() {
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by email"
         />
+        <select aria-label="Account state" value={filter} onChange={e => setFilter(e.target.value)} className="rounded border bg-white p-2"><option value="">All accounts</option><option value="trial">Trial</option><option value="free">Free</option><option value="paid">Paid / complimentary</option><option value="suspended">Suspended</option></select>
         <button className="rounded border px-4" disabled={busy}>
           Search
         </button>

@@ -484,6 +484,7 @@ export default function ShoppingListApp() {
             <button
               disabled={busy || authBusy}
               onClick={() => setAccountMode("register")}
+              data-analytics-cta="signup"
               className={secondary}
             >
               {session ? "Keep my list" : "Create an account"}
@@ -550,6 +551,7 @@ export default function ShoppingListApp() {
               </p>
               <button
                 onClick={startTrial}
+                data-analytics-cta="trial"
                 disabled={busy || authBusy}
                 className={`${primary} mt-7`}
               >

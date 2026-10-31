@@ -1,4 +1,9 @@
 import { expect, test } from "@playwright/test";
+import { adminCookie, adminSessionServer } from "./admin-session-fixture";
+let stop: () => Promise<void>;
+test.beforeAll(async () => { stop = await adminSessionServer(); });
+test.afterAll(async () => { await stop(); });
+test.beforeEach(async ({ page }) => { await adminCookie(page); });
 
 const snapshot = {
   checkedAt: "2026-10-07T12:00:00Z",

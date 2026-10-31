@@ -40,6 +40,9 @@ export default function ShoppingPreferences() {
       <AppHeader session={state.session} active="stores" loading={state.loading} disabled={disabled} />
       <main className="mx-auto max-w-3xl px-5 py-8">
         <h1 className="text-3xl font-semibold">Settings</h1>
+        {state.session && <Link href="/account/billing" className="mr-5 inline-flex min-h-11 items-center font-semibold text-primary-700 underline">Billing and current access</Link>}
+        {state.session && !state.session.account.isTrial && <Link href="/ai/connections" className="mt-3 inline-flex min-h-11 items-center font-semibold text-primary-700 underline">Connected AI apps and current list</Link>}
+        <Link href="/support" className="ml-5 inline-flex min-h-11 items-center font-semibold text-primary-700 underline">Help and private feedback</Link>
         <p className="mt-3 text-sm leading-6 text-slate-600">
           Choose your supermarkets for comparisons using saved price observations.
           Use Refresh items on your list to update saved prices through your
@@ -213,7 +216,7 @@ export default function ShoppingPreferences() {
                     id="alternative-brands-help"
                     className="text-sm text-slate-500"
                   >
-                    Automatically search selected supported stores for similar products from other brands after adding an item. Show suggestions and reviewed alternatives when saved prices are available. Taste, ingredients and quality may
+                    Show saved suggestions and reviewed alternatives when matching observations are available. Prices are not checked automatically. Taste, ingredients and quality may
                     differ. Check the product details for your needs. Your list
                     and totals stay as they are.
                   </p>

@@ -2,10 +2,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import vm from "node:vm";
 import { readFile } from "node:fs/promises";
-const source = await readFile(
+const bridgeSource = await readFile(new URL("../ai-bridge.js", import.meta.url), "utf8");
+const bridgeModule = `data:text/javascript;base64,${Buffer.from(bridgeSource).toString("base64")}`;
+const { createExtensionBridge } = await import(bridgeModule);
+const source = (await readFile(
   new URL("../background.js", import.meta.url),
   "utf8",
-);
+)).replace('"./ai-bridge.js"', JSON.stringify(bridgeModule));
 const {
   productUrl,
   sameProductUrl,
@@ -447,6 +450,22 @@ test("owned selection is remembered and deleted lists fall back safely", async (
   assert.equal(preferredList([], 2, 1), null);
 });
 
+test("explicit account current-list changes are followed without preventing local list browsing", async () => {
+  const lists = [{ id: 1 }, { id: 2 }, { id: 3 }];
+  const f = fixture(lists);
+  let current = 2;
+  f.data().selectedListId = 1;
+  f.setHandler(path => path === "/api/auth/me" ? response({ account: { id: 1 }, shoppingListId: current, currentShoppingListId: current }) : null);
+  assert.equal((await f.handle({ type: "state" })).selectedListId, 2);
+  await f.handle({ type: "selectList", listId: 1 });
+  assert.equal((await f.handle({ type: "state" })).selectedListId, 1);
+  current = 3;
+  assert.equal((await f.handle({ type: "state" })).selectedListId, 3);
+  current = null;
+  lists.pop();
+  assert.equal((await f.handle({ type: "state" })).selectedListId, 1);
+});
+
 test("missing price is reviewable and save does not claim a verified price", async () => {
   const f = fixture();
   f.setHandler((path, options) => path.endsWith("/preview")
@@ -669,8 +688,8 @@ test("runtime rejects retailer capture messages and forged compact frames, and b
   f.browser.storage.onChanged = event(); f.browser.cookies.onChanged = event();
   f.browser.sidePanel = { setPanelBehavior: async () => {}, onClosed: event(), setOptions: async () => {}, open: async () => {}, close: async () => {} };
   const context = vm.createContext({ chrome: f.browser, fetch: f.fetcher, URL, Date, crypto, AbortController, AbortSignal,
-    setTimeout, clearTimeout, console });
-  vm.runInContext(source.replace(/^export /gm, ""), context);
+    setTimeout, clearTimeout, console, createExtensionBridge });
+  vm.runInContext(source.replace(/^import .*;\r?\n/gm, "").replace(/^export /gm, ""), context);
   await new Promise((resolve) => setImmediate(resolve));
   const listener = f.browser.runtime.onMessage.listeners[0];
   const external = f.browser.runtime.onMessageExternal.listeners[0];

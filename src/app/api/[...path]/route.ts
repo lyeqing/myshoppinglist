@@ -37,6 +37,17 @@ async function forward(
   const customerBranchSearch = get && route === "shop-locations";
   const branchSearch = (branchCollection && get) || customerBranchSearch;
   const preferences = route === "account/shopping-preferences";
+  const currentList = route === "account/current-list" && (get || request.method === "PUT");
+  const extensionDevices = get && route === "account/extension-devices" || request.method === "DELETE" && /^account\/extension-devices\/[a-fA-F0-9-]{36}$/.test(route);
+  const operations = get && (route === "admin/session" || route === "admin/operations" || route === "admin/operations/feedback" || /^admin\/operations\/account\/[1-9]\d{0,18}$/.test(route))
+    || request.method === "PUT" && /^admin\/operations\/feedback\/[a-fA-F0-9-]{36}$/.test(route)
+    || request.method === "POST" && route === "admin/operations/simulate-incident";
+  const feedback = route === "feedback" && (get || request.method === "POST");
+  const screenshot = get && /^(?:feedback|admin\/operations\/feedback)\/[a-fA-F0-9-]{36}\/screenshot$/.test(route);
+  const analytics = request.method === "POST" && ["analytics/events", "analytics/forget", "diagnostics"].includes(route);
+  const billing = get && (route === "billing" || route === "admin/billing") || request.method === "POST" && (route === "billing/checkout" || route === "billing/portal");
+  const oauth = request.method === "POST" && (route === "ai/oauth/preview" || route === "ai/oauth/authorize");
+  const connections = (get && (route === "ai/connections" || route === "ai/connection-info")) || (request.method === "DELETE" && /^ai\/connections\/[a-fA-F0-9-]{36}$/.test(route));
   const discovery =
     /^shopping-lists\/[1-9]\d{0,18}(?:\/items\/[1-9]\d{0,18})?\/(?:pack-discovery|brand-discovery)$/.test(
       route,
@@ -47,6 +58,7 @@ async function forward(
   const savedProductAdd = request.method === "POST" && /^shopping-lists\/[1-9]\d{0,18}\/products\/[1-9]\d{0,18}$/.test(route);
   const substitution = request.method === "PUT" && /^shopping-lists\/[1-9]\d{0,18}\/items\/[1-9]\d{0,18}\/substitutions\/[1-9]\d{0,18}$/.test(route);
   const allowed =
+    billing || currentList || extensionDevices || operations || feedback || screenshot || analytics || oauth || connections ||
     substitution ||
     productLibrary || productPreferences || productPreferenceWrite || savedProductAdd ||
     branchWrite ||
@@ -107,6 +119,11 @@ async function forward(
     )
       return reply(403, "The request failed browser request protection.");
     const target = new URL(`/api/${route}`, upstream);
+    if (get && route === "admin/operations/feedback") {
+      const status = request.nextUrl.searchParams.get("status");
+      if (status && !["new", "triaged", "planned", "resolved", "closed"].includes(status)) return reply(400, "Invalid feedback status.");
+      if (status) target.searchParams.set("status", status);
+    }
     if (productLibrary || productPreferences) {
       const query = request.nextUrl.searchParams;
       const keys = productLibrary ? ["view", "filter", "search", "offset", "pageSize"] : ["productIds", "expectedAccountId"];
@@ -137,6 +154,9 @@ async function forward(
       const search = request.nextUrl.searchParams.get("search") ?? "";
       if (search.length > 320) return reply(400, "Search is too long.");
       target.searchParams.set("search", search);
+      const state = request.nextUrl.searchParams.get("state");
+      if (state && !["trial", "free", "paid", "suspended"].includes(state)) return reply(400, "Invalid account filter.");
+      if (state) target.searchParams.set("state", state);
     }
     if (alternativeSearch) {
       const values = request.nextUrl.searchParams.getAll("search");
@@ -185,7 +205,7 @@ async function forward(
     let body: string | undefined;
     if (!get) {
       if (
-        (account ||
+        (account || oauth || currentList || feedback || operations || analytics ||
           productPreferenceWrite || savedProductAdd ||
           preferences ||
           alternativeReview ||
@@ -210,7 +230,7 @@ async function forward(
           size += part.value.length;
           if (
             size >
-            (edit
+            (feedback ? 750000 : operations ? 10000 : edit
               ? 32768
               : alternativeReview || branchWrite || account || preferences
                 ? 16384
@@ -224,6 +244,16 @@ async function forward(
         body += decoder.decode();
       }
       headers.set("Content-Type", "application/json");
+      if (oauth) {
+        try {
+          const value = JSON.parse(body ?? "");
+          const fields = route.endsWith("/preview") ? ["request_uri", "client_id"] : ["request_uri", "client_id", "expected_account_id", "decision", "approved_scopes"];
+          if (!value || Array.isArray(value) || typeof value !== "object" || Object.keys(value).some(key => !fields.includes(key)) || fields.some(key => typeof value[key] !== "string" || value[key].length > 2048))
+            return reply(400, "This connection request is invalid. Start again from your AI app.");
+          body = new URLSearchParams(value).toString();
+          headers.set("Content-Type", "application/x-www-form-urlencoded");
+        } catch { return reply(400, "Send a valid connection request."); }
+      }
       // Browser origin was validated above; the internal request has the API's own origin.
       headers.set("Origin", upstream.origin);
       if (account) {
@@ -266,8 +296,24 @@ async function forward(
       cache: "no-store",
       signal: AbortSignal.any([request.signal, AbortSignal.timeout(15000)]),
     });
+    if (route === "ai/oauth/authorize" && result.status === 302) {
+      const location = result.headers.get("Location");
+      if (!location) return reply(502, "The connection could not be completed.");
+      const callback = new URL(location);
+      if (!["https:", "http:"].includes(callback.protocol) || callback.username || callback.password || callback.hash)
+        return reply(502, "The connection callback is invalid.");
+      return Response.json({ redirectUrl: callback.toString() }, { headers: { "Cache-Control": "no-store" } });
+    }
+    if (oauth && !result.ok) {
+      if (result.status === 401) return reply(401, "Sign in to review this connection.");
+      if (result.status === 409) return reply(409, "Your account changed. Review the connection again.");
+      return reply(result.status, "This connection request is unavailable or expired. Start again from your AI app.");
+    }
     if (result.status >= 300 && result.status < 400)
       return reply(502, "The service could not complete this request.");
+    if (screenshot && result.ok) return new Response(await result.arrayBuffer(), { status: 200, headers: {
+      "Cache-Control": "no-store", "Content-Type": "image/png", "Content-Disposition": "attachment; filename=feedback-screenshot.png", "X-Content-Type-Options": "nosniff",
+    } });
     const outgoing = new Headers({
       "Cache-Control": "no-store",
       "Content-Type": "application/json",

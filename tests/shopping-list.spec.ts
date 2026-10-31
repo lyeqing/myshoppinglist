@@ -116,7 +116,7 @@ test("root navigation offers in-store shopping before sign in", async ({
   ).toHaveAttribute("href", "/in-store");
 });
 
-test("root offers local Chrome extension installation instructions", async ({
+test("root explains current extension access without developer machine paths", async ({
   page,
 }) => {
   await page.goto("/");
@@ -125,9 +125,11 @@ test("root offers local Chrome extension installation instructions", async ({
     .click();
   await expect(page).toHaveURL(/\/extension$/);
   await expect(
-    page.getByRole("heading", { name: "Install the local test extension" }),
+    page.getByRole("heading", { name: "Current installation options" }),
   ).toBeVisible();
-  await expect(page.getByText("Load unpacked", { exact: true })).toBeVisible();
+  await expect(page.getByRole("main")).toContainText("not published in the Chrome Web Store yet");
+  await expect(page.getByRole("link", { name: "Ask about extension access" })).toHaveAttribute("href", "/support");
+  await expect(page.getByRole("main")).not.toContainText("D:\\pra\\");
 });
 
 let server: Server;

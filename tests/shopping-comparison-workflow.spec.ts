@@ -541,7 +541,7 @@ for (const trial of [false, true]) {
     await page.getByRole("checkbox", { name: "ALDI", exact: true }).check();
     await expect(
       page.getByText(
-        /Automatic comparisons are unavailable for your selected stores/
+        "Use Refresh items with the extension enabled to update saved ALDI prices. Prices may vary by store."
       )
     ).toBeVisible();
     await saveStores(page);

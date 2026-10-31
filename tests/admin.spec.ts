@@ -1,4 +1,9 @@
 import { expect, test } from "@playwright/test";
+import { adminCookie, adminSessionServer } from "./admin-session-fixture";
+let stop: () => Promise<void>;
+test.beforeAll(async () => { stop = await adminSessionServer(); });
+test.afterAll(async () => { await stop(); });
+test.beforeEach(async ({ page }) => { await adminCookie(page); });
 
 test("administrator reviews evidence and explicitly saves account restrictions", async ({ page }) => {
   let account = { id: 10, email: "customer@example.test", displayName: "Customer", isPaid: false, isActive: true,
@@ -18,18 +23,20 @@ test("administrator reviews evidence and explicitly saves account restrictions",
   await expect(page.getByRole("heading", { name: "Account administration" })).toBeVisible();
   await page.getByRole("button", { name: "Review contributions and history" }).click();
   await expect(page.getByText(/invalid_product_evidence/)).toBeVisible();
-  await page.getByLabel("Paid customer").check();
+  await page.getByLabel("Paid / complimentary entitlement").check();
   await page.getByLabel("Block contributions").check();
   await expect(page.getByRole("button", { name: "Save reviewed decision" })).toBeDisabled();
   await page.getByLabel("Review reason").fill("Repeated manipulated prices reviewed; retain shopping access");
   await page.getByRole("button", { name: "Save reviewed decision" }).click();
+  expect(submitted).toBeNull();
+  await page.getByRole("button", { name: "Confirm reviewed decision" }).click();
   await expect.poll(() => submitted).toMatchObject({ isPaid: true, contributionBlocked: true, isActive: true, expectedUpdatedDate: "2026-10-01T00:00:00Z" });
-  await expect(page.getByLabel("Paid customer")).toBeChecked();
+  await expect(page.getByLabel("Paid / complimentary entitlement")).toBeChecked();
 });
 
 test("unauthorized visitors see an error without account data", async ({ page }) => {
   await page.route("**/api/admin/accounts**", route => route.fulfill({ status: 403, json: { title: "Access denied." } }));
   await page.goto("/admin");
   await expect(page.getByRole("main").getByRole("alert")).toHaveText("Access denied.");
-  await expect(page.getByLabel("Paid customer")).toHaveCount(0);
+  await expect(page.getByLabel("Paid / complimentary entitlement")).toHaveCount(0);
 });

@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { createServer, type Server } from "node:http";
+import { adminCookie } from "./admin-session-fixture";
 import type {
   ShopLocationAdminDetail,
   ShopLocationCreateRequest,
@@ -64,6 +65,7 @@ test.beforeAll(async () => {
       res.setHeader("Content-Type", "application/json");
       res.end(JSON.stringify(value));
     };
+    if (url.pathname === "/api/admin/session") return send(access, { administrator: access === 200 });
     if (url.pathname === "/api/auth/me")
       return send(access === 401 ? 401 : 200, {
         account: {
@@ -192,7 +194,8 @@ test.afterAll(async () => {
     server.close((error) => (error ? reject(error) : resolve())),
   );
 });
-test.beforeEach(() => {
+test.beforeEach(async ({ page }) => {
+  await adminCookie(page);
   clock = 1;
   records = [initial()];
   access = 200;
@@ -371,7 +374,7 @@ for (const status of [401, 403])
   test(`access ${status} hides private branch controls`, async ({ page }) => {
     access = status;
     await page.goto("/admin/shop-locations");
-    await expect(page.getByRole("main").getByRole("alert")).toContainText(
+    await expect(page.getByRole("main").getByRole("heading")).toContainText(
       "Administrator access required",
     );
     await expect(

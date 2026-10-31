@@ -1,3 +1,5 @@
+import { createExtensionBridge } from "./ai-bridge.js";
+
 export const API_URL = "http://localhost:5392";
 export const WEBSITE_URL = "http://localhost:3000/";
 const SESSION_COOKIE = "myshoppinglist_session";
@@ -172,9 +174,13 @@ export function createWorker(browser, fetcher = fetch) {
     if (!token) return { session: null, lists: [], ...(await view()) };
     const session = await request("/api/auth/me", { expectedToken: token });
     const lists = await request("/api/shopping-lists", { expectedToken: token });
-    const selected = preferredList(lists, (await storage.get("selectedListId")).selectedListId, session.shoppingListId);
+    const previous = await storage.get(["selectedListId", "accountCurrentListId"]);
+    const current = session.currentShoppingListId ?? null;
+    // Follow an explicitly changed account selection, while still allowing this view to browse another list.
+    const remembered = current !== null && current !== previous.accountCurrentListId ? current : previous.selectedListId;
+    const selected = preferredList(lists, remembered, session.shoppingListId);
     await check(token);
-    await storage.set({ selectedListId: selected?.id ?? null });
+    await storage.set({ selectedListId: selected?.id ?? null, accountCurrentListId: current });
     return { session, lists, selectedListId: selected?.id ?? null, ...(await view()) };
   }
   async function productTab(tabId, expectedUrl) {
@@ -666,6 +672,8 @@ if (
   chrome.runtime?.onMessage
 ) {
   const handle = createWorker(chrome);
+  let bridge;
+  const getBridge = () => bridge ??= createExtensionBridge(chrome, handle, { apiUrl: API_URL, productUrl, sameProductUrl });
   const refresh = createRefreshController(chrome, handle);
   const panels = createPanelController(chrome, handle);
   // Updating an extension invalidates scripts in already-open tabs. Reconnect
@@ -746,15 +754,23 @@ if (
     const fullPage =
       extensionPage && source.pathname === "/popup.html" && !sender.tab;
     const compactPage = extensionPage && source.pathname === "/compact.html";
+    const aiPage = extensionPage && source.pathname === "/ai-requests.html"
+      && sender.tab && sender.frameId === 0;
     const retailerScript =
       sender.frameId === 0 && sender.tab && retailerPage(sender.url);
     if (
       !fullPage &&
       !compactPage &&
+      !aiPage &&
       !(retailerScript && message.type === "panel-state")
     )
       return false;
     (async () => {
+      if (aiPage) return getBridge()(message, sender.tab.id);
+      if (fullPage && message.type === "open-ai-requests") {
+        await chrome.tabs.create({ url: chrome.runtime.getURL("ai-requests.html"), active: true });
+        return {};
+      }
       if (retailerScript) return panels.visible(sender.tab.id);
       if (compactPage && !(await panels.authorizedCompact(sender)))
         throw new Error("Open the extension from its toolbar icon.");

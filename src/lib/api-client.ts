@@ -1,4 +1,5 @@
 export class ApiError extends Error { constructor(public status: number, message: string, public retryAfter: number | null = null) { super(message); } }
+import { reportDiagnostic } from "./diagnostics";
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const controller = new AbortController();
   let timedOut = false;
@@ -17,8 +18,9 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     return response.status === 204 ? undefined as T : await response.json();
   } catch (error) {
     if (init.signal?.aborted) throw new DOMException("Request cancelled", "AbortError");
-    if (timedOut) throw new ApiError(0, "This request took too long. Please try again.");
+    if (timedOut) { reportDiagnostic("request_timeout"); throw new ApiError(0, "This request took too long. Please try again."); }
     if (error instanceof ApiError) throw error;
+    reportDiagnostic("connection_failed");
     throw new ApiError(0, "We couldn’t connect. Check your connection and try again.");
   } finally {
     clearTimeout(timer);

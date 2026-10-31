@@ -19,11 +19,12 @@ export default function AccountForm({ mode, trial, onSuccess, onBusy, onClose }:
       setError("Use at least 8 characters with a number (0–9), a lowercase letter (a–z), an uppercase letter (A–Z), and a special character. Spaces do not count as special characters."); return;
     }
     posting.current = true; setPending(true); onBusy(true); setError("");
+    if (register) window.dispatchEvent(new Event("myshoppinglist-signup-started"));
     const request = new AbortController(); controller.current = request;
     try {
       const session = await api<Session>(`/auth/${mode}`, { method: "POST", signal: request.signal,
         body: JSON.stringify(register ? { email: email.trim(), password, displayName: name.trim() } : { email: email.trim(), password }) });
-      if (!request.signal.aborted) { setPassword(""); onSuccess(session); }
+      if (!request.signal.aborted) { setPassword(""); if (register) window.dispatchEvent(new Event("myshoppinglist-signup-completed")); onSuccess(session); }
     } catch (e) {
       if (!request.signal.aborted) { setError(e instanceof Error ? e.message : "Please try again."); if (register && e instanceof ApiError && e.status === 401) setExpired(true); }
     } finally { posting.current = false; if (!request.signal.aborted) { setPending(false); onBusy(false); } }

@@ -93,6 +93,9 @@ el("list").addEventListener("change", () => action({ type: "selectList", listId:
 el("cancel").addEventListener("click", () => action({ type: "cancel" }, "Cancelling preview…"));
 el("retry").addEventListener("click", () => action({ type: "retry" }, "Checking your save…"));
 el("refresh").addEventListener("click", refresh);
+el("ai-requests")?.addEventListener("click", () => {
+  void send({ type: "open-ai-requests" }).catch(error => status(error.message, true));
+});
 el("login").addEventListener("submit", (event) => {
   event.preventDefault();
   const password = el("password").value;

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="no-referrer"><title>AI requests · MyShoppingList</title>
+<link rel="stylesheet" href="popup.css"><link rel="stylesheet" href="ai-requests.css"></head>
+<body><main>
+<p class="eyebrow">MYSHOPPINGLIST</p><h1>AI requests</h1>
+<p>Your connected AI can ask for a product capture or a small search. You choose whether to open each page, then review what will be saved or shared.</p>
+<p id="account"></p><p id="status" role="status" aria-live="polite"></p>
+<button id="link" hidden>Link this extension</button><button id="unlink" class="secondary" hidden>Unlink this extension</button>
+<button id="refresh" class="secondary">Refresh requests</button>
+<section id="active" hidden aria-labelledby="active-title"><h2 id="active-title">Review request</h2>
+<div id="active-detail"></div><div id="review"></div>
+<button id="save" hidden>Save to list</button><button id="resume" hidden>Open page again and review</button>
+<button id="cancel" class="secondary">Cancel request</button></section>
+<section aria-labelledby="requests-title"><h2 id="requests-title">Pending requests</h2><div id="requests"></div></section>
+<section id="outcome" hidden aria-labelledby="outcome-title"><h2 id="outcome-title">Last outcome</h2><p id="outcome-detail"></p></section>
+<section id="feedback-section" hidden aria-labelledby="feedback-title"><h2 id="feedback-title">Send private feedback</h2>
+<p>Tell support about a problem or an improvement. Leave out passwords, payment details and unrelated browsing information.</p>
+<form id="feedback"><fieldset id="feedback-fields"><label>Feedback type<select id="feedback-category"><option value="bug">Report a problem</option><option value="suggestion">Suggest an improvement</option><option value="other">Other</option></select></label>
+<label>Message<textarea id="feedback-message" required maxlength="5000" rows="4"></textarea></label></fieldset>
+<button id="send-feedback" type="submit">Send feedback</button></form><p id="feedback-status" role="status"></p>
+<a href="http://localhost:3000/support?from=extension" target="_blank" rel="noreferrer">View your tickets or attach a screenshot on the website</a></section>
+<footer>Only requests for your account appear here. This page checks for requests while it is visible; Chrome may put the extension to sleep after you leave.
+Capture observations are private. Store location is not verified. Search results are candidate links, without verified prices or availability.
+You can revoke this browser or your AI connections in MyShoppingList settings.</footer>
+</main><script type="module" src="ai-requests.js"></script></body></html>

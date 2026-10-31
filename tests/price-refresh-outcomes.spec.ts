@@ -226,6 +226,10 @@ for (const view of ["planning", "in-store"]) {
     await expect(page.getByRole("button", {name:/Refresh list prices|Refresh price|Retry comparison/})).toHaveCount(0);
     await page.getByRole("button", {name:"Refresh items",exact:true}).click();
     expect(state.requests).toEqual([]);
+    // The explicit refresh first probes the extension, then reloads saved data
+    // if it is absent. Measure idle behavior only after that action completes.
+    await expect(page.getByText("Connect your extension to update prices", {exact:true})).toBeVisible({timeout:10000});
+    await expect(page.getByRole("button", {name:"Refresh items",exact:true})).toBeEnabled({timeout:10000});
     await page.clock.install();
     const reads=state.planRequests;
     await page.clock.fastForward(65000);

@@ -1,23 +1,10 @@
 import Link from "next/link";
-
-export default function ExtensionPage() {
-  return <main className="mx-auto max-w-3xl px-5 py-10 text-slate-800">
-    <Link href="/" className="text-primary-700 underline">← MyShoppingList</Link>
-    <p className="mt-8 text-xs font-semibold uppercase tracking-widest text-primary-700">Chrome extension · Local testing</p>
-    <h1 className="mt-3 text-3xl font-semibold">Save products you choose</h1>
-    <p className="mt-4 leading-7">Open a Coles, Woolworths or ALDI product page. Choose your list and quantity, click <strong>Read product</strong>, review the details, then <strong>Save to list</strong>. Products and price observations are private to your account.</p>
-    <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">Personal capture is being prepared. The server owner must enable this staged update after the website and existing-data transition are ready. Until then, the extension reports that personal capture is unavailable. Existing lists remain stored.</p>
-    <section className="mt-7 rounded-2xl border border-primary-300 bg-primary-50 p-6"><h2 className="text-xl font-semibold">Install the local test extension</h2>
-      <p className="mt-3">The extension is not published in the Chrome Web Store yet. For now, install it from this project on your computer.</p>
-      <ol className="mt-4 list-decimal space-y-3 pl-5">
-        <li>Start your API on <code>http://localhost:5392</code>.</li>
-        <li>Open <code>chrome://extensions</code> in Chrome and turn on <strong>Developer mode</strong>.</li>
-        <li>Click <strong>Load unpacked</strong> and select <code className="break-all">D:\pra\myshoppinglist\extensions\shopping-list</code>.</li>
-        <li>Give the extension ID to the server owner. Setup and rollout requirements are in the extension folder’s README.</li>
-        <li>Pin <strong>MyShoppingList — Add to list (Local test)</strong> from Chrome’s Extensions menu.</li>
-        <li>Visit a supported product page and open the blue basket extension. It shares your website sign-in. Review the product before saving. If no list exists, one is created using your local date only when you save.</li>
-      </ol>
-    </section>
-    <p className="mt-6 text-sm leading-6 text-slate-600">The extension reads only the product page you choose after you click Read product. Missing prices are shown clearly; you can save without one. Observation dates record when you read the page, and store locations remain unverified. Visit and save each retailer yourself to collect prices for comparison. If a save is unconfirmed, use Retry save to safely check the same request. Signing out affects both the website and extension.</p>
-  </main>;
-}
+import PublicPage from "@/components/public-page";
+import { publicMetadata } from "@/lib/seo";
+export const metadata = publicMetadata("Review products with the Chrome test extension · MyShoppingList", "Capture supported public products after your review and save private dated observations to your shopping list.", "/extension");
+export default function ExtensionPage() { return <PublicPage title="Save products you choose" intro="Open a supported product page, review its details and keep a private observation with your shopping list.">
+  <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-6"><h2 className="text-xl font-semibold">Current installation options</h2><p className="mt-3">The extension is a local test build and is not published in the Chrome Web Store yet. Ask the service owner for access and setup instructions. Personal capture must be enabled on that service before the extension can save products.</p><Link href="/support" data-analytics-cta="extension-access" className="mt-3 inline-flex min-h-11 items-center font-semibold text-primary-700 underline">Ask about extension access</Link></section>
+  <ol className="list-decimal space-y-4 pl-6"><li>Open a public Coles, Woolworths or ALDI product page.</li><li>Open MyShoppingList from Chrome’s extension toolbar. Sign-in is shared with the website in your Chrome profile.</li><li>Choose your shopping list and quantity, then select <strong>Read product</strong>.</li><li>Check the product, price and conditions. Select <strong>Save to list</strong>, or cancel. If saving is unconfirmed, use Retry save to check the same request safely.</li></ol>
+  <p>The extension reads only after your action. Missing prices stay unknown, observation time is recorded and store location remains unverified. Visit and save each retailer yourself when you want observations for comparison. Restricted pages are reported without bypass attempts. Signing out affects the website and extension.</p>
+  <section><h2 className="text-2xl font-semibold">Optional AI requests stay under your control</h2><p className="mt-3">Where enabled, Open AI requests offers a separate native extension view. Link your own browser, approve a supported capture or small search before its page opens, then review before saving or sharing. The service cannot wake a closed browser. No other customer’s tasks run in your extension.</p></section>
+  </PublicPage>; }
