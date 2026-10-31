@@ -1,10 +1,13 @@
 import { NextRequest } from "next/server";
 const cookieName = "myshoppinglist_session";
-const reply = (status: number, title: string) =>
-  Response.json(
-    { title },
+const reply = (status: number, title: string) => {
+  const traceId = status >= 500 ? crypto.randomUUID() : undefined;
+  if (traceId) console.error(JSON.stringify({ event: "gateway_request_failed", status, traceId }));
+  return Response.json(
+    { title, ...(traceId ? { traceId } : {}) },
     { status, headers: { "Cache-Control": "no-store" } },
   );
+};
 async function forward(
   request: NextRequest,
   context: { params: Promise<{ path: string[] }> },

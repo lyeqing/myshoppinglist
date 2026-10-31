@@ -1,0 +1,25 @@
+name: Security regression
+on: [push, pull_request, workflow_dispatch]
+permissions:
+  contents: read
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      MYSHOPPINGLIST_NEXT_DIST_DIR: .next-playwright
+      MYSHOPPINGLIST_PUBLIC_ORIGIN: http://127.0.0.1:3001
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm run test:regression
+      - run: npx tsc --noEmit
+      - run: npm run lint
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test --config playwright.public-production.config.ts

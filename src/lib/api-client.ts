@@ -1,4 +1,4 @@
-export class ApiError extends Error { constructor(public status: number, message: string, public retryAfter: number | null = null) { super(message); } }
+export class ApiError extends Error { constructor(public status: number, message: string, public retryAfter: number | null = null, public referenceId: string | null = null) { super(message); } }
 import { reportDiagnostic } from "./diagnostics";
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const controller = new AbortController();
@@ -10,10 +10,12 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   try {
     const response = await fetch(`/api${path}`, { ...init, signal: controller.signal, credentials: "same-origin", cache: "no-store", headers: { "Content-Type": "application/json", "X-MyShoppingList-Request": "1", "X-Client-Timezone": Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", ...init.headers } });
     if (!response.ok) {
-      const problem = await response.json().catch(error => { if (controller.signal.aborted) throw error; return {}; });
+      const raw = await response.json().catch(error => { if (controller.signal.aborted) throw error; return {}; });
+      const problem = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+      const reference = response.status >= 500 && typeof problem.traceId === "string" && /^[a-zA-Z0-9:_-]{1,80}$/.test(problem.traceId) ? problem.traceId : null;
       const wait = Number(response.headers.get("Retry-After")) || null;
       const message = response.status === 401 ? (path === "/auth/login" ? "The email or password is incorrect." : path === "/auth/register" ? "Your session is unavailable. An expired trial cannot be saved." : "Your session has ended. Sign in again or start a new trial.") : response.status === 429 ? `Too many requests. Please try again${wait ? ` in ${wait} seconds` : " shortly"}.` : response.status >= 500 ? "The service is temporarily unavailable. Please try again." : problem.title ?? "This request could not be completed.";
-      throw new ApiError(response.status, message, wait);
+      throw new ApiError(response.status, reference ? `${message} Reference: ${reference}.` : message, wait, reference);
     }
     return response.status === 204 ? undefined as T : await response.json();
   } catch (error) {

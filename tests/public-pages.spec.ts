@@ -17,6 +17,38 @@ test.beforeAll(async () => {
 test.afterAll(async () => { await new Promise<void>((done, reject) => server.close(error => error ? reject(error) : done())); });
 test.beforeEach(() => { events = []; });
 
+test("document CSP uses fresh server nonces and rejects injected scripts without breaking hydration", async ({ page, request }) => {
+  await page.addInitScript(() => {
+    const state = window as typeof window & { cspViolations: string[] };
+    state.cspViolations = [];
+    document.addEventListener("securitypolicyviolation", event => state.cspViolations.push(event.effectiveDirective));
+  });
+  const first = await request.get("/features", { headers: { "x-nonce": "caller-controlled", "Content-Security-Policy": "default-src *" } });
+  const second = await request.get("/features");
+  const policy = first.headers()["content-security-policy"];
+  expect(policy).toContain("object-src 'none'"); expect(policy).toContain("frame-ancestors 'none'");
+  expect(policy).not.toContain("caller-controlled"); expect(policy).not.toBe(second.headers()["content-security-policy"]);
+  if (test.info().project.name.startsWith("production-")) expect(policy).not.toContain("unsafe-eval");
+  expect(first.headers()["x-content-type-options"]).toBe("nosniff");
+  expect(first.headers()["referrer-policy"]).toBe("no-referrer");
+  expect(first.headers()["x-frame-options"]).toBe("DENY");
+  expect(first.headers()["x-powered-by"]).toBeUndefined();
+  expect(first.headers()["cache-control"]).toContain("no-store");
+  await page.goto("/features");
+  await page.getByRole("button", { name: "Allow optional analytics" }).click();
+  await expect.poll(() => events.filter(e => e.name === "page_view").length).toBe(1);
+  expect(await page.evaluate(() => (window as typeof window & { cspViolations: string[] }).cspViolations)).toEqual([]);
+  // Inject into the network document: DevTools page.evaluate is privileged and bypasses CSP.
+  await page.route("**/features", async route => {
+    const response = await route.fetch();
+    const html = (await response.text()).replace("</head>", "<script>window.injectedSecurityMarker = true</script></head>");
+    await route.fulfill({ response, body: html });
+  });
+  await page.goto("/features");
+  await expect.poll(() => page.evaluate(() => (window as typeof window & { cspViolations: string[] }).cspViolations)).toContain("script-src-elem");
+  expect(await page.evaluate(() => (window as typeof window & { injectedSecurityMarker?: boolean }).injectedSecurityMarker)).toBeUndefined();
+});
+
 test("public content and metadata are present in initial HTML with a public-only sitemap", async ({ request }) => {
   const routes = ["/", "/features", "/how-it-works", "/extension", "/faq", "/pricing", "/support", "/privacy"];
   const titles = new Set<string>();

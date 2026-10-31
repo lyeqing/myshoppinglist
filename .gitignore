@@ -7,3 +7,5 @@ playwright-report/
 !.env.example
 *.tsbuildinfo
 next-env.d.ts
+.local-npm-cache/
+npm-security-audit.local.json
