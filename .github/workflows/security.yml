@@ -23,3 +23,4 @@ jobs:
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test --config playwright.public-production.config.ts
+      - run: npx playwright test --config playwright.regression-production.config.ts account-security.spec.ts

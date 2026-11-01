@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
-  testDir: "./tests", testIgnore: ["**/ai-connection-journey.spec.ts", "**/ai-extension-journey.spec.ts", "**/operations-journey.spec.ts", "**/personal-capture-journey.spec.ts"], fullyParallel: false, workers: 1, timeout: 30000,
+  testDir: "./tests", testIgnore: ["**/account-recovery-journey.spec.ts", "**/ai-connection-journey.spec.ts", "**/ai-extension-journey.spec.ts", "**/operations-journey.spec.ts", "**/personal-capture-journey.spec.ts"], fullyParallel: false, workers: 1, timeout: 30000,
   use: { baseURL: "http://127.0.0.1:3001", channel: process.env.PLAYWRIGHT_CHANNEL || undefined, trace: "retain-on-failure", screenshot: "only-on-failure" },
   projects: [ { name: "desktop", use: { ...devices["Desktop Chrome"] } }, { name: "mobile", use: { ...devices["Pixel 7"] } } ],
   webServer: { command: "node node_modules/next/dist/bin/next dev --webpack --port 3001", url: "http://127.0.0.1:3001", reuseExistingServer: false, timeout: 120000,

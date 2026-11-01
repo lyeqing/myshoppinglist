@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/api-client";
 import type { Session } from "@/lib/api-types";
+import Link from "next/link";
 
 export default function AccountForm({ mode, trial, onSuccess, onBusy, onClose }: {
   mode: "register" | "login"; trial: boolean; onSuccess: (session: Session) => void;
@@ -53,6 +54,7 @@ export default function AccountForm({ mode, trial, onSuccess, onBusy, onClose }:
       {error && <p role="alert" className="text-sm text-amber-800">{error}</p>}
       {expired && <div className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900"><p>An expired trial cannot be recovered. You can explicitly clear its session and create a new, empty list.</p><button type="button" disabled={pending} onClick={resetExpired} className="mt-2 font-semibold underline">Clear expired session for a new account</button></div>}
       <button disabled={pending || expired} className="rounded-xl bg-primary-700 hover:bg-primary-800 active:bg-primary-800 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50">{pending ? "Please wait…" : register ? "Create account" : "Sign in to my account"}</button>
+      {!register && <Link href="/account/recovery" className="inline-flex min-h-11 items-center px-3 text-sm font-semibold text-primary-700 underline">Forgot password?</Link>}
     </form>
   </section>;
 }

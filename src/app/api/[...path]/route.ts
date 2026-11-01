@@ -16,6 +16,8 @@ async function forward(
   const route = path.join("/");
   const get = request.method === "GET";
   const account = route === "auth/register" || route === "auth/login";
+  const credentials = request.method === "POST" && ["auth/recovery/request", "auth/recovery/complete", "auth/password"].includes(route)
+    || get && route === "auth/recovery";
   const reset = route === "auth/reset-expired";
   const edit =
     request.method === "PUT" &&
@@ -61,7 +63,7 @@ async function forward(
   const savedProductAdd = request.method === "POST" && /^shopping-lists\/[1-9]\d{0,18}\/products\/[1-9]\d{0,18}$/.test(route);
   const substitution = request.method === "PUT" && /^shopping-lists\/[1-9]\d{0,18}\/items\/[1-9]\d{0,18}\/substitutions\/[1-9]\d{0,18}$/.test(route);
   const allowed =
-    billing || currentList || extensionDevices || operations || feedback || screenshot || analytics || oauth || connections ||
+    credentials || billing || currentList || extensionDevices || operations || feedback || screenshot || analytics || oauth || connections ||
     substitution ||
     productLibrary || productPreferences || productPreferenceWrite || savedProductAdd ||
     branchWrite ||
@@ -235,7 +237,7 @@ async function forward(
             size >
             (feedback ? 750000 : operations ? 10000 : edit
               ? 32768
-              : alternativeReview || branchWrite || account || preferences
+              : alternativeReview || branchWrite || account || credentials || preferences
                 ? 16384
                 : 4096)
           ) {
@@ -342,6 +344,7 @@ async function forward(
       headers: outgoing,
     });
   } catch {
+    if (request.signal.aborted) return new Response(null, { status: 499, headers: { "Cache-Control": "no-store" } });
     return reply(
       502,
       "The service is temporarily unavailable. Please try again.",

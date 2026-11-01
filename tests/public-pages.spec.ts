@@ -77,7 +77,7 @@ test("public pages fit mobile and private pages remain noindex without private d
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await expect(page.getByRole("navigation", { name: "About MyShoppingList" })).toBeVisible();
   }
-  for (const route of ["/settings", "/favorites", "/essentials", "/history", "/products/history", "/in-store", "/ai/connections", "/admin", "/superadmin"]) {
+  for (const route of ["/settings", "/account/security", "/account/recovery", "/favorites", "/essentials", "/history", "/products/history", "/in-store", "/ai/connections", "/admin", "/superadmin"]) {
     await page.goto(route); await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex/);
   }
   await expect(page.getByRole("heading", { name: "Administrator access required" })).toBeVisible();

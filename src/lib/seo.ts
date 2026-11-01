@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 export const publicPages = ["/", "/features", "/how-it-works", "/extension", "/faq", "/pricing", "/support", "/privacy"];
-export const privatePrefixes = ["/api", "/admin", "/superadmin", "/ai", "/settings", "/favorites", "/essentials", "/history", "/products", "/in-store"];
+export const privatePrefixes = ["/api", "/account", "/admin", "/superadmin", "/ai", "/settings", "/favorites", "/essentials", "/history", "/products", "/in-store"];
 export function publicOrigin(): string | null {
   const configured = process.env.MYSHOPPINGLIST_PUBLIC_ORIGIN;
   if (!configured) return null;
