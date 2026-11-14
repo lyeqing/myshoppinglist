@@ -436,6 +436,22 @@
         }
       });
     const pageUrl = new URL(url);
+    if (["www.aldi.com.au", "aldi.com.au"].includes(pageUrl.hostname) && pageUrl.protocol === "https:" && pageUrl.pathname === "/results") {
+      if (blocked) return fail("retailer_access_restricted", "ALDI restricted access to search.");
+      const query = (pageUrl.searchParams.get("q") || "").trim().toLowerCase();
+      const main = document.querySelector("main.product-listing-page");
+      const heading = (main?.querySelector("h1")?.textContent || "").trim().toLowerCase();
+      const results = main?.querySelector(".product-listing-viewer");
+      if (!query || heading !== "search: " + query || !results)
+        return fail("product_not_identified", "Waiting for the requested ALDI search.");
+      const links = [...new Set(Array.from(results.querySelectorAll('[data-test="product-tile"] a[href]'))
+        .filter(a => !a.closest('aside, nav, [aria-label*="recommend" i]'))
+        .map(a => { try { return aldiUrl(new URL(a.getAttribute("href"), url).href)?.url; } catch { return null; } }).filter(Boolean))];
+      const count = (results.querySelector('[data-mn="product-search-count"]')?.textContent || "").trim();
+      const emptyConfirmed = !links.length && (count === "(0)" || /no (?:products|results) found|no results for/i.test(results.innerText || ""));
+      if (!links.length && !emptyConfirmed) return fail("product_not_identified", "Waiting for ALDI search results.");
+      return { ok: true, kind: "search", url: pageUrl.href, links: links.slice(0, 5), emptyConfirmed };
+    }
     if (["www.aldi.com.au", "aldi.com.au"].includes(pageUrl.hostname) && pageUrl.protocol === "https:") return readAldi(document, url, blocked);
     if (
       ["www.woolworths.com.au", "woolworths.com.au"].includes(

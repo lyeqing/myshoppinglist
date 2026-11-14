@@ -167,7 +167,17 @@ export interface BrandAlternative extends Omit<
   relationship: "EquivalentDifferentBrand" | "SuggestedDifferentBrand";
   label: string;
 }
+export interface PersonalComparisonCandidate {
+  name: string; url: string; relationship: string; price: number | null; currency: string | null;
+  observedAt: string; priceNotice: string | null;
+}
+export interface PersonalComparison {
+  id: number; itemId: number; captureJobId: number; status: "Checking" | "Paused" | "Completed" | "Partial" | "Cancelled";
+  retailers: { code: string; name: string; status: string; message: string | null;
+    exactMatches: PersonalComparisonCandidate[]; alternatives: PersonalComparisonCandidate[] }[];
+}
 export interface PlanningItem {
+  personalComparison?: PersonalComparison | null;
   packAlternatives?: PackAlternative[] | null;
   brandAlternatives?: BrandAlternative[] | null;
   substitutions?: ShoppingListSubstitutionChoice[] | null;

@@ -5,10 +5,14 @@ import { readFile } from "node:fs/promises";
 const bridgeSource = await readFile(new URL("../ai-bridge.js", import.meta.url), "utf8");
 const bridgeModule = `data:text/javascript;base64,${Buffer.from(bridgeSource).toString("base64")}`;
 const { createExtensionBridge } = await import(bridgeModule);
+const comparisonSource = await readFile(new URL("../personal-comparison.js", import.meta.url), "utf8");
+const comparisonModule = `data:text/javascript;base64,${Buffer.from(comparisonSource).toString("base64")}`;
+const { createPersonalComparisonController } = await import(comparisonModule);
 const source = (await readFile(
   new URL("../background.js", import.meta.url),
   "utf8",
-)).replace('"./ai-bridge.js"', JSON.stringify(bridgeModule));
+)).replace('"./ai-bridge.js"', JSON.stringify(bridgeModule))
+  .replace('"./personal-comparison.js"', JSON.stringify(comparisonModule));
 const {
   productUrl,
   sameProductUrl,
@@ -351,7 +355,7 @@ test("opening, state and restore never extract or collect anything", async () =>
   assert.equal(source.includes("/api/contributions"), false);
 });
 
-test("each retailer requires separate explicit preview and save, with immutable evidence and date", async () => {
+test("optional review uses separate preview and save, with immutable evidence and date", async () => {
   for (const page of [url, aldiProduct, "https://www.woolworths.com.au/shop/productdetails/123/name"]) {
     const f = fixture();
     await f.browser.tabs.update(7, { url: page });
@@ -739,4 +743,368 @@ test("zero-priced validated products remain saveable", async () => {
   }) : null);
   assert.equal((await preview(f)).review.price, 0);
   assert.equal((await save(f)).workflow.status, "Completed");
+});
+
+
+test("direct add validates and saves each retailer in one action with the chosen quantity", async () => {
+  for (const page of [url, aldiProduct, "https://www.woolworths.com.au/shop/productdetails/123/name"]) {
+    const f = fixture();
+    await f.browser.tabs.update(7, { url: page });
+    await f.handle({ type: "add", tabId: 7, quantity: 3, listId: 1 });
+    const reads = f.calls.filter(c => c.path.endsWith("/preview"));
+    const saves = f.calls.filter(c => c.path.endsWith("/captures"));
+    assert.equal(reads.length, 1); assert.equal(saves.length, 1);
+    assert.equal(saves[0].payload.quantity, 3);
+    assert.deepEqual(saves[0].payload.evidence, reads[0].payload.evidence);
+    assert.equal(saves[0].payload.observedAt, reads[0].payload.observedAt);
+    assert.equal(f.data().workflow.status, "Completed");
+    assert.equal(f.data().review, null);
+  }
+});
+
+test("direct add rejects invalid quantities, unreadable pages, changed tabs and unowned lists", async () => {
+  const f = fixture();
+  for (const quantity of [0, 1.5, 2147483648])
+    await assert.rejects(f.handle({ type: "add", tabId: 7, quantity, listId: 1 }), /whole-number/);
+  assert.equal(f.scripts.length, 0);
+  f.setRead({ ok: false });
+  await assert.rejects(f.handle({ type: "add", tabId: 7, quantity: 1, listId: 1 }), /could not be read/);
+  f.setRead({ ok: true, evidence: { jsonLd: ['{"@type":"Product"}'] } });
+  await assert.rejects(f.handle({ type: "add", tabId: 7, quantity: 1, listId: 999 }), /your shopping lists/);
+  assert.notEqual(f.data().workflow.status, "Saving");
+  f.setHandler(async path => {
+    if (path.endsWith("/preview")) await f.browser.tabs.update(7, { url: url.replace("123", "456") });
+  });
+  await assert.rejects(f.handle({ type: "add", tabId: 7, quantity: 1, listId: 1 }), /same product/);
+  assert.equal(f.calls.some(c => c.path.endsWith("/captures")), false);
+});
+
+test("direct add retains its exact pending receipt for retry without another read", async () => {
+  const f = fixture();
+  f.setHandler(path => { if (path.endsWith("/captures")) throw new TypeError("Lost reply"); });
+  await assert.rejects(f.handle({ type: "add", tabId: 7, quantity: 4, listId: 1 }), /Lost reply/);
+  await assert.rejects(f.handle({ type: "add", tabId: 7, quantity: 4, listId: 1 }), /Retry the unconfirmed/);
+  f.setHandler(null);
+  await f.handle({ type: "retry" });
+  const posts = f.calls.filter(c => c.path.endsWith("/captures"));
+  assert.equal(posts[0].body, posts[1].body);
+  assert.equal(f.scripts.length, 2);
+});
+
+test("optional preview preserves quantity for full view and never saves automatically", async () => {
+  const f = fixture();
+  await f.handle({ type: "preview", tabId: 7, quantity: 7 });
+  const state = await f.handle({ type: "state" });
+  assert.equal(state.quantity, 7);
+  assert.equal(state.review.name, "Test product");
+  assert.equal(f.calls.some(c => c.path.endsWith("/captures")), false);
+});
+
+
+test("compact and full panels offer direct add and optional review without compact scrolling", {
+  skip: !process.env.EXTENSION_UI_TESTS,
+}, async () => {
+  const { chromium, expect } = await import("@playwright/test");
+  const browser = await chromium.launch({ headless: true, channel: "chromium" });
+  try {
+    const page = await browser.newPage({ viewport: { width: 280, height: 240 } });
+    await page.route("https://extension-ui.test/**", async route => {
+      const filename = new URL(route.request().url()).pathname.slice(1);
+      const contentType = filename.endsWith(".css") ? "text/css" : filename.endsWith(".js") ? "text/javascript" : "text/html";
+      await route.fulfill({ contentType, body: await readFile(new URL("../" + filename, import.meta.url)) });
+    });
+    await page.addInitScript(() => {
+      const state = { session: { account: { displayName: "Test shopper" } }, tabId: 7,
+        productUrl: "https://www.coles.com.au/product/test-123", selectedListId: 1,
+        lists: [{ id: 1, name: "Shopping_List_with_a_very_long_name" }], review: null, pending: false,
+        workflow: { status: "Ready", message: "Ready when you are." } };
+      globalThis.uiState = state;
+      globalThis.messages = [];
+      globalThis.chrome = {
+        runtime: { id: "a".repeat(32), onMessage: { addListener() {} },
+          async sendMessage(message) {
+            globalThis.messages.push(message);
+            if (message.type === "preview") {
+              state.quantity = message.quantity;
+              state.review = { name: "Acme coffee", brand: "Acme", price: 4, currency: "AUD", observedAt: new Date().toISOString() };
+              state.workflow = { status: "Review", message: "Review this product, then save it to your list." };
+            }
+            if (["add", "save", "retry"].includes(message.type)) {
+              if (globalThis.failSave) {
+                state.pending = true;
+                state.workflow = { status: "Pending", message: "The server could not confirm your save. Retry this save safely using the same request." };
+                return { ok: false, error: state.workflow.message };
+              }
+              state.pending = false; state.review = null;
+              state.workflow = { status: "Completed", message: "Product saved to your list." };
+            }
+            if (message.type === "cancel") { state.review = null; state.workflow = null; }
+            return { ok: true, data: structuredClone(state) };
+          } },
+        storage: { onChanged: { addListener() {} } },
+        sidePanel: { async open() { globalThis.messages.push({ type: "native-open" }); } },
+      };
+    });
+    const fits = async () => {
+      expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight && document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      for (const id of ["expand", "hide", "list", "quantity", "quick-add", "read", "retry", "review-full", "comparison-cancel", "comparison-resume", "comparison-retry", "comparison-open"]) {
+        const control = page.locator("#" + id);
+        if (await control.isVisible()) {
+          const box = await control.boundingBox();
+          expect(box.y + box.height).toBeLessThanOrEqual((await page.viewportSize()).height);
+          expect(box.x + box.width).toBeLessThanOrEqual((await page.viewportSize()).width);
+        }
+      }
+    };
+    await page.goto("https://extension-ui.test/compact.html");
+    await expect(page.locator("#quick-add")).toBeEnabled();
+    await fits();
+    if (process.env.EXTENSION_UI_SCREENSHOT) await page.screenshot({ path: process.env.EXTENSION_UI_SCREENSHOT });
+    expect(await page.locator("#quick-add").evaluate(e => getComputedStyle(e).backgroundColor)).toBe("rgb(0, 153, 102)");
+    await page.locator("#quantity").fill("3");
+    await page.locator("#quick-add").click();
+    await expect(page.getByRole("status")).toHaveText("Product saved to your list.");
+    expect(await page.evaluate(() => globalThis.messages.find(m => m.type === "add").quantity)).toBe(3);
+    await fits();
+    await page.evaluate(() => { globalThis.failSave = true; });
+    await page.locator("#quick-add").click();
+    await expect(page.locator("#retry")).toBeVisible();
+    await expect(page.locator("#list")).toBeDisabled();
+    await fits();
+    await page.evaluate(() => { globalThis.failSave = false; });
+    await page.locator("#retry").click();
+    await expect(page.locator("#retry")).toBeHidden();
+    for (const viewport of [{ width: 280, height: 240 }, { width: 240, height: 220 }]) {
+      await page.setViewportSize(viewport); await fits();
+    }
+    await page.evaluate(() => { globalThis.uiState.lists = []; });
+    await page.goto("https://extension-ui.test/compact.html");
+    await expect(page.locator("#quick-add")).toBeEnabled();
+    await page.evaluate(() => { globalThis.uiState.lists = []; });
+    // Refresh through the same module handler used by the full panel.
+    await page.locator("#refresh").evaluate(e => e.click());
+    await expect(page.locator("#empty")).toBeVisible();
+    await fits();
+    await page.evaluate(() => {
+      globalThis.uiState.comparisons = [{ jobId: 12, id: 90, paused: false, response: { status: "Checking",
+        work: { retailer: "woolworths" }, retailers: [{ code: "woolworths", name: "Woolworths", status: "Checking", exactMatches: [], alternatives: [] }] } }];
+    });
+    await page.locator("#refresh").evaluate(e => e.click());
+    await expect(page.locator("#comparison-cancel")).toBeVisible();
+    for (const [retailer, name] of [["woolworths", "Woolworths"], ["coles", "Coles"], ["aldi", "ALDI"]]) {
+      await page.evaluate(retailer => { globalThis.uiState.comparisons[0].response.work.retailer = retailer; }, retailer);
+      await page.locator("#refresh").evaluate(e => e.click());
+      await expect(page.getByRole("status")).toContainText(`Product saved. Checking ${name}`);
+      await fits();
+    }
+    await page.evaluate(() => {
+      const job = globalThis.uiState.comparisons[0]; job.paused = true; job.response.status = "Paused";
+    });
+    await page.locator("#refresh").evaluate(e => e.click());
+    await expect(page.locator("#comparison-resume")).toBeVisible();
+    await expect(page.locator("#comparison-open")).toBeVisible();
+    await fits();
+    await page.evaluate(() => { globalThis.uiState.comparisons = []; });
+    await page.locator("#refresh").evaluate(e => e.click());
+    await page.locator("#read").click();
+    await expect.poll(() => page.evaluate(() => globalThis.messages.some(m => m.type === "panel-expand"))).toBe(true);
+    await expect(page.locator("#review")).toBeHidden();
+    await expect(page.locator("#review-full")).toBeVisible();
+    await fits();
+    const calls = await page.evaluate(() => globalThis.messages.map(m => m.type));
+    expect(calls.indexOf("native-open")).toBeLessThan(calls.indexOf("preview"));
+    await page.setViewportSize({ width: 400, height: 850 });
+    await page.goto("https://extension-ui.test/popup.html");
+    await expect(page.locator("#quick-add")).toBeEnabled();
+    await page.locator("#quantity").fill("5");
+    await page.locator("#read").click();
+    await expect(page.locator("#review-name")).toHaveText("Acme coffee");
+    await expect(page.locator("#review-price")).toHaveText("$4.00");
+    await expect(page.locator("#quantity")).toHaveValue("5");
+    expect(await page.evaluate(() => globalThis.messages.some(m => m.type === "save" || m.type === "add"))).toBe(false);
+    await page.locator("#cancel").click();
+    await expect(page.locator("#review")).toBeHidden();
+    await page.locator("#read").click();
+    await page.locator("#save").click();
+    await expect(page.getByRole("status")).toHaveText("Product saved to your list.");
+    await page.evaluate(() => {
+      const candidate = { name: "Other brand coffee 500g", url: "https://www.aldi.com.au/product/coffee-123456", relationship: "Different brand", price: 3, currency: "AUD", observedAt: new Date().toISOString(), priceNotice: null };
+      globalThis.uiState.comparisons = [{ jobId: 12, id: 90, paused: false, response: { status: "Completed", productName: "Acme coffee", work: null,
+        retailers: [{ code: "aldi", name: "ALDI", status: "Alternatives", message: "Alternatives need your review.", exactMatches: [], alternatives: [candidate] }] } }];
+    });
+    await page.locator("#refresh").click();
+    await expect(page.locator("#comparison-product")).toHaveText("Acme coffee");
+    await expect(page.locator("#comparison-results")).toContainText("Alternatives · excluded from exact totals");
+    await expect(page.locator("#comparison-results")).not.toContainText("Exact matches");
+    await expect(page.locator("#comparison-results").getByRole("link")).toHaveText("Other brand coffee 500g");
+    if (process.env.EXTENSION_COMPARISON_SCREENSHOT) await page.screenshot({ path: process.env.EXTENSION_COMPARISON_SCREENSHOT, fullPage: true });
+    const reader = await browser.newPage();
+    await reader.setContent(`<header><a href="https://www.aldi.com.au/product/recommended-999">Recommendation</a></header><main class="product-listing-page"><h1>Search: basmati rice</h1><div class="product-listing-viewer"><span data-mn="product-search-count">(1)</span><div data-test="product-tile"><a href="/product/basmati-rice-123">Rice</a></div></div></main>`);
+    await reader.addScriptTag({ content: await readFile(new URL("../content.js", import.meta.url), "utf8") });
+    const search = await reader.evaluate(() => globalThis.ColesReader.read(document, "https://www.aldi.com.au/results?q=basmati+rice"));
+    expect(search.ok).toBe(true); expect(search.links).toEqual(["https://www.aldi.com.au/product/basmati-rice-123"]);
+    const wrong = await reader.evaluate(() => globalThis.ColesReader.read(document, "https://www.aldi.com.au/results?q=coffee"));
+    expect(wrong.ok).toBe(false);
+    await reader.locator(".product-listing-viewer").evaluate(e => { e.innerHTML = '<span data-mn="product-search-count">(0)</span>'; });
+    const empty = await reader.evaluate(() => globalThis.ColesReader.read(document, "https://www.aldi.com.au/results?q=basmati+rice"));
+    expect(empty.ok).toBe(true); expect(empty.emptyConfirmed).toBe(true); expect(empty.links).toEqual([]);
+  } finally { await browser.close(); }
+});
+
+
+async function eventually(predicate) {
+  for (let n = 0; n < 200; n++) {
+    if (await predicate()) return;
+    await new Promise(r => setTimeout(r, 5));
+  }
+  assert.fail("Comparison did not reach the expected state.");
+}
+function comparisonFixture({ lostReply = false, blocked = false, sourceRetailer = "coles" } = {}) {
+  let currentToken = token, step = 0, lost = lostReply;
+  const calls = [], removed = [], created = [], replay = new Map();
+  const state = {};
+  const woolProduct = "https://www.woolworths.com.au/shop/productdetails/123456";
+  const aldiPage = "https://www.aldi.com.au/product/acme-coffee-000000000123456";
+  const colesProduct = "https://www.coles.com.au/product/acme-coffee-123456";
+  const productPages = { coles: colesProduct, woolworths: woolProduct, aldi: aldiPage };
+  const sourceUrl = productPages[sourceRetailer];
+  const works = [
+    { retailer: "coles", kind: "search", url: "https://www.coles.com.au/search/products?q=coffee" },
+    { retailer: "coles", kind: "product", url: colesProduct },
+    { retailer: "woolworths", kind: "search", url: "https://www.woolworths.com.au/shop/search/products?searchTerm=coffee" },
+    { retailer: "woolworths", kind: "product", url: woolProduct },
+    { retailer: "aldi", kind: "search", url: "https://www.aldi.com.au/results?q=coffee" },
+    { retailer: "aldi", kind: "product", url: aldiPage },
+  ].filter(w => w.retailer !== sourceRetailer).map((w, i) => ({ ...w, stepToken: "step-" + i }));
+  const response = () => ({ id: 90, itemId: 1, captureJobId: 12, status: step < works.length ? "Checking" : "Completed", retailers: [], work: works[step] || null });
+  const tabs = new Map([[7, { id: 7, url: sourceUrl, active: true, status: "complete" }]]);
+  let nextTab = 100;
+  const browser = {
+    storage: { session: { get: async key => ({ [key]: structuredClone(state[key]) }),
+      set: async value => Object.assign(state, structuredClone(value)) } },
+    tabs: { create: async options => { const tab = { ...options, id: nextTab++, status: "complete" }; tabs.set(tab.id, tab); created.push(options); return tab; },
+      get: async id => { if (!tabs.has(id)) throw new Error("Closed"); return structuredClone(tabs.get(id)); },
+      update: async (id, values) => Object.assign(tabs.get(id), values),
+      remove: async id => { removed.push(id); tabs.delete(id); } },
+    scripting: { executeScript: async options => {
+      if (options.files) return [];
+      if (blocked) return [{ result: { ok: false, code: "retailer_access_restricted" } }];
+      const target = tabs.get(options.target.tabId).url;
+      return [{ result: target.includes("search") || target.includes("results")
+        ? { ok: true, kind: "search", links: [target.includes("aldi") ? aldiPage : target.includes("coles") ? colesProduct : woolProduct], emptyConfirmed: false }
+        : { ok: true, evidence: { jsonLd: ["private evidence"] } } }];
+    } },
+  };
+  const worker = { syncSession: async () => currentToken, request: async (path, options = {}) => {
+    calls.push({ path, body: structuredClone(options.body) });
+    if (path.endsWith("/pending")) return [];
+    if (path.endsWith("/result")) {
+      const key = options.body.stepToken;
+      if (replay.has(key)) return structuredClone(replay.get(key));
+      if (!options.body.ok && options.body.errorCode === "retailer_access_restricted")
+        return { ...response(), status: "Paused" };
+      step++; const value = response(); replay.set(key, value);
+      if (lost) { lost = false; throw new TypeError("Lost result reply"); }
+      return structuredClone(value);
+    }
+    if (path.endsWith("/cancel")) { step = works.length; return { ...response(), status: "Cancelled" }; }
+    return response();
+  } };
+  return { browser, worker, calls, removed, created, state, tabs,
+    changeAccount: () => { currentToken = "b".repeat(64); },
+    controller: createPersonalComparisonController(browser, worker, { productUrl, pause: async () => {} }) };
+}
+
+for (const sourceUrl of [url, aldiProduct, "https://www.woolworths.com.au/shop/productdetails/123456"]) {
+  test(`confirmed ${new URL(sourceUrl).hostname} save precedes comparison scheduling and comparison failure cannot undo it`, async () => {
+    const f = fixture(); let scheduled = 0;
+    await f.browser.tabs.update(7, { url: sourceUrl });
+    f.setHandler(path => path.endsWith("/captures") ? response({ status: "Completed", jobId: 12,
+      productId: 1, shoppingListProductId: 1, priceSaved: true, comparisonAvailable: true }) : null);
+    const worker = createWorker(f.browser, f.fetcher, () => ({
+      enqueue: async id => { assert.equal(id, 12); assert.equal(f.data().pending, null); scheduled++; throw new Error("Comparison unavailable"); },
+      snapshot: async () => [], reset: async () => {},
+    }));
+    await worker({ type: "add", tabId: 7, quantity: 2, listId: 1 });
+    assert.equal(scheduled, 1); assert.equal(f.data().workflow.status, "Completed");
+    assert.equal(f.calls.filter(c => c.path.endsWith("/captures")).length, 1);
+  });
+
+}
+
+for (const sourceRetailer of ["coles", "woolworths", "aldi"]) {
+  test(`${sourceRetailer} addition checks the other two retailers in one owned background tab`, async () => {
+    const f = comparisonFixture({ sourceRetailer });
+    const original = await f.browser.tabs.get(7);
+    await f.controller.enqueue(12);
+    await eventually(async () => (await f.controller.snapshot())[0]?.response?.status === "Completed");
+    assert.equal(f.created.length, 1); assert.equal(f.created[0].active, false);
+    assert.deepEqual(f.removed, [100]); assert.deepEqual(f.tabs.get(7), original);
+    const posts = f.calls.filter(c => c.path.endsWith("/result"));
+    assert.equal(posts.length, 4);
+    const expected = ["coles", "woolworths", "aldi"].filter(r => r !== sourceRetailer);
+    assert.ok(posts[0].body.url.includes(expected[0])); assert.ok(posts[2].body.url.includes(expected[1]));
+    assert.equal(JSON.stringify(await f.controller.snapshot()).includes("private evidence"), false);
+    assert.equal(JSON.stringify(await f.controller.snapshot()).includes(token), false);
+  });
+
+}
+
+test("lost comparison result replays the same evidence without rereading the page", async () => {
+  const f = comparisonFixture({ lostReply: true }); await f.controller.enqueue(12);
+  await eventually(async () => (await f.controller.snapshot())[0]?.paused);
+  const first = structuredClone(f.calls.find(c => c.path.endsWith("/result")).body);
+  await f.controller.action({ action: "resume", jobId: 12 });
+  await eventually(async () => (await f.controller.snapshot())[0]?.response?.status === "Completed");
+  const posts = f.calls.filter(c => c.path.endsWith("/result"));
+  assert.deepEqual(posts[0].body, posts[1].body); assert.deepEqual(first, posts[1].body);
+  assert.equal(f.created.length, 1);
+});
+
+test("retailer verification pauses checks and cancellation closes only the owned tab", async () => {
+  const f = comparisonFixture({ blocked: true }); await f.controller.enqueue(12);
+  await eventually(async () => (await f.controller.snapshot())[0]?.paused);
+  assert.equal((await f.controller.snapshot())[0].response.status, "Paused");
+  assert.equal(f.removed.length, 0);
+  await f.controller.action({ action: "open", jobId: 12 }); assert.equal(f.tabs.get(100).active, true);
+  await f.controller.action({ action: "cancel", jobId: 12 });
+  assert.deepEqual(f.removed, [100]); assert.equal(f.tabs.has(7), true);
+});
+
+test("account reset discards private comparison state and closes a waiting retailer tab", async () => {
+  const f = comparisonFixture({ blocked: true }); await f.controller.enqueue(12);
+  await eventually(async () => (await f.controller.snapshot())[0]?.paused);
+  f.changeAccount(); await f.controller.reset();
+  assert.deepEqual(await f.controller.snapshot(), []); assert.deepEqual(f.removed, [100]);
+});
+
+
+test("an unavailable or removed item stops comparison work without endless resume attempts", async () => {
+  const f = comparisonFixture(); const original = f.worker.request;
+  f.worker.request = async (path, options) => {
+    if (path.endsWith("/result")) { const error = new Error("Item removed"); error.status = 404; throw error; }
+    return original(path, options);
+  };
+  await f.controller.enqueue(12);
+  await eventually(async () => (await f.controller.snapshot())[0]?.response?.status === "Unavailable");
+  assert.deepEqual(f.removed, [100]); assert.equal(f.tabs.has(7), true);
+  assert.equal((await f.controller.snapshot())[0].paused, false);
+});
+
+test("verification keeps subsequent additions queued without opening another retailer tab", async () => {
+  const f = comparisonFixture({ blocked: true }); await f.controller.enqueue(12);
+  await eventually(async () => (await f.controller.snapshot())[0]?.paused);
+  await f.controller.enqueue(13); await f.controller.pump();
+  assert.equal(f.created.length, 1); assert.equal((await f.controller.snapshot()).length, 2);
+  await f.controller.action({ action: "cancel", jobId: 12 });
+});
+
+test("server-side unfinished checks recover as paused after browser session loss", async () => {
+  const f = comparisonFixture(); const original = f.worker.request;
+  f.worker.request = async (path, options) => path.endsWith("/pending") ? [{ id: 90, captureJobId: 12,
+    itemId: 1, status: "Checking", retailers: [], work: { stepToken: "pending", retailer: "aldi", kind: "search", url: "https://www.aldi.com.au/results?q=coffee" } }] : original(path, options);
+  await f.controller.recover();
+  const jobs = await f.controller.snapshot();
+  assert.equal(jobs.length, 1); assert.equal(jobs[0].paused, true);
+  assert.equal(f.created.length, 0);
 });

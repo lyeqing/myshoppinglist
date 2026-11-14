@@ -107,6 +107,14 @@ export default function ShoppingListItems({
     return () => window.removeEventListener("focus", refresh);
   }, [load]);
 
+  useEffect(() => {
+    if (!plan?.items.some(row => row.personalComparison?.status === "Checking")) return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void load({ background: true }).catch(() => {});
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [plan, load]);
+
   async function change<T>(
     id: number,
     method: "PUT" | "DELETE",

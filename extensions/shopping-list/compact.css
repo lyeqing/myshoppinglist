@@ -1,1 +1,31 @@
 @import url("./popup.css");
+html { height:100%; overflow:hidden; }
+body.compact { height:100%; max-width:none; min-width:0; overflow:hidden; display:flex; flex-direction:column; gap:6px; padding:12px; }
+.compact header { flex:none; }
+.compact .panel-controls button { margin:0; }
+.compact #product,.compact .account,.compact > a { display:none; }
+.compact #status { margin:0; font-size:12px; line-height:16px; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.compact #status:empty { display:none; }
+.compact #account { min-height:0; }
+.compact #add { display:grid; grid-template-columns:minmax(0,1fr) 68px; gap:8px; }
+.compact #add label { margin:0; font-size:12px; }
+.compact input,.compact select { margin-top:4px; padding:6px; height:34px; min-width:0; }
+.compact .capture-actions { grid-column:1 / -1; gap:6px; }
+.compact button { min-height:34px; margin:0; line-height:18px; }
+.compact #review { display:none; }
+.compact #retry,.compact #review-full { margin-top:6px; }
+@media (max-height:220px) {
+  body.compact { padding:8px; gap:4px; }
+  .compact .capture-actions { grid-template-columns:1fr 1fr; gap:6px; }
+  .compact #add { gap:4px; }
+}
+
+.compact #empty { margin:0; font-size:12px; }
+@media (max-height:180px) { .compact #account { display:none; } }
+
+.compact #comparisons { margin-top:6px; padding:0; border:0; }
+.compact #comparisons h2,.compact #comparison-selection-label,.compact #comparison-product,.compact #comparison-summary,.compact #comparison-results { display:none; }
+.compact.comparing .capture-actions { grid-template-columns:1fr 1fr; }
+.compact .comparison-actions button { font-size:11px; padding:5px; }
+
+@media (max-height:220px) { .compact.comparing #status { -webkit-line-clamp:1; } .compact #comparisons { margin-top:2px; } }

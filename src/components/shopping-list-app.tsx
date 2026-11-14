@@ -604,8 +604,9 @@ export default function ShoppingListApp() {
                 <h2 id="add-products" className="text-lg font-semibold">Add products with the Chrome extension</h2>
                 <p className="mt-3 text-sm leading-6 text-slate-600">
                   On your computer, open a Coles, Woolworths or ALDI product page.
-                  Click MyShoppingList, choose your list and quantity, then read,
-                  review and save the product.
+                  Click MyShoppingList, choose your list and quantity, then select Add to list.
+                  Choose Read product if you want to review first. Coles, Woolworths and ALDI additions
+                  automatically check the other two retailers for exact matches and alternatives.
                 </p>
                 <Link href="/extension" className={primary + " mt-5"}>Extension setup and instructions</Link>
                 <p className="mt-3 text-xs leading-5 text-slate-500">

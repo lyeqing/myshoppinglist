@@ -1,6 +1,6 @@
 # MyShoppingList personal product extension — local test
 
-Version 0.8.0 supports two explicit actions: **Read product** to review and save a product, and the website's **Refresh items** to update existing private prices. Products and observations belong to the signed-in account. It does not collect shared prices, search other retailers or run timed collection.
+Version 0.8.0 supports **Add to list** to read and save directly, **Read product** to review before saving, and the website's **Refresh items** to update existing private prices. Products and observations belong to the signed-in account. After a confirmed Coles, Woolworths or ALDI save it automatically searches the other two retailers for private comparisons. It does not collect shared prices or run timed collection.
 
 ## Refresh saved prices
 
@@ -38,11 +38,11 @@ The frontend's separate `playwright.personal.config.ts` tests the unpacked exten
 
 ## Save a product
 
-Choose your shopping list and quantity. Click **Read product**, review the extracted name, pack and price, then **Save to list**. **Cancel** discards the preview without saving. Reading a preview does not create a product, observation or list. If no active list exists, a list named using your local date is created only when you save.
+Choose your shopping list and quantity. Click **Add to list** to read and save in one action, or choose **Read product**, review the extracted name, pack and price, then **Save to list**. **Cancel** discards the preview without saving. Reading a preview does not create a product, observation or list. If no active list exists, a list named using your local date is created only when you save.
 
-Missing prices are labelled unavailable; you can save the product without a price. The date describes when you read the page, not a live price guarantee. Store location remains unverified. To compare retailers, visit and save each product yourself. Unsupported pages, conflicting identities and inaccessible product data require checking the page and reading again.
+Missing prices are labelled unavailable; you can save the product without a price. The date describes when you read the page, not a live price guarantee. Store location remains unverified. Coles, Woolworths and ALDI additions automatically check the other two retailers. Unsupported pages, conflicting identities and inaccessible product data require checking the page and reading again.
 
-Saving requires the same active product tab used for the preview. Navigation never starts another read automatically. There is no automatic verification loop: complete any retailer verification yourself, then choose **Read product**.
+Saving requires the same active product tab used for the preview. Navigation never starts another read automatically. There is no automatic verification loop: complete any retailer verification yourself, then choose **Add to list** or **Read product**.
 
 ## Safe retries
 
@@ -52,7 +52,7 @@ The pending request survives service-worker suspension while Chrome remains open
 
 ## Full and compact panels
 
-Chrome 142 or newer is required. The first toolbar click opens the full side panel. Signed-in shoppers on supported retailer pages can minimize to a compact, scrollable panel. Both views provide the same review-before-save flow and list selection. Expand opens the full view; Hide stays hidden until another toolbar click. On other websites, use the full panel and open a supported product to read it.
+Chrome 142 or newer is required. The first toolbar click opens the full side panel. Signed-in shoppers on supported retailer pages can minimize to a compact panel without scrolling. Both views offer direct adding and list selection. **Read product** opens the full panel for optional review, preserving the selected list and quantity. Full view opens the full panel; Hide stays hidden until another toolbar click. On other websites, use the full panel and open a supported product to read it.
 
 Compact controls run in an isolated extension frame with a per-tab ticket. Retailer page scripts cannot initiate a capture. Opening, minimizing, hiding or navigating does not extract products.
 
@@ -73,3 +73,18 @@ Run `node --test extensions/shopping-list/tests/extension.test.mjs` from the fro
 ## Publication
 
 This is an unpacked local test extension, not a Chrome Web Store release. Before publication, configure production HTTPS API/website origins, cookie domain checks and website bridge matches; replace localhost permissions and links; configure the published extension ID; add screenshots, privacy policy and support information; and verify the complete installed-extension workflow. Package runtime files and icons only, excluding tests and this README. Publish through the owner's store account after review.
+
+
+## Automatic private comparisons after adding a product
+
+Both Add to list and Read product → Save to list commit the selected product first. Only a confirmed save starts comparison work; an uncertain source save must be retried using its original receipt. Checks search the other two retailers using one extension-owned background tab: Coles additions check Woolworths then ALDI, Woolworths additions check Coles then ALDI, and ALDI additions check Coles then Woolworths. The original tab is never navigated or closed. Each retailer is limited to two queries and five candidate product reads. Exact identity is validated by the API before an account-owned mapping and dated price observation are saved. Other brands, sizes and unconfirmed matches appear separately as alternatives and do not enter exact-match totals. Existing mappings owned by another private product are not silently merged.
+
+The compact green panel shows progress without scrolling. Full view and the shopping list show retailer outcomes and candidate details. Cancel checks retains the saved item and completed results. Retry failed checks preserves successful retailers. Retailer verification pauses the queue: Open retailer, complete the check yourself, then Resume checks. Missing prices remain unknown; failed reads are never reported as confirmed empty searches. There is no automatic verification bypass.
+
+Session storage keeps the queue and exact pending result receipt across worker suspension. Lost result replies are replayed before another page is read. Signing out or changing accounts stops work and closes owned comparison tabs. After a full browser restart or extension reload, outstanding server-side comparisons are recovered as paused; open the extension and select Resume checks. Live retailer changes can make searches or product reads unavailable.
+
+The API requires migration AddPersonalRetailerComparisons. Prepare and test it separately; obtain the owner's approval before applying it to the application database. Update/restart the API and reload the extension only after that migration is applied. Legacy shared collection remains disabled.
+
+For optional browser UI checks, set EXTENSION_UI_TESTS=1 and run the extension Node test suite with an installed Playwright Chromium browser.
+
+Browser journeys load a temporary extension copy and verify an account/session that exists only in their temporary schema through both the API and website proxy before any browser mutations. The test API port must be free; MYSHOPPINGLIST_TEST_API_URL can select a dedicated test port when the runner website upstream is configured to match. MYSHOPPINGLIST_API_CONFIGURATION selects an isolated API build such as CodexComparison. Verification pages can reopen Full view from the toolbar to resume checks.

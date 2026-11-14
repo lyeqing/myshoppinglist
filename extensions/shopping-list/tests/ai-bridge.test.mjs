@@ -2,7 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 const bridgeModule = `data:text/javascript;base64,${Buffer.from(await readFile(new URL("../ai-bridge.js", import.meta.url), "utf8")).toString("base64")}`;
-const load = async path => import(`data:text/javascript;base64,${Buffer.from((await readFile(new URL(path, import.meta.url), "utf8")).replace('"./ai-bridge.js"', JSON.stringify(bridgeModule))).toString("base64")}`);
+const comparisonModule = `data:text/javascript;base64,${Buffer.from(await readFile(new URL("../personal-comparison.js", import.meta.url), "utf8")).toString("base64")}`;
+const load = async path => import(`data:text/javascript;base64,${Buffer.from((await readFile(new URL(path, import.meta.url), "utf8")).replace('"./ai-bridge.js"', JSON.stringify(bridgeModule)).replace('"./personal-comparison.js"', JSON.stringify(comparisonModule))).toString("base64")}`);
 const { createExtensionBridge } = await load("../ai-bridge.js");
 const { productUrl, sameProductUrl } = await load("../background.js");
 function fixture(type = "capture") {

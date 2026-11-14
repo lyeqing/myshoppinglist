@@ -15,9 +15,10 @@
 <div class="account"><span id="name"></span><button id="logout" class="secondary">Sign out</button></div>
 <form id="add">
 <label id="list-label">Shopping list<select id="list"></select></label>
-<p id="empty" hidden>A shopping list named with your local date will be created when you save.</p>
+<p id="empty" hidden>A new list will be created.</p>
 <label>Quantity<input id="quantity" type="number" min="1" max="2147483647" step="1" value="1" required></label>
-<button id="read" type="button">Read product</button>
+<div class="capture-actions"><button id="quick-add" type="button">Add to list</button>
+<button id="read" type="button" class="secondary">Read product</button></div>
 <section id="review" hidden aria-labelledby="review-title">
 <h2 id="review-title">Review product</h2><p id="review-name" class="product-name"></p>
 <p id="review-detail"></p><p id="review-price" class="price"></p><p id="review-notice"></p>
@@ -26,10 +27,18 @@
 </section>
 </form>
 <button id="retry" hidden>Retry save</button>
+<section id="comparisons" hidden aria-label="Retailer checks">
+<h2>Retailer checks</h2><label id="comparison-selection-label" hidden>Saved product<select id="comparison-selection"></select></label><p id="comparison-product" class="product-name"></p><p id="comparison-summary" aria-live="polite"></p><div id="comparison-results"></div>
+<div class="comparison-actions"><button id="comparison-cancel" type="button" class="secondary" hidden>Cancel checks</button>
+<button id="comparison-resume" type="button" hidden>Resume checks</button>
+<button id="comparison-retry" type="button" hidden>Retry failed checks</button>
+<button id="comparison-open" type="button" class="secondary" hidden>Open retailer</button></div>
+</section>
+<button id="review-full" type="button" class="secondary" hidden>Review in full view</button>
 </section>
 <button id="refresh" class="secondary">Refresh status</button>
 <a href="http://localhost:3000/" target="_blank" rel="noreferrer">Open MyShoppingList</a>
-<footer>Reads only the product page you choose, after you click Read product. Review it before saving.
+<footer>Choose Add to list to read and save this product, or Read product to review it first.
 Sign-in is shared with MyShoppingList in this Chrome profile.
 <details><summary>Local setup</summary><p>Extension ID:</p><code id="extension-id"></code></details></footer>
 <script src="compact.js" type="module"></script>

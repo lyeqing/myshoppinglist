@@ -320,6 +320,28 @@ export default function ShoppingListItemCard({
           />
         </>
       )}
+      {row.personalComparison && (
+        <section aria-label="Automatic retailer checks" className="mt-4 rounded-xl border border-primary-100 bg-primary-50 p-3 text-sm">
+          <h3 className="font-semibold">Retailer checks</h3>
+          <p className="mt-1 text-slate-600">{row.personalComparison.status === "Checking" ? "Checking other retailers in your extension…" : row.personalComparison.status === "Completed" ? "Checks complete." : "Open the extension to resume, retry or stop checks."}</p>
+          {row.personalComparison.retailers.map(retailer => (
+            <div key={retailer.code} className="mt-3">
+              <p className="font-semibold">{retailer.name}</p>
+              <p>{retailer.message || (retailer.status === "Pending" ? "Waiting to check" : "Checking…")}</p>
+              {retailer.exactMatches.map(candidate => (
+                <p key={candidate.url} className="mt-1">Exact match: {safeLink(candidate.url) ? <a href={safeLink(candidate.url)} target="_blank" rel="noreferrer" className="underline">{candidate.name}</a> : candidate.name} · {candidate.price === null ? "Price unavailable" : money(candidate.price)}</p>
+              ))}
+              {retailer.alternatives.length > 0 && <p className="mt-2 font-semibold">Alternatives · excluded from exact totals</p>}
+              {retailer.alternatives.map(candidate => (
+                <div key={candidate.url} className="mt-2">
+                  <p>{safeLink(candidate.url) ? <a href={safeLink(candidate.url)} target="_blank" rel="noreferrer" className="underline">{candidate.name}</a> : candidate.name} · {candidate.relationship} · {candidate.price === null ? "Price unavailable" : money(candidate.price)}</p>
+                  <p className="text-xs text-slate-600">{candidate.priceNotice} · Observed {new Date(candidate.observedAt).toLocaleString("en-AU")}. Store location unverified. Review suitability before choosing.</p>
+                </div>
+              ))}
+            </div>
+          ))}
+        </section>
+      )}
       <PackAlternatives alternatives={row.packAlternatives} />
       <BrandAlternatives alternatives={row.brandAlternatives} choices={row.substitutions} item={item} accountId={accountId} disabled={locked} onChanged={onDiscovered} />
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">

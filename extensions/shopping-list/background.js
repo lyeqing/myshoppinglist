@@ -1,4 +1,5 @@
 import { createExtensionBridge } from "./ai-bridge.js";
+import { createPersonalComparisonController } from "./personal-comparison.js";
 
 export const API_URL = "http://localhost:5392";
 export const WEBSITE_URL = "http://localhost:3000/";
@@ -83,12 +84,14 @@ export async function attachWebsiteBridges(browser) {
   }
 }
 
-export function createWorker(browser, fetcher = fetch) {
+export function createWorker(browser, fetcher = fetch, comparisonFactory = null) {
   const storage = browser.storage.session;
   let generation = 0;
   let sessionAbort = new AbortController();
   let syncing;
   let busy = false;
+  let comparisons;
+  const getComparisons = () => Promise.resolve(comparisons ??= (comparisonFactory || createPersonalComparisonController)(browser, handle, { productUrl, sameProductUrl }));
   const changed = () => new Error("Your account changed. Read the product again.");
   async function syncSession() {
     if (syncing) return syncing;
@@ -102,6 +105,7 @@ export function createWorker(browser, fetcher = fetch) {
         return token;
       }
       generation++;
+      if (comparisons) await comparisons.reset();
       sessionAbort.abort();
       sessionAbort = new AbortController();
       const { panelUi } = await storage.get("panelUi");
@@ -165,8 +169,9 @@ export function createWorker(browser, fetcher = fetch) {
     return {
       review: review?.summary ?? null,
       pending: !!pending,
-      quantity: pending?.body.quantity ?? null,
-      workflow: workflow ? { status: workflow.status, message: workflow.message } : null,
+      quantity: pending?.body.quantity ?? review?.quantity ?? null,
+      workflow: workflow ? { status: workflow.status, message: workflow.message, captureJobId: workflow.captureJobId ?? null } : null,
+      comparisons: comparisons ? await comparisons.snapshot() : [],
     };
   }
   async function state() {
@@ -202,10 +207,14 @@ export function createWorker(browser, fetcher = fetch) {
           || saved.status !== "Completed") throw new Error("The save response was incomplete.");
       await check(token);
       await storage.set({ pending: null, review: null, workflow: {
-        status: "Completed", message: saved.priceSaved
+        captureJobId: saved.jobId ?? null, status: "Completed", message: saved.priceSaved
           ? (saved.alreadyOnList ? "Product is on your list. Its quantity has been updated." : "Product saved to your list.")
           : "Product saved to your list without a verified price.",
       } });
+      if (saved.comparisonAvailable && Number.isSafeInteger(saved.jobId)) {
+        try { await (await getComparisons()).enqueue(saved.jobId); }
+        catch { await storage.set({ comparisonNotice: "Product saved. Comparison checks could not start. Reopen the extension to resume." }); }
+      }
     } catch (error) {
       await syncSession();
       if ((await storage.get("token")).token === token) {
@@ -223,8 +232,52 @@ export function createWorker(browser, fetcher = fetch) {
     }
     return view();
   }
+  async function readProduct(token, tabId, direct = false, quantity = 1) {
+    await storage.set({ review: null, workflow: null });
+    const { url } = await productTab(tabId);
+    const observedAt = new Date().toISOString();
+    await browser.scripting.executeScript({ target: { tabId }, files: ["content.js"] });
+    const frames = await browser.scripting.executeScript({ target: { tabId },
+      func: () => globalThis.ColesReader.read(document, location.href) });
+    const extracted = frames[0]?.result;
+    if (!extracted?.ok || !extracted.evidence) throw new Error("This product could not be read. Check the product page and try again.");
+    await productTab(tabId, url);
+    const summary = await request("/api/user-extension/captures/preview", {
+      method: "POST", expectedToken: token, body: { url, evidence: extracted.evidence, observedAt },
+    });
+    if (!summary?.name || productUrl(summary.url) !== url || !Number.isFinite(Date.parse(summary.observedAt))
+        || (summary.price != null && (!Number.isFinite(summary.price) || summary.price < 0)))
+      throw new Error("The product preview could not be validated. Read the page again.");
+    await productTab(tabId, url);
+    await check(token);
+    await storage.set({ review: { token, tabId, quantity, url, observedAt, evidence: extracted.evidence, summary },
+      workflow: { status: "Review", message: direct ? "Product read. Ready to save." : "Review this product, then save it to your list." } });
+    return view();
+  }
+  async function saveProduct(token, tabId, quantity, listId) {
+    const { review } = await storage.get("review");
+    if (!review || review.token !== token || review.tabId !== tabId)
+      throw new Error("Read the current product before saving.");
+    await productTab(tabId, review.url);
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 2147483647)
+      throw new Error("Enter a positive whole-number quantity.");
+    const data = await state();
+    const selectedId = listId ?? data.selectedListId;
+    let list = data.lists.find((item) => item.id === selectedId);
+    if (data.lists.length && !list) throw new Error("Choose one of your shopping lists.");
+    if (!list) list = await request("/api/shopping-lists/default", { method: "POST", expectedToken: token });
+    if (!Number.isSafeInteger(list?.id)) throw new Error("Your shopping list could not be selected.");
+    await productTab(tabId, review.url);
+    await check(token);
+    await storage.set({ selectedListId: list.id, pending: { token, body: {
+      listId: list.id, quantity, url: review.url, evidence: review.evidence,
+      observedAt: review.observedAt, requestId: crypto.randomUUID(),
+    } } });
+    return submit(token);
+  }
   async function handle(message) {
     if (message.type === "state") return state();
+    if (message.type === "comparison") return (await getComparisons()).action(message);
     if (busy) throw new Error("Please wait for the current action.");
     busy = true;
     try {
@@ -261,52 +314,19 @@ export function createWorker(browser, fetcher = fetch) {
         await storage.set({ review: null, workflow: null });
         return view();
       }
-      if (message.type === "preview") {
-        await storage.set({ review: null, workflow: null });
-        const { url } = await productTab(message.tabId);
-        const observedAt = new Date().toISOString();
-        await browser.scripting.executeScript({ target: { tabId: message.tabId }, files: ["content.js"] });
-        const frames = await browser.scripting.executeScript({ target: { tabId: message.tabId },
-          func: () => globalThis.ColesReader.read(document, location.href) });
-        const extracted = frames[0]?.result;
-        if (!extracted?.ok || !extracted.evidence) throw new Error("This product could not be read. Check the product page and try again.");
-        await productTab(message.tabId, url);
-        const summary = await request("/api/user-extension/captures/preview", {
-          method: "POST", expectedToken: token, body: { url, evidence: extracted.evidence, observedAt },
-        });
-        if (!summary?.name || productUrl(summary.url) !== url || !Number.isFinite(Date.parse(summary.observedAt))
-            || (summary.price != null && (!Number.isFinite(summary.price) || summary.price < 0)))
-          throw new Error("The product preview could not be validated. Read the page again.");
-        await productTab(message.tabId, url);
-        await check(token);
-        await storage.set({ review: { token, tabId: message.tabId, url, observedAt, evidence: extracted.evidence, summary },
-          workflow: { status: "Review", message: "Review this product, then save it to your list." } });
-        return view();
-      }
-      if (message.type === "save") {
-        const { review } = await storage.get("review");
-        if (!review || review.token !== token || review.tabId !== message.tabId)
-          throw new Error("Read the current product before saving.");
-        await productTab(message.tabId, review.url);
+      if (message.type === "preview") return await readProduct(token, message.tabId, false, message.quantity);
+      if (message.type === "add") {
         if (!Number.isInteger(message.quantity) || message.quantity < 1 || message.quantity > 2147483647)
           throw new Error("Enter a positive whole-number quantity.");
-        const data = await state();
-        const selectedId = message.listId ?? data.selectedListId;
-        let list = data.lists.find((item) => item.id === selectedId);
-        if (data.lists.length && !list) throw new Error("Choose one of your shopping lists.");
-        if (!list) list = await request("/api/shopping-lists/default", { method: "POST", expectedToken: token });
-        if (!Number.isSafeInteger(list?.id)) throw new Error("Your shopping list could not be selected.");
-        await productTab(message.tabId, review.url);
-        await check(token);
-        await storage.set({ selectedListId: list.id, pending: { token, body: {
-          listId: list.id, quantity: message.quantity, url: review.url, evidence: review.evidence,
-          observedAt: review.observedAt, requestId: crypto.randomUUID(),
-        } } });
-        return await submit(token);
+        await readProduct(token, message.tabId, true, message.quantity);
+        return await saveProduct(token, message.tabId, message.quantity, message.listId);
       }
+      if (message.type === "save")
+        return await saveProduct(token, message.tabId, message.quantity, message.listId);
       throw new Error("Unsupported extension action.");
     } finally { busy = false; }
   }
+  handle.comparisons = getComparisons;
   handle.syncSession = syncSession;
   handle.request = request;
   handle.restore = async () => {
@@ -520,13 +540,15 @@ export function createPanelController(browser, worker) {
     await worker.syncSession();
     const tab = await browser.tabs.get(tabId);
     const ui = await read();
-    const { token, workflow, sharedTask } = await storage.get([
+    const { token, workflow, sharedTask, personalComparisons } = await storage.get([
       "token",
       "workflow",
       "sharedTask",
+      "personalComparisons",
     ]);
     const ownTaskTab =
-      tabId === workflow?.temporaryTabId || tabId === sharedTask?.tabId;
+      tabId === workflow?.temporaryTabId || tabId === sharedTask?.tabId
+      || personalComparisons?.jobs?.some(job => job.tabId === tabId);
     const show =
       !!token &&
       ui.opened &&
@@ -682,7 +704,7 @@ if (
   chrome.runtime.onInstalled?.addListener(() => { void attachWebsiteBridges(chrome).catch(() => {}); });
   chrome.runtime.onStartup?.addListener(() => { void attachWebsiteBridges(chrome).catch(() => {}); });
   let toolbarState = {};
-  void chrome.storage.session.get(["panelUi", "token"]).then((value) => {
+  void chrome.storage.session.get(["panelUi", "token", "personalComparisons"]).then((value) => {
     toolbarState = value;
   });
   void chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false });
@@ -690,7 +712,8 @@ if (
     const openFull =
       !toolbarState.panelUi?.opened ||
       !toolbarState.token ||
-      !retailerPage(tab.url);
+      !retailerPage(tab.url) ||
+      toolbarState.personalComparisons?.jobs?.some(job => job.tabId === tab.id);
     // Invoke directly in the click handler: asynchronous session checks lose Chrome's gesture.
     const opened = openFull
       ? chrome.sidePanel.open({ tabId: tab.id })
@@ -707,11 +730,14 @@ if (
   });
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area === "session")
-      for (const key of ["panelUi", "token"])
+      for (const key of ["panelUi", "token", "personalComparisons"])
         if (changes[key]) toolbarState[key] = changes[key].newValue;
-    if (area === "session" && changes.token) void panels.notify();
+    if (area === "session" && changes.token) {
+      void panels.notify();
+      if (changes.token.newValue) void handle.comparisons().then(c => c.recover()).catch(() => {});
+    }
   });
-  void handle.restore();
+  void handle.restore().then(async () => (await handle.comparisons()).recover()).catch(() => {});
   let cookieTimer;
   chrome.cookies.onChanged.addListener((change) => {
     if (
@@ -785,7 +811,7 @@ if (
         return panels.minimize(tabId);
       if (message.type === "panel-expand" && compactPage)
         return panels.full(await chrome.tabs.get(tabId), true);
-      if (compactPage && !["state", "preview", "save", "retry", "cancel", "selectList"].includes(message.type))
+      if (compactPage && !["state", "preview", "add", "save", "retry", "cancel", "selectList", "comparison"].includes(message.type))
         throw new Error("Unsupported compact-view action.");
       const data = await handle({ ...message, tabId });
       data.tabId = tabId;
