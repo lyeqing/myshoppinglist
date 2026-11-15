@@ -52,6 +52,9 @@ async function forward(
   const analytics = request.method === "POST" && ["analytics/events", "analytics/forget", "diagnostics"].includes(route);
   const billing = get && (route === "billing" || route === "admin/billing") || request.method === "POST" && (route === "billing/checkout" || route === "billing/portal");
   const oauth = request.method === "POST" && (route === "ai/oauth/preview" || route === "ai/oauth/authorize");
+  const socialCallback = get && /^auth\/social\/callback\/(google|facebook|microsoft)$/.test(route);
+  const social = socialCallback || get && /^auth\/social\/(providers|methods)$/.test(route)
+    || request.method === "POST" && /^auth\/social\/(start|complete|reauthenticate|disconnect|password\/(start|complete))$/.test(route);
   const connections = (get && (route === "ai/connections" || route === "ai/connection-info")) || (request.method === "DELETE" && /^ai\/connections\/[a-fA-F0-9-]{36}$/.test(route));
   const research = get && /^(?:research(?:\/[a-fA-F0-9-]{36}|\/instructions|\/refresh\/[1-9]\d{0,18})?)$/.test(route)
     || request.method === "POST" && /^(?:research(?:\/select|\/generic\/[1-9]\d{0,18})?)$/.test(route)
@@ -66,7 +69,7 @@ async function forward(
   const savedProductAdd = request.method === "POST" && /^shopping-lists\/[1-9]\d{0,18}\/products\/[1-9]\d{0,18}$/.test(route);
   const substitution = request.method === "PUT" && /^shopping-lists\/[1-9]\d{0,18}\/items\/[1-9]\d{0,18}\/substitutions\/[1-9]\d{0,18}$/.test(route);
   const allowed =
-    research || credentials || billing || currentList || extensionDevices || operations || feedback || screenshot || analytics || oauth || connections ||
+    social || research || credentials || billing || currentList || extensionDevices || operations || feedback || screenshot || analytics || oauth || connections ||
     substitution ||
     productLibrary || productPreferences || productPreferenceWrite || savedProductAdd ||
     branchWrite ||
@@ -127,6 +130,12 @@ async function forward(
     )
       return reply(403, "The request failed browser request protection.");
     const target = new URL(`/api/${route}`, upstream);
+    if (socialCallback) {
+      const query = request.nextUrl.searchParams;
+      if (request.nextUrl.search.length > 12000 || [...query.keys()].some(key => !["code", "state", "error", "error_description", "error_reason", "error_code", "scope", "authuser", "prompt", "hd", "session_state"].includes(key) || query.getAll(key).length !== 1))
+        return reply(400, "This sign-in response is invalid. Start again.");
+      target.search = request.nextUrl.search;
+    } else if (social && request.nextUrl.search) return reply(400, "Unexpected sign-in parameters.");
     if (research && get) {
       for (const [key, value] of request.nextUrl.searchParams) {
         if (!route.startsWith("research/refresh/") || key !== "pageSize" || request.nextUrl.searchParams.getAll(key).length !== 1
@@ -222,10 +231,17 @@ async function forward(
     const session = request.cookies.get(cookieName)?.value;
     if (session && /^[a-f0-9]{64}$/.test(session))
       headers.set("Cookie", `${cookieName}=${session}`);
+    const socialCookie = (name: string) => /^mssl\.(?:external(?:C[1-4])?|correlation\.(?:google|facebook|microsoft)\.[A-Za-z0-9_-]{1,128})$/.test(name);
+    if (social) {
+      const cookies = request.cookies.getAll().filter(c => socialCookie(c.name) && /^[A-Za-z0-9_=-]{1,8000}$/.test(c.value));
+      const values = [headers.get("Cookie"), ...cookies.map(c => `${c.name}=${c.value}`)].filter(Boolean).join("; ");
+      if (values.length > 16000) return reply(400, "This sign-in response is too large. Start again.");
+      if (values) headers.set("Cookie", values);
+    }
     let body: string | undefined;
     if (!get) {
       if (
-        (research || account || oauth || currentList || feedback || operations || analytics ||
+        (social || research || account || oauth || currentList || feedback || operations || analytics ||
           productPreferenceWrite || savedProductAdd ||
           preferences ||
           alternativeReview ||
@@ -275,7 +291,7 @@ async function forward(
         } catch { return reply(400, "Send a valid connection request."); }
       }
       // Browser origin was validated above; the internal request has the API's own origin.
-      headers.set("Origin", upstream.origin);
+      headers.set("Origin", social ? publicOrigin : upstream.origin);
       if (account) {
         try {
           const value = JSON.parse(body ?? "");
@@ -316,6 +332,32 @@ async function forward(
       cache: "no-store",
       signal: AbortSignal.any([request.signal, AbortSignal.timeout(15000)]),
     });
+    function copyCookies(outgoing: Headers) {
+      for (const value of result.headers.getSetCookie()) {
+        const name = value.slice(0, value.indexOf("="));
+        if (name !== cookieName && !(social && socialCookie(name))) continue;
+        const cookie = value.replace(/;\s*domain=[^;]*/gi, "");
+        outgoing.append("Set-Cookie", publicOrigin.startsWith("https:") && !/;\s*secure(?:;|$)/i.test(cookie) ? `${cookie}; Secure` : cookie);
+      }
+    }
+    if (social && result.status === 302) {
+      const raw = result.headers.get("Location");
+      if (!raw) return reply(502, "The sign-in redirect is unavailable.");
+      const location = new URL(raw, publicOrigin);
+      const outgoing = new Headers({ "Cache-Control": "no-store" });
+      copyCookies(outgoing);
+      if (socialCallback) {
+        if (location.origin !== publicOrigin || location.pathname !== "/account/social" || location.hash
+          || [...location.searchParams].some(([key, value]) => key !== "error" || !["cancelled", "failed"].includes(value)))
+          return reply(502, "The sign-in redirect is invalid.");
+        outgoing.set("Location", location.toString());
+        return new Response(null, { status: 302, headers: outgoing });
+      }
+      if (route !== "auth/social/start" || location.protocol !== "https:" || location.username || location.password || location.hash
+        || !["accounts.google.com", "www.facebook.com", "login.microsoftonline.com", "login.live.com"].includes(location.hostname))
+        return reply(502, "The sign-in provider redirect is invalid.");
+      return Response.json({ authorizationUrl: location.toString() }, { headers: outgoing });
+    }
     if (route === "ai/oauth/authorize" && result.status === 302) {
       const location = result.headers.get("Location");
       if (!location) return reply(502, "The connection could not be completed.");
@@ -343,17 +385,7 @@ async function forward(
       if (value && (name !== "Location" || value.startsWith("/api/")))
         outgoing.set(name, value);
     }
-    for (const value of result.headers.getSetCookie())
-      if (value.startsWith(`${cookieName}=`)) {
-        const cookie = value.replace(/;\s*domain=[^;]*/gi, "");
-        outgoing.append(
-          "Set-Cookie",
-          publicOrigin.startsWith("https:") &&
-            !/;\s*secure(?:;|$)/i.test(cookie)
-            ? `${cookie}; Secure`
-            : cookie,
-        );
-      }
+    copyCookies(outgoing);
     return new Response(result.status === 204 ? null : await result.text(), {
       status: result.status,
       headers: outgoing,

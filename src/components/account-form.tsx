@@ -3,9 +3,10 @@ import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/api-client";
 import type { Session } from "@/lib/api-types";
 import Link from "next/link";
+import SocialSignInButtons from "./social-sign-in-buttons";
 
-export default function AccountForm({ mode, trial, onSuccess, onBusy, onClose }: {
-  mode: "register" | "login"; trial: boolean; onSuccess: (session: Session) => void;
+export default function AccountForm({ mode, trial, accountId, onSuccess, onBusy, onClose }: {
+  mode: "register" | "login"; trial: boolean; accountId?: number; onSuccess: (session: Session) => void;
   onBusy: (busy: boolean) => void; onClose: () => void;
 }) {
   const [email, setEmail] = useState(""); const [password, setPassword] = useState("");
@@ -44,7 +45,9 @@ export default function AccountForm({ mode, trial, onSuccess, onBusy, onClose }:
     <div className="flex items-start justify-between gap-4"><div><h2 id="account-title" className="text-xl font-semibold">{register ? trial ? "Keep my list" : "Create an account" : "Sign in"}</h2>
       <p className="mt-2 max-w-xl text-sm leading-6 text-slate-500">{register ? trial ? "Create an account before your trial ends to keep your list and saved edits." : "Create your account and start a permanent shopping list." : trial ? "Sign in to open your existing account. This trial list will not be merged, and unsaved edits will be discarded." : "Welcome back. Sign in to open your saved shopping list."}</p></div>
       <button type="button" disabled={pending} onClick={onClose} className="text-sm font-semibold text-slate-600">Cancel</button></div>
-    <form onSubmit={submit} className="mt-5 max-w-md space-y-4">
+    <div className="mt-5 max-w-md"><SocialSignInButtons key={accountId ?? "new"} accountId={accountId} disabled={pending || expired} /></div>
+    <p className="mt-5 text-sm font-medium text-slate-600">Or continue with email and password</p>
+    <form onSubmit={submit} className="mt-3 max-w-md space-y-4">
       <fieldset disabled={pending} className="space-y-4 disabled:opacity-60">
         {register && <label className="block text-sm font-medium">Display name<input autoFocus className={input} required maxLength={200} autoComplete="nickname" value={name} onChange={e => setName(e.target.value)} /></label>}
         <label className="block text-sm font-medium">Email<input autoFocus={!register} className={input} type="email" required maxLength={320} autoComplete="username" value={email} onChange={e => setEmail(e.target.value)} /></label>

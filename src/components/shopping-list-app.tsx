@@ -504,6 +504,7 @@ export default function ShoppingListApp() {
             key={accountMode}
             mode={accountMode}
             trial={!!session?.account.isTrial}
+            accountId={session?.account.id}
             onBusy={accountBusy}
             onSuccess={accountReady}
             onClose={() => setAccountMode(null)}

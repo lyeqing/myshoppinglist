@@ -4,12 +4,14 @@ import Link from "next/link";
 import { api, ApiError } from "@/lib/api-client";
 import type { Session } from "@/lib/api-types";
 import AppHeader from "./app-header";
+import SignInMethods from "./sign-in-methods";
 
 export default function AccountSecurity() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true), [pending, setPending] = useState(false), [done, setDone] = useState(false);
   const [current, setCurrent] = useState(""), [password, setPassword] = useState(""), [confirmation, setConfirmation] = useState("");
   const [error, setError] = useState("");
+  const [hasPassword, setHasPassword] = useState(true);
   const posting = useRef(false), generation = useRef(0), controller = useRef<AbortController | null>(null);
   useEffect(() => {
     const load = () => {
@@ -48,14 +50,14 @@ export default function AccountSecurity() {
     <main className="mx-auto max-w-xl space-y-5 px-5 py-8"><h1 className="text-3xl font-semibold">Password and account security</h1>
       {done ? <div role="status" className="space-y-3 rounded-xl bg-emerald-50 p-5"><p>Your password was changed. You have been signed out on all devices. Connected AI apps and extensions were disconnected.</p><Link href="/" className="font-semibold underline">Sign in with your new password</Link></div>
         : loading ? <p role="status">Loading account…</p> : !session || session.account.isTrial ? <p>Sign in to a registered account to change your password. <Link href="/" className="underline">Return to sign in</Link></p>
-        : <><p>Changing your password signs you out on all devices and disconnects AI apps and extensions. Your shopping lists are kept.</p>
+        : <><SignInMethods key={session.account.id} accountId={session.account.id} onPasswordStatus={setHasPassword} />{hasPassword && <><p>Changing your password signs you out on all devices and disconnects AI apps and extensions. Your shopping lists are kept.</p>
           <form onSubmit={submit} className="space-y-4"><fieldset disabled={pending} className="space-y-4 disabled:opacity-60">
             <label className="block">Current password<input required type="password" autoComplete="current-password" maxLength={1024} value={current} onChange={e => setCurrent(e.target.value)} className={input} /></label>
             <label className="block">New password<input required type="password" autoComplete="new-password" minLength={8} maxLength={1024} aria-describedby="security-password-help" value={password} onChange={e => setPassword(e.target.value)} className={input} /></label>
             <label className="block">Confirm new password<input required type="password" autoComplete="new-password" maxLength={1024} value={confirmation} onChange={e => setConfirmation(e.target.value)} className={input} /></label>
             <p id="security-password-help" className="text-sm text-slate-600">Use at least 8 characters with a number, a lowercase letter, an uppercase letter and a special character.</p>
-          </fieldset><button disabled={pending} className="min-h-11 rounded-xl bg-primary-700 px-5 py-3 font-semibold text-white disabled:opacity-50">{pending ? "Changing password…" : "Change password and sign out"}</button></form></>}
+          </fieldset><button disabled={pending} className="min-h-11 rounded-xl bg-primary-700 px-5 py-3 font-semibold text-white disabled:opacity-50">{pending ? "Changing password…" : "Change password and sign out"}</button></form></>}</>}
       {!done && error && <p role="alert" className="text-amber-800">{error}</p>}
-      <p><Link href="/account/recovery" className="underline">Forgot your current password?</Link></p><p><Link href="/settings" className="underline">Back to settings</Link></p>
+      {hasPassword && <p><Link href="/account/recovery" className="underline">Forgot your current password?</Link></p>}<p><Link href="/settings" className="underline">Back to settings</Link></p>
     </main></div>;
 }
