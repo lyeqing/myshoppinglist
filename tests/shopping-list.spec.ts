@@ -121,7 +121,7 @@ test("root explains current extension access without developer machine paths", a
 }) => {
   await page.goto("/");
   await page
-    .getByRole("link", { name: "Add Chrome extension", exact: true })
+    .getByRole("link", { name: "Optional Chrome extension", exact: true })
     .click();
   await expect(page).toHaveURL(/\/extension$/);
   await expect(
@@ -1467,13 +1467,6 @@ test("editing gateway allows full-length notes and rejects unsafe delete and edi
   expect(calls).toBe(before);
 });
 
-for (const [code, explanation] of [
-  ["retailer_access_restricted", "The retailer blocked this check."],
-  ["read_timeout", "The retailer took too long to respond."],
-  ["search_read_failed", "We couldn’t finish this retailer’s check."],
-]) {
-}
-
 test("comparison rules preserve freshness boundaries, ties and separate price coverage", () => {
   const now = Date.parse("2026-09-20T00:00:00Z");
   const checked = (hours: number) =>
@@ -1738,7 +1731,8 @@ test("extension guidance replaces URL submission and collection activity on desk
       collection.push(request.method() + " " + request.url());
   });
   await start(page);
-  await expect(page.getByRole("heading", { name: "Add products with the Chrome extension" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Add products your way" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Research or add an item" })).toHaveAttribute("href", "/research");
   await expect(page.getByRole("link", { name: "Extension setup and instructions" })).toHaveAttribute("href", "/extension");
   await expect(page.getByLabel("Product URL")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Add product", exact: true })).toHaveCount(0);

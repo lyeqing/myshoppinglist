@@ -54,7 +54,7 @@ npm run test:e2e
 Remove-Item Env:PLAYWRIGHT_CHANNEL
 ```
 
-Playwright runs an isolated frontend on `127.0.0.1:3002` and a fake upstream on `127.0.0.1:5499`. Tests exercise the real gateway and UI without database or retailer requests. Coverage includes desktop/mobile layouts, HttpOnly sessions, submission/completion, refresh recovery, pagination, concurrent imports, expiry, validation, rate-limit feedback, polling retries, navigation cancellation, and gateway rejection. Screenshots and failure traces are saved in ignored output directories.
+Playwright runs an isolated frontend on `127.0.0.1:3001` and a fake upstream on `127.0.0.1:5499`. Tests exercise the real gateway and UI without database or retailer requests. Coverage includes desktop/mobile layouts, HttpOnly sessions, submission/completion, refresh recovery, pagination, concurrent imports, expiry, validation, rate-limit feedback, polling retries, navigation cancellation, and gateway rejection. Screenshots and failure traces are saved in ignored output directories. The separate `playwright.research.config.ts` runs the real research journey against an explicitly disposable API/database; see the backend research runbook before enabling it.
 
 `next dev` may generate `AGENTS.md` and `CLAUDE.md` with standard Next.js documentation guidance. `next-env.d.ts` and TypeScript build information are generated too.
 

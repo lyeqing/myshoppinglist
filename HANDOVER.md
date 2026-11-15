@@ -1,5 +1,7 @@
 # MyShoppingList frontend and extensions handover
 
+Current direction (14 November 2026): `/research` supports customer-initiated AI research, private candidate review and manual items without an extension. Reported AI prices remain unverified and outside basket totals. Keep the customer extension as an optional fallback. The backend `docs/AI_CONNECTIONS.md` owns current contracts. Older shared-polling, extension-only and future-feature statements below are historical; verify against current source before acting on them.
+
 Updated 17 October 2026 (Australia/Adelaide). Also read [backend handover](../myshoppinglist-api/HANDOVER.md), which covers processing, database, business rules and detailed status. These files are continuation context, not permission to start new edits.
 
 ## User's working rules

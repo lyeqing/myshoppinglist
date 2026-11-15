@@ -53,6 +53,9 @@ async function forward(
   const billing = get && (route === "billing" || route === "admin/billing") || request.method === "POST" && (route === "billing/checkout" || route === "billing/portal");
   const oauth = request.method === "POST" && (route === "ai/oauth/preview" || route === "ai/oauth/authorize");
   const connections = (get && (route === "ai/connections" || route === "ai/connection-info")) || (request.method === "DELETE" && /^ai\/connections\/[a-fA-F0-9-]{36}$/.test(route));
+  const research = get && /^(?:research(?:\/[a-fA-F0-9-]{36}|\/instructions|\/refresh\/[1-9]\d{0,18})?)$/.test(route)
+    || request.method === "POST" && /^(?:research(?:\/select|\/generic\/[1-9]\d{0,18})?)$/.test(route)
+    || request.method === "PUT" && /^research\/issues\/[a-fA-F0-9-]{36}$/.test(route);
   const discovery =
     /^shopping-lists\/[1-9]\d{0,18}(?:\/items\/[1-9]\d{0,18})?\/(?:pack-discovery|brand-discovery)$/.test(
       route,
@@ -63,7 +66,7 @@ async function forward(
   const savedProductAdd = request.method === "POST" && /^shopping-lists\/[1-9]\d{0,18}\/products\/[1-9]\d{0,18}$/.test(route);
   const substitution = request.method === "PUT" && /^shopping-lists\/[1-9]\d{0,18}\/items\/[1-9]\d{0,18}\/substitutions\/[1-9]\d{0,18}$/.test(route);
   const allowed =
-    credentials || billing || currentList || extensionDevices || operations || feedback || screenshot || analytics || oauth || connections ||
+    research || credentials || billing || currentList || extensionDevices || operations || feedback || screenshot || analytics || oauth || connections ||
     substitution ||
     productLibrary || productPreferences || productPreferenceWrite || savedProductAdd ||
     branchWrite ||
@@ -124,6 +127,13 @@ async function forward(
     )
       return reply(403, "The request failed browser request protection.");
     const target = new URL(`/api/${route}`, upstream);
+    if (research && get) {
+      for (const [key, value] of request.nextUrl.searchParams) {
+        if (!route.startsWith("research/refresh/") || key !== "pageSize" || request.nextUrl.searchParams.getAll(key).length !== 1
+          || !/^(?:[1-9]|[1-4]\d|50)$/.test(value)) return reply(400, "Invalid research filters.");
+        target.searchParams.set(key, value);
+      }
+    }
     if (get && route === "admin/operations/feedback") {
       const status = request.nextUrl.searchParams.get("status");
       if (status && !["new", "triaged", "planned", "resolved", "closed"].includes(status)) return reply(400, "Invalid feedback status.");
@@ -201,6 +211,11 @@ async function forward(
       Accept: "application/json",
       "X-MyShoppingList-Request": "1",
     });
+    if (research && request.headers.has("X-MyShoppingList-Account")) {
+      const expectedAccount = request.headers.get("X-MyShoppingList-Account")!;
+      if (!/^[1-9]\d{0,18}$/.test(expectedAccount)) return reply(400, "Invalid account context.");
+      headers.set("X-MyShoppingList-Account", expectedAccount);
+    }
     const timezone = request.headers.get("X-Client-Timezone");
     if (timezone && timezone.length <= 100)
       headers.set("X-Client-Timezone", timezone);
@@ -210,7 +225,7 @@ async function forward(
     let body: string | undefined;
     if (!get) {
       if (
-        (account || oauth || currentList || feedback || operations || analytics ||
+        (research || account || oauth || currentList || feedback || operations || analytics ||
           productPreferenceWrite || savedProductAdd ||
           preferences ||
           alternativeReview ||
@@ -235,7 +250,7 @@ async function forward(
           size += part.value.length;
           if (
             size >
-            (feedback ? 750000 : operations ? 10000 : edit
+            (research && route === "research" ? 65536 : feedback ? 750000 : operations ? 10000 : edit
               ? 32768
               : alternativeReview || branchWrite || account || credentials || preferences
                 ? 16384

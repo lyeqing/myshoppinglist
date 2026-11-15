@@ -97,7 +97,7 @@ export function createPersonalComparisonController(browser, worker, { productUrl
             await check(queue.token, version);
             if (!job.pending) {
               try { job.pending = await read(queue, job, job.response.work, version); }
-              catch (error) {
+              catch {
                 await check(queue.token, version);
                 job.pending = { stepToken: job.response.work.stepToken, url: job.response.work.url, ok: false, errorCode: "page_unavailable" };
               }

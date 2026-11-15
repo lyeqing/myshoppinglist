@@ -320,8 +320,9 @@ export default function ShoppingListApp() {
         className="mx-auto max-w-7xl px-5 pb-16 pt-10 sm:px-8 sm:pt-14"
       >
         <div className="mb-6">
+          <Link href="/research" className={primary + " mr-3"}>Research products</Link>
           <Link href="/extension" className={secondary}>
-            Add Chrome extension
+            Optional Chrome extension
           </Link>
         </div>
 
@@ -601,7 +602,9 @@ export default function ShoppingListApp() {
           <div className="grid items-start gap-7 lg:grid-cols-[340px_1fr]">
             <aside className="space-y-5 lg:sticky lg:top-6">
               <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" aria-labelledby="add-products">
-                <h2 id="add-products" className="text-lg font-semibold">Add products with the Chrome extension</h2>
+                <h2 id="add-products" className="text-lg font-semibold">Add products your way</h2>
+                <p className="mt-3 text-sm leading-6 text-slate-600">Add an item without a price, or use your connected AI app to research and choose products. No extension is required for this workflow.</p>
+                <Link href="/research" className={primary + " mt-4"}>Research or add an item</Link>
                 <p className="mt-3 text-sm leading-6 text-slate-600">
                   On your computer, open a Coles, Woolworths or ALDI product page.
                   Click MyShoppingList, choose your list and quantity, then select Add to list.
@@ -610,8 +613,7 @@ export default function ShoppingListApp() {
                 </p>
                 <Link href="/extension" className={primary + " mt-5"}>Extension setup and instructions</Link>
                 <p className="mt-3 text-xs leading-5 text-slate-500">
-                  On mobile, you can manage your saved lists here. Collect new
-                  products using Chrome on your computer.
+                  AI research and manual items work on mobile and desktop. Browser capture remains an optional desktop fallback.
                 </p>
               </section>
               <div className="rounded-2xl border border-slate-200 p-5">

@@ -8,6 +8,8 @@ import type { Session } from "@/lib/api-types";
 
 type Preview = { accountId: string; clientName: string; scopes: string[]; offlineAccess: boolean };
 export const scopeLabels: Record<string, string> = { "lists.read": "Read your shopping lists, items and saved prices", "products.read": "Read and search your saved products", "lists.write": "Create and edit your shopping lists", "extension.capture": "Request product captures and small retailer searches from your extension, with your approval" };
+scopeLabels["research.read"] = "Read your private research, review candidates and find prices needing research";
+scopeLabels["research.write"] = "Submit private research evidence and update research issues; does not add list items";
 
 export default function AiConsent({ requestUri, clientId }: { requestUri: string; clientId: string }) {
   const router = useRouter();
