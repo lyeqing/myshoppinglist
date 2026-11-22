@@ -136,48 +136,21 @@ test("cancelling the sign-in panel prevents a delayed provider redirect", async 
   ).toHaveCount(0);
 });
 
-test("provider start binds the visible trial and gives a useful failure", async ({
-  page,
-}) => {
-  await page.route("**/api/**", (route) => {
+test("provider start for signed-out visitors gives a useful failure", async ({ page }) => {
+  await page.route("**/api/**", route => {
     const path = new URL(route.request().url()).pathname;
-    if (path === "/api/auth/social/providers")
-      return route.fulfill({ json: providers });
+    if (path === "/api/auth/me") return route.fulfill({ status: 401, json: {} });
+    if (path === "/api/auth/social/providers") return route.fulfill({ json: providers });
     if (path === "/api/auth/social/start") {
-      expect(route.request().postDataJSON()).toMatchObject({
-        provider: "google",
-        purpose: "signin",
-        expectedAccountId: 7,
-      });
-      return route.fulfill({
-        status: 409,
-        json: { title: "Your trial changed. Start again." },
-      });
+      expect(route.request().postDataJSON()).toMatchObject({ provider: "google", purpose: "signin" });
+      expect(route.request().postDataJSON().expectedAccountId).toBeNull();
+      return route.fulfill({ status: 409, json: { title: "Sign-in could not be started. Please try again." } });
     }
-    if (path === "/api/auth/me")
-      return route.fulfill({
-        json: {
-          ...session,
-          account: {
-            ...session.account,
-            isTrial: true,
-            expiresDate: "2099-01-01T00:00:00Z",
-          },
-        },
-      });
-    if (path === "/api/shopping-lists") return route.fulfill({ json: [] });
-    if (path === "/api/shopping-lists/manage")
-      return route.fulfill({ json: { lists: [], limit: 2 } });
-    return route.fulfill({ json: { items: [], nextBeforeId: null } });
+    return route.fulfill({ json: [] });
   });
-  await page.goto("/");
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Continue with Google", exact: true })
-    .click();
-  await expect(
-    page.getByRole("alert").filter({ hasText: "Your trial changed" }),
-  ).toBeVisible();
+  await page.goto("/"); await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.getByRole("button", { name: "Continue with Google", exact: true }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "Sign-in could not be started" })).toBeVisible();
 });
 
 test("completion asks before leaving a trial separate and does not write automatically", async ({

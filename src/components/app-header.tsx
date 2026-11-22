@@ -13,12 +13,14 @@ type Props = {
   disabled?: boolean;
   onSignOut?: () => Promise<void>;
   onSignIn?: () => void;
+  onCreateAccount?: () => void;
   showSignIn?: boolean;
+  unavailable?: boolean;
 };
 
 const button = "inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary-600 disabled:opacity-50";
 
-export default function AppHeader({ session, active, loading = false, disabled = false, onSignOut, onSignIn, showSignIn = true }: Props) {
+export default function AppHeader({ session, active, loading = false, disabled = false, onSignOut, onSignIn, onCreateAccount, showSignIn = true, unavailable = false }: Props) {
   const [signingOut, setSigningOut] = useState(false);
   const [error, setError] = useState("");
   const pending = useRef(false);
@@ -57,11 +59,11 @@ export default function AppHeader({ session, active, loading = false, disabled =
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
           <Link href="/" className="shrink-0 text-sm font-semibold text-primary-700 sm:text-base">MyShoppingList</Link>
           <div className="flex max-w-full flex-wrap items-center justify-end gap-3">
-            {session && (
+            {session && !session.account.isTrial && (
               <>
-                <div role="group" aria-label={session.account.isTrial ? "Trial session" : `Signed in as ${name}`} title={session.account.isTrial ? "Trial session" : name} className="flex min-w-0 items-center gap-2">
-                  <span aria-hidden="true" className="hidden size-9 shrink-0 items-center justify-center rounded-full bg-primary-100 text-xs font-semibold text-primary-700 sm:flex">{session.account.isTrial ? "T" : initials}</span>
-                  <span className="max-w-32 truncate text-sm font-medium text-slate-700 sm:max-w-56">{session.account.isTrial ? "Trial session" : name}</span>
+                <div role="group" aria-label={`Signed in as ${name}`} title={name} className="flex min-w-0 items-center gap-2">
+                  <span aria-hidden="true" className="hidden size-9 shrink-0 items-center justify-center rounded-full bg-primary-100 text-xs font-semibold text-primary-700 sm:flex">{initials}</span>
+                  <span className="max-w-48 text-sm font-medium text-slate-700 sm:max-w-72"><span className="block text-xs text-slate-500">Signed in as</span><span className="block truncate">{name}</span></span>
                 </div>
                 <button type="button" className={button} disabled={disabled || signingOut} onClick={() => void signOut()}>
                   {signingOut ? "Signing out…" : "Sign out"}
@@ -69,11 +71,16 @@ export default function AppHeader({ session, active, loading = false, disabled =
               </>
             )}
             {showSignIn && (!session || session.account.isTrial) && !loading && (
-              onSignIn
+              <div role="group" aria-label="Account access" className="inline-flex shrink-0 items-center gap-2">
+              {onSignIn
                 ? <button type="button" className={button} disabled={disabled || signingOut} onClick={onSignIn}>Sign in</button>
-                : <Link href="/" className={button}>Sign in</Link>
+                : <Link href="/" className={button}>Sign in</Link>}
+              {onCreateAccount && <button type="button" disabled={disabled || signingOut} onClick={onCreateAccount} data-analytics-cta="signup"
+                className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-primary-700 px-3 py-2 text-sm font-semibold text-white hover:bg-primary-800 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary-600 disabled:opacity-50">Create an account</button>}
+              </div>
             )}
             {!session && loading && <span role="status" className="text-sm text-slate-500">Loading account…</span>}
+            {!session && !loading && <span role="status" className={onCreateAccount ? "sr-only" : "text-sm text-slate-500"}>{unavailable ? "Account status unavailable" : "Guest · Not signed in"}</span>}
           </div>
         </div>
         <MainNavigation session={session} active={active} className="mt-3" />

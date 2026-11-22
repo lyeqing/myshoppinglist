@@ -10,9 +10,9 @@ export default function MainNavigation({ session, active, className = "" }: {
 }) {
   const registered = !!session && !session.account.isTrial;
   const links = [
-    { section: "lists", href: "/", label: "My lists", visible: true },
-    { section: "in-store", href: "/in-store", label: "Shop in store", visible: true },
-    { section: "stores", href: "/settings", label: "Setting", visible: !!session },
+    { section: "lists", href: "/", label: "My lists", visible: registered },
+    { section: "in-store", href: "/in-store", label: "Shop in store", visible: registered },
+    { section: "stores", href: "/settings", label: "Setting", visible: registered },
     { section: "products", href: "/products/history", label: "Products", visible: registered },
     { section: "archives", href: "/history", label: "Archived lists", visible: registered && session.account.isPaid },
   ];

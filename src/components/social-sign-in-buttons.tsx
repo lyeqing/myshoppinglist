@@ -59,6 +59,15 @@ function ProviderMark({ provider }: { provider: string }) {
   return null;
 }
 
+function rememberAiConnection(signingIn: boolean) {
+  try {
+    const key = "myshoppinglist-pending-ai-connection";
+    if (signingIn && window.location.pathname === "/ai/connect")
+      sessionStorage.setItem(key, JSON.stringify({ path: window.location.pathname + window.location.search, expiresAt: Date.now() + 10 * 60000 }));
+    else sessionStorage.removeItem(key);
+  } catch { /* Sign-in still works when browser storage is unavailable. */ }
+}
+
 export default function SocialSignInButtons({
   purpose = "signin",
   accountId,
@@ -106,7 +115,7 @@ export default function SocialSignInButtons({
       .catch(() => {
         if (!controller.signal.aborted)
           setError(
-            "Social sign-in is unavailable. You can still use email/password or a trial.",
+            "Social sign-in is unavailable. You can still use email and password.",
           );
       })
       .finally(() => {
@@ -134,8 +143,10 @@ export default function SocialSignInButtons({
           }),
         },
       );
-      if (!controller.signal.aborted)
+      if (!controller.signal.aborted) {
+        rememberAiConnection(purpose === "signin");
         window.location.assign(response.authorizationUrl);
+      }
     } catch (e) {
       if (controller.signal.aborted) return;
       if (e instanceof ApiError && e.status === 401 && purpose === "signin")
@@ -162,7 +173,7 @@ export default function SocialSignInButtons({
       setExpired(false);
       setCleared(true);
       setError(
-        "Expired session cleared. Choose a provider to sign in or create a new account. An expired trial cannot be saved.",
+        "Expired session cleared. Choose a provider to sign in or create a new account. Sign in to an existing account to open its saved lists.",
       );
       window.dispatchEvent(new Event("myshoppinglist-session-changed"));
     } catch (e) {
@@ -209,8 +220,8 @@ export default function SocialSignInButtons({
         !available.some((p) => p.available) &&
         purpose === "signin" && (
           <p className="text-sm text-slate-600">
-            Social sign-in is not available yet. Email/password and the
-            three-hour trial are still available.
+            Social sign-in is not available yet. You can create a free account
+            or sign in using email and password.
           </p>
         )}
       {error && (

@@ -46,8 +46,8 @@ export default function ShoppingPreferences() {
         <Link href="/support" className="ml-5 inline-flex min-h-11 items-center font-semibold text-primary-700 underline">Help and private feedback</Link>
         <p className="mt-3 text-sm leading-6 text-slate-600">
           Choose your supermarkets for comparisons using saved price observations.
-          Use Refresh items on your list to update saved prices through your
-          Chrome extension. You can also save the branches you visit.
+          Use AI research to investigate prices that need checking.
+          You can also save the branches you visit.
         </p>
         {state.session?.account.isTrial && (
           <p className="mt-3 text-sm text-primary-700">
@@ -128,7 +128,7 @@ export default function ShoppingPreferences() {
                             id={`shop-capability-${shop.id}`}
                             className="mt-1 block text-xs text-slate-500"
                           >
-                            {shop.capabilityMessage ??
+                            {(shop.capabilityMessage && !/extension/i.test(shop.capabilityMessage) ? shop.capabilityMessage : null) ??
                               (shop.comparisonSupported
                                 ? "Product comparisons supported"
                                 : "Comparison not available yet. You can save this preference for later.")}
@@ -138,8 +138,8 @@ export default function ShoppingPreferences() {
                       {shop.code === "aldi" && !shop.comparisonSupported && (
                         <div className="ml-8 text-xs">
                           <p className="mt-1 text-slate-600">
-                            Use Refresh items with the extension enabled to update
-                            saved ALDI prices. Prices may vary by store.
+                            Use AI research to investigate ALDI prices. Reported prices
+                            remain unverified and may vary by store.
                           </p>
                           <a
                             href="https://www.aldi.com.au/"
@@ -181,7 +181,7 @@ export default function ShoppingPreferences() {
                     >
                       Automatic product searches are unavailable for your selected
                       stores.{" "}{hasAldiSelection
-                        ? "Saved ALDI prices from your extension can still be compared. Use Refresh items to update them."
+                        ? "Eligible saved ALDI observations can still be compared. Use AI research to investigate outdated prices."
                         : "Comparison prices are not available for these stores yet. You can keep these preferences for later, or choose a supported store."}
                     </p>
                   )}

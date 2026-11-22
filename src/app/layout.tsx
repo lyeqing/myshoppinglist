@@ -5,6 +5,7 @@ import AnalyticsPreferences from "@/components/analytics-preferences";
 import { Suspense } from "react";
 import OperationalDiagnostics from "@/components/operational-diagnostics";
 import SiteFooter from "@/components/site-footer";
+import AuthAvailabilityBoundary from "@/components/auth-availability-boundary";
 import { publicMetadata, publicOrigin } from "@/lib/seo";
 import { headers } from "next/headers";
 const origin = publicOrigin();
@@ -13,5 +14,5 @@ export const metadata: Metadata = { ...publicMetadata("MyShoppingList — Your p
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   // Nonces require request-time rendering, including the public pages.
   await headers();
-  return <html lang="en"><body><ProductLibraryProvider>{children}</ProductLibraryProvider><SiteFooter /><OperationalDiagnostics /><Suspense><AnalyticsPreferences /></Suspense></body></html>;
+  return <html lang="en"><body><AuthAvailabilityBoundary><ProductLibraryProvider>{children}</ProductLibraryProvider><SiteFooter /></AuthAvailabilityBoundary><OperationalDiagnostics /><Suspense><AnalyticsPreferences /></Suspense></body></html>;
 }

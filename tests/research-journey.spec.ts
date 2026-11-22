@@ -9,6 +9,105 @@ test.beforeAll(() => {
 });
 const headers = { "X-MyShoppingList-Request": "1" };
 
+test("registration, login and research import work through the UI with the real API", async ({ page, context }) => {
+  const email = `ui-journey-${randomUUID()}@example.test`;
+  const password = "Disposable-UI-Research9!";
+  const name = "UI research shopper";
+  await page.goto("/");
+  await expect(page.locator("header")).toContainText("Guest · Not signed in");
+  await page.getByRole("button", { name: "Create an account", exact: true }).click();
+  await page.getByLabel("Display name", { exact: true }).fill(name);
+  await page.getByLabel("Email", { exact: true }).fill(email);
+  await page.getByLabel("Password", { exact: true }).fill(password);
+  const registered = page.waitForResponse(response => response.url().endsWith("/api/auth/register") && response.request().method() === "POST");
+  await page.getByRole("button", { name: "Create account", exact: true }).click();
+  const registration = await registered;
+  expect(registration.ok(), await registration.text()).toBe(true);
+  const session = await registration.json();
+  await expect(page.getByRole("group", { name: `Signed in as ${name}`, exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.cookie)).not.toContain("myshoppinglist_session");
+  await page.reload();
+  await expect(page.getByRole("group", { name: `Signed in as ${name}`, exact: true })).toBeVisible();
+  await page.locator("header").getByRole("button", { name: "Sign out", exact: true }).click();
+  await expect(page.locator("header")).toContainText("Guest · Not signed in");
+  await page.locator("header").getByRole("button", { name: "Sign in", exact: true }).click();
+  await page.getByLabel("Email", { exact: true }).fill(email);
+  await page.getByLabel("Password", { exact: true }).fill("Incorrect-Password9!");
+  await page.getByRole("button", { name: "Sign in to my account", exact: true }).click();
+  await expect(page.locator("main").getByRole("alert")).toContainText("The email or password is incorrect.");
+  await page.getByLabel("Password", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "Sign in to my account", exact: true }).click();
+  await expect(page.getByRole("group", { name: `Signed in as ${name}`, exact: true })).toBeVisible();
+  const identity = await context.request.get("/api/auth/me");
+  expect(identity.ok()).toBe(true);
+  expect((await identity.json()).account.id).toBe(session.account.id);
+
+  await page.getByRole("link", { name: "Research products", exact: true }).first().click();
+  await expect(page.getByRole("heading", { name: "Research products", exact: true })).toBeVisible();
+  await page.getByLabel("Product or shopping request").fill("UI research fixture");
+  await page.getByLabel("Package quantity", { exact: true }).fill("3");
+  let submissions = 0;
+  page.on("request", request => {
+    if (new URL(request.url()).pathname === "/api/research" && request.method() === "POST") submissions++;
+  });
+  await page.getByRole("button", { name: "Prepare AI request", exact: true }).click();
+  await expect(page.getByLabel("Prepared research request")).toHaveValue(/UI research fixture/);
+  expect(submissions).toBe(0);
+  const instructions = await context.request.get("/api/research/instructions");
+  expect(instructions.ok()).toBe(true);
+  const workflow = await instructions.json();
+  const response = {
+    query: "UI research fixture", workflowVersion: workflow.version,
+    candidates: [{ key: "ui-fixture", retailer: "coles", url: "https://www.coles.com.au/product/kleenex-tissue-12345",
+      identity: { name: "Kleenex UI fixture 12 rolls", brand: "Kleenex", packQuantity: 12 },
+      evidence: "Synthetic UI fixture: 12 rolls, 180 sheets per roll, 3 ply. Not a live retailer price.",
+      observedAt: new Date(Date.now() - 60000).toISOString(), price: 10, currency: "AUD", priceScope: "Unknown", match: "uncertain",
+      tissue: { rolls: 12, sheetsPerRoll: 180, ply: 3 } }], issues: [],
+  };
+  await page.getByText("Import a response from an AI app that cannot submit").click();
+  await page.getByLabel("AI research response").fill(JSON.stringify(response));
+  await page.getByRole("button", { name: "Import for review", exact: true }).click();
+  await expect(page.locator("main").getByRole("status")).toContainText("Research imported.");
+  await expect(page.getByRole("heading", { name: "Kleenex UI fixture 12 rolls", exact: true })).toBeVisible();
+  await expect(page.getByText("AUD 10.00 reported, unverified", { exact: true })).toBeVisible();
+  const itemsUrl = `/api/shopping-lists/${session.shoppingListId}/items`;
+  const beforeSelection = await context.request.get(itemsUrl);
+  expect(beforeSelection.ok()).toBe(true);
+  expect((await beforeSelection.json()).items).toHaveLength(0);
+  await page.getByRole("button", { name: "Choose and add to list", exact: true }).click();
+  await expect(page.locator("main").getByRole("status")).toContainText("Your selected product was added");
+  const selected = await context.request.get(itemsUrl);
+  expect(selected.ok()).toBe(true);
+  const items = (await selected.json()).items;
+  expect(items).toHaveLength(1);
+  expect(items[0].quantity).toBe(3);
+  await page.getByRole("button", { name: "Choose and add to list", exact: true }).click();
+  await expect(page.locator("main").getByRole("status")).toContainText("This selection was already saved. Your list was kept unchanged.");
+  expect((await (await context.request.get(itemsUrl)).json()).items).toHaveLength(1);
+  const plan = await context.request.get(`/api/shopping-lists/${session.shoppingListId}/plan`);
+  expect(plan.ok()).toBe(true);
+  const totals = await plan.json();
+  expect(totals.lowest.pricedCount).toBe(0);
+  expect(totals.lowest.subtotal).toBe(0);
+  await page.goto("/");
+  const card = page.getByRole("region", { name: "Editable shopping list" }).getByRole("article");
+  await expect(card).toContainText("Kleenex UI fixture 12 rolls");
+  await expect(card.getByLabel("Item quantity", { exact: true })).toHaveText("3");
+  await page.reload();
+  await expect(card.getByLabel("Item quantity", { exact: true })).toHaveText("3");
+  const list = page.getByRole("region", { name: "Editable shopping list" });
+  await expect(list.getByRole("link", { name: "AI research", exact: true })).toHaveAttribute("href", "/research");
+  await expect(page.locator('a[href="/extension"]')).toHaveCount(0);
+  await list.getByText("Comparison options", { exact: true }).click();
+  const comparisons = list.getByRole("region", { name: "Comparison options", exact: true });
+  await expect(comparisons.getByRole("checkbox", { name: "Show different package sizes", exact: true })).toBeVisible();
+  await expect(comparisons.getByRole("link", { name: "AI research", exact: true })).toHaveAttribute("href", "/research");
+  await expect(comparisons).toContainText("Changing these options does not start research.");
+  await expect(page.locator("main")).not.toContainText(/Chrome extension/i);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  await page.screenshot({ path: test.info().outputPath("ui-account-and-research.png"), fullPage: true });
+});
+
 test("real website gateway, research review, customer selection and quantity work without an extension", async ({
   page,
   context,

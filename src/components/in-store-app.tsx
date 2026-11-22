@@ -129,6 +129,16 @@ export default function InStoreApp() {
     load,
     store,
   ]);
+  if (!state.session || state.session.account.isTrial) return <div className="min-h-screen bg-slate-50 text-slate-900">
+    <AppHeader session={null} active="in-store" loading={state.loading} onSignIn={() => setSigningIn(true)} />
+    <main className="mx-auto max-w-2xl px-5 py-10">
+      {state.loading ? <p role="status">Loading account…</p> : <>
+        <h1 className="mb-4 text-3xl font-semibold">Sign in to shop in store</h1>
+        <p className="mb-6">An account is required. <Link href="/" className="font-semibold underline">Create a free account</Link> or use Sign in above.</p>
+        {signingIn && <AccountForm mode="login" onBusy={state.setAuthBusy} onClose={() => setSigningIn(false)} onSuccess={state.accountReady} />}
+      </>}
+    </main>
+  </div>;
   const labels = [
     `Cheaper at ${selected?.name}`,
     `${selected?.name} price only`,
@@ -147,7 +157,6 @@ export default function InStoreApp() {
           {signingIn && (
             <AccountForm
               mode="login"
-              trial={state.session?.account.isTrial ?? false}
               onBusy={state.setAuthBusy}
               onClose={() => setSigningIn(false)}
               onSuccess={(session) => {

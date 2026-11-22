@@ -11,7 +11,7 @@
     "test:regression": "node --test extensions/coles-worker/tests/extraction.test.mjs extensions/coles-worker/tests/regression.test.mjs extensions/shopping-list/tests/extension.test.mjs extensions/shopping-list/tests/ai-bridge.test.mjs tests/seo.test.mjs tests/api-client-security.test.mjs"
   },
   "dependencies": {
-    "next": "16.4.3",
+    "next": "16.4.6",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "zustand": "5.0.15"
@@ -23,7 +23,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.4.3",
+    "eslint-config-next": "16.4.6",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

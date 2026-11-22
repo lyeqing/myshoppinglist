@@ -323,7 +323,7 @@ export default function ShoppingListItemCard({
       {row.personalComparison && (
         <section aria-label="Automatic retailer checks" className="mt-4 rounded-xl border border-primary-100 bg-primary-50 p-3 text-sm">
           <h3 className="font-semibold">Retailer checks</h3>
-          <p className="mt-1 text-slate-600">{row.personalComparison.status === "Checking" ? "Checking other retailers in your extension…" : row.personalComparison.status === "Completed" ? "Checks complete." : "Open the extension to resume, retry or stop checks."}</p>
+          <p className="mt-1 text-slate-600">{row.personalComparison.status === "Checking" ? "Retailer checks are in progress…" : row.personalComparison.status === "Completed" ? "Checks complete." : "These saved checks may be incomplete. Use AI research to investigate missing prices."}</p>
           {row.personalComparison.retailers.map(retailer => (
             <div key={retailer.code} className="mt-3">
               <p className="font-semibold">{retailer.name}</p>

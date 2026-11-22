@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import AppHeader from "./app-header";
+import GuestLanding from "./guest-landing";
 import { api, ApiError } from "@/lib/api-client";
 import {
   type Session,
@@ -54,8 +55,8 @@ export default function ShoppingListApp() {
   );
   const [authBusy, setAuthBusy] = useState(false);
   const authPending = useRef(false);
-  const trialSession = useRef(false);
   const [notice, setNotice] = useState("");
+  const accountTrigger = useRef<HTMLButtonElement | null>(null);
   const lifetime = useRef<AbortController | null>(null);
   const generation = useRef(0);
   useEffect(() => {
@@ -77,11 +78,6 @@ export default function ShoppingListApp() {
   const endSession = useCallback(
     (text: string) => {
       if (authPending.current) return;
-      if (
-        trialSession.current &&
-        text === "Your session has ended. Sign in again or start a new trial."
-      )
-        text = "Your trial has ended. Start a new trial to continue.";
       generation.current++;
       clearSession();
       setNotice(text);
@@ -106,7 +102,6 @@ export default function ShoppingListApp() {
           signal: controller.signal,
         });
         if (controller.signal.aborted) return;
-        trialSession.current = current.account.isTrial;
         setSession(current);
       } catch (error) {
         if (
@@ -131,7 +126,7 @@ export default function ShoppingListApp() {
         new Date(session!.sessionExpiresDate).getTime() - Date.now();
       if (delay <= 0)
         endSession(
-          "Your session has ended. Sign in again or start a new trial.",
+          "Your session has ended. Sign in again to continue.",
         );
       else timer = setTimeout(check, Math.min(delay, 2147483647));
     }
@@ -152,7 +147,6 @@ export default function ShoppingListApp() {
         current.account.id === session?.account.id &&
         current.shoppingListId === session.shoppingListId;
       generation.current++;
-      trialSession.current = current.account.isTrial;
       setSession(current);
       setAccountMode(null);
       setNotice(
@@ -272,25 +266,6 @@ export default function ShoppingListApp() {
     }
   }
 
-  async function startTrial() {
-    setBusy(true);
-    setNotice("");
-    try {
-      const current = await api<Session>("/auth/trial", {
-        method: "POST",
-        signal: lifetime.current?.signal,
-      });
-      if (lifetime.current?.signal.aborted) return;
-      generation.current++;
-      trialSession.current = current.account.isTrial;
-      setSession(current);
-      setAccountMode(null);
-    } catch (error) {
-      handleError(error, setNotice);
-    } finally {
-      setBusy(false);
-    }
-  }
   async function logout() {
     setBusy(true);
     try {
@@ -306,6 +281,33 @@ export default function ShoppingListApp() {
       setBusy(false);
     }
   }
+  function openAccount(mode: "register" | "login") {
+    accountTrigger.current = document.activeElement instanceof HTMLButtonElement ? document.activeElement : null;
+    setAccountMode(mode);
+  }
+  function closeAccount() {
+    setAccountMode(null);
+    accountTrigger.current?.focus();
+  }
+  if (!session) return <>
+    <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-lg focus:bg-white focus:p-3">Skip to content</a>
+    <AppHeader session={null} active="lists" loading={booting} disabled={busy || authBusy || !!restoreError}
+      onSignIn={() => openAccount("login")} onCreateAccount={() => openAccount("register")} unavailable={!!restoreError} />
+    <main id="main" className="mx-auto max-w-7xl px-5 pb-16 pt-10 sm:px-8 sm:pt-14">
+      <GuestLanding onCreateAccount={() => openAccount("register")} disabled={booting || busy || authBusy || !!restoreError}
+        feedback={<>
+          {booting && <p role="status" className="flex items-center gap-3 text-slate-500"><Spinner /> Restoring your shopping list…</p>}
+          {notice && <p role="status" className="rounded-xl border border-primary-300 bg-primary-50 px-4 py-3 text-primary-700">{notice}</p>}
+          {restoreError && <section className="rounded-2xl border border-amber-200 bg-white p-8">
+            <h2 className="text-lg font-semibold">We couldn’t restore your shopping list</h2>
+            <p role="alert" className="mt-2 text-amber-900">{restoreError}</p>
+            <button type="button" className={`${primary} mt-5`} onClick={() => { setRestoreError(""); setBooting(true); setRestoreAttempt(value => value + 1); }}>Retry restoring my list</button>
+          </section>}
+        </>}
+        accountForm={accountMode && !booting && !restoreError ? <AccountForm key={accountMode} mode={accountMode} onBusy={accountBusy} onSuccess={accountReady} onClose={closeAccount} /> : null}
+      />
+    </main>
+  </>;
   return (
     <>
       <a
@@ -314,17 +316,14 @@ export default function ShoppingListApp() {
       >
         Skip to content
       </a>
-      <AppHeader session={session} active="lists" loading={booting} disabled={busy || authBusy} onSignOut={logout} showSignIn={false} />
+      <AppHeader session={session} active="lists" loading={booting} disabled={busy || authBusy} onSignOut={logout} onSignIn={() => setAccountMode("login")} unavailable={!!restoreError} />
       <main
         id="main"
         className="mx-auto max-w-7xl px-5 pb-16 pt-10 sm:px-8 sm:pt-14"
       >
-        <div className="mb-6">
+        {session && !session.account.isTrial && <div className="mb-6">
           <Link href="/research" className={primary + " mr-3"}>Research products</Link>
-          <Link href="/extension" className={secondary}>
-            Optional Chrome extension
-          </Link>
-        </div>
+        </div>}
 
         {session && !session.account.isTrial && (
           <section
@@ -453,21 +452,17 @@ export default function ShoppingListApp() {
               Your list. <span className="text-primary-700">A clearer price.</span>
             </h1>
             <p className="mt-4 max-w-xl text-base leading-7 text-slate-500">
-              Save products with the Chrome extension. Keep observed prices
-              with your shopping list and manage your shop on any device.
+              Research products with your connected AI app, review its suggestions,
+              and choose what to add. Manage your shopping list on any device.
             </p>
           </div>
           {session && (
             <div className="max-w-full break-words rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
               <span className="font-semibold">
-                {session.account.isTrial
-                  ? "Your trial is active"
-                  : "Your list is saved"}
+                Your list is saved
               </span>
               <p className="mt-1 text-xs">
-                {session.account.isTrial
-                  ? `Expires ${new Date(session.sessionExpiresDate).toLocaleTimeString("en-AU", { hour: "numeric", minute: "2-digit" })} · No account needed`
-                  : "Your shopping list is saved to your account."}
+                Your shopping list is saved to your account.
               </p>
             </div>
           )}
@@ -480,30 +475,10 @@ export default function ShoppingListApp() {
             {notice}
           </p>
         )}
-        {!booting && !restoreError && (!session || session.account.isTrial) && (
-          <div className="mb-5 flex flex-wrap gap-3">
-            <button
-              disabled={busy || authBusy}
-              onClick={() => setAccountMode("register")}
-              data-analytics-cta="signup"
-              className={secondary}
-            >
-              {session ? "Keep my list" : "Create an account"}
-            </button>
-            <button
-              disabled={busy || authBusy}
-              onClick={() => setAccountMode("login")}
-              className={secondary}
-            >
-              Sign in
-            </button>
-          </div>
-        )}
         {accountMode && (
           <AccountForm
             key={accountMode}
             mode={accountMode}
-            trial={!!session?.account.isTrial}
             accountId={session?.account.id}
             onBusy={accountBusy}
             onSuccess={accountReady}
@@ -536,85 +511,15 @@ export default function ShoppingListApp() {
               Retry restoring my list
             </button>
           </section>
-        ) : !session ? (
-          <section className="grid overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm md:grid-cols-2">
-            <div className="p-7 sm:p-10">
-              <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">
-                FREE 3-HOUR TRIAL
-              </span>
-              <h2 className="mt-6 text-3xl font-semibold tracking-tight">
-                A small step before
-                <br />
-                your next shop.
-              </h2>
-              <p className="mt-4 max-w-md leading-7 text-slate-500">
-                Try a temporary shopping list. No email, password, or payment
-                details. Your list expires after three hours.
-              </p>
-              <button
-                onClick={startTrial}
-                data-analytics-cta="trial"
-                disabled={busy || authBusy}
-                className={`${primary} mt-7`}
-              >
-                {busy && <Spinner />}
-                {busy ? "Starting your trial…" : "Start my shopping list"}
-                <span aria-hidden="true">→</span>
-              </button>
-              <p className="mt-4 text-xs text-slate-400">
-                Collect Coles, Woolworths and ALDI products with the extension.
-              </p>
-            </div>
-            <div className="border-t border-slate-100 bg-primary-50/60 p-7 sm:p-10 md:border-l md:border-t-0">
-              <p className="text-xs font-semibold tracking-widest text-slate-500">
-                THREE SIMPLE STEPS
-              </p>
-              <ol className="mt-7 space-y-7">
-                {[
-                  [
-                    "Open a product page",
-                    "Visit Coles, Woolworths or ALDI in Chrome on your computer.",
-                  ],
-                  [
-                    "Review and save",
-                    "Use the extension to read the product, choose your list and confirm.",
-                  ],
-                  [
-                    "Manage your shopping",
-                    "View your observations and edit your list on desktop or mobile.",
-                  ],
-                ].map(([title, detail], i) => (
-                  <li key={title} className="flex gap-4">
-                    <span className="flex size-9 shrink-0 items-center justify-center rounded-full border border-primary-300 bg-white text-sm font-semibold text-primary-700">
-                      {i + 1}
-                    </span>
-                    <div>
-                      <h3 className="font-semibold">{title}</h3>
-                      <p className="mt-1 text-sm leading-6 text-slate-500">
-                        {detail}
-                      </p>
-                    </div>
-                  </li>
-                ))}
-              </ol>
-            </div>
-          </section>
         ) : (
           <div className="grid items-start gap-7 lg:grid-cols-[340px_1fr]">
             <aside className="space-y-5 lg:sticky lg:top-6">
               <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm" aria-labelledby="add-products">
                 <h2 id="add-products" className="text-lg font-semibold">Add products your way</h2>
-                <p className="mt-3 text-sm leading-6 text-slate-600">Add an item without a price, or use your connected AI app to research and choose products. No extension is required for this workflow.</p>
+                <p className="mt-3 text-sm leading-6 text-slate-600">Add an item without a price, or use your connected AI app to research and choose products.</p>
                 <Link href="/research" className={primary + " mt-4"}>Research or add an item</Link>
-                <p className="mt-3 text-sm leading-6 text-slate-600">
-                  On your computer, open a Coles, Woolworths or ALDI product page.
-                  Click MyShoppingList, choose your list and quantity, then select Add to list.
-                  Choose Read product if you want to review first. Coles, Woolworths and ALDI additions
-                  automatically check the other two retailers for exact matches and alternatives.
-                </p>
-                <Link href="/extension" className={primary + " mt-5"}>Extension setup and instructions</Link>
                 <p className="mt-3 text-xs leading-5 text-slate-500">
-                  AI research and manual items work on mobile and desktop. Browser capture remains an optional desktop fallback.
+                  AI research and manual items work on mobile and desktop. Opening an AI app does not run research automatically.
                 </p>
               </section>
               <div className="rounded-2xl border border-slate-200 p-5">
@@ -649,14 +554,14 @@ export default function ShoppingListApp() {
             <span className="font-semibold text-slate-700">
               Coles · Woolworths · ALDI{" "}
               <span className="ml-1 rounded-full bg-emerald-50 px-2 py-1 text-xs text-emerald-700">
-                Extension
+                AI research
               </span>
             </span>
             <span className="text-slate-400">
-              Read and save products you choose
+              Review suggestions and choose what to save
             </span>
             <span className="text-slate-400">
-              IGA · Foodland <span className="ml-1 text-xs">Coming later</span>
+              Research coverage depends on your AI app and available evidence
             </span>
           </div>
           <p className="mt-4 text-xs leading-6 text-slate-400">

@@ -6,7 +6,7 @@ import { createServer } from "node:net";
 import { join, resolve } from "node:path";
 
 const frontend = "http://localhost:3001";
-const apiUrl = "http://localhost:5392";
+const apiUrl = process.env.MYSHOPPINGLIST_TEST_API_URL || "http://localhost:5392";
 const password = "Disposable-AI-Journey9!";
 function sql(input: string) {
   return execFileSync(process.env.PSQL_PATH || "psql", ["-X", "-w", "-qAt", "-v", "ON_ERROR_STOP=1"], { input, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"], timeout: 30000 }).trim();
@@ -21,7 +21,9 @@ test("real consent, account-switch protection, shared current list and mobile re
   if (!process.env.MYSHOPPINGLIST_TEST_CONNECTION || !process.env.PGDATABASE || !process.env.PGPASSWORD)
     throw new Error("Set an explicitly isolated PostgreSQL test connection and matching PG variables.");
   const probe = createServer();
-  try { await new Promise<void>((accept, reject) => { probe.once("error", reject); probe.listen(5392, accept); }); }
+  const apiAddress = new URL(apiUrl);
+  if (!["localhost", "127.0.0.1"].includes(apiAddress.hostname) || apiAddress.protocol !== "http:") throw new Error("Use a loopback test API.");
+  try { await new Promise<void>((accept, reject) => { probe.once("error", reject); probe.listen(Number(apiAddress.port), accept); }); }
   finally { if (probe.listening) await new Promise<void>(done => probe.close(() => done())); }
   const schema = "codex_ai_" + randomUUID().replaceAll("-", "");
   const apiRoot = resolve(process.env.MYSHOPPINGLIST_API_PROJECT || "../myshoppinglist-api");
@@ -37,7 +39,7 @@ test("real consent, account-switch protection, shared current list and mobile re
       AiIntegration__Clients__0__ClientId: "browser-test-ai", AiIntegration__Clients__0__DisplayName: "Journey AI",
       AiIntegration__Clients__0__RedirectUris__0: frontend + "/oauth-test-callback" };
     execFileSync("dotnet", ["ef", "database", "update", "--no-build"], { cwd: apiRoot, env, stdio: ["ignore", "pipe", "pipe"], timeout: 60000 });
-    api = spawn("dotnet", [join(apiRoot, "bin/Debug/net10.0/myshoppinglist-api.dll"), "--urls", apiUrl], { cwd: apiRoot, env, windowsHide: true, stdio: "ignore" });
+    api = spawn("dotnet", [process.env.MYSHOPPINGLIST_TEST_API_DLL || join(apiRoot, "bin/Debug/net10.0/myshoppinglist-api.dll"), "--urls", apiUrl], { cwd: apiRoot, env, windowsHide: true, stdio: "ignore" });
     await expect.poll(async () => {
       if (api?.exitCode !== null) throw new Error("Owned API exited before becoming ready.");
       try { return (await fetch(apiUrl, { signal: AbortSignal.timeout(1000) })).status; } catch { return 0; }
@@ -50,8 +52,8 @@ test("real consent, account-switch protection, shared current list and mobile re
     await page.getByRole("button", { name: "Create account", exact: true }).click();
     await expect(page.getByRole("group", { name: "Signed in as AI Shopper A" })).toBeVisible();
     const first = await (await context.request.get(frontend + "/api/auth/me")).json();
+    expect(first.account.isTrial).toBe(false); expect(first.account.isPaid).toBe(false);
     const headers = { "X-MyShoppingList-Request": "1" };
-    sql(`UPDATE "${schema}"."UserAccounts" SET "IsPaid"=true WHERE "Id"=${Number(first.account.id)};`);
     const created = await context.request.post(frontend + "/api/shopping-lists", { headers, data: { name: "Shared current list" } });
     expect(created.ok()).toBe(true);
     await page.goto("/ai/connections");
@@ -113,6 +115,8 @@ test("real consent, account-switch protection, shared current list and mobile re
       return message.result.structuredContent;
     }
     const createInput = { requestId: randomUUID(), name: "AI household list" };
+    // The connection above uses a free account. This later third-list test needs the existing paid list limit.
+    sql(`SET search_path TO "${schema}"; UPDATE "UserAccounts" SET "IsPaid"=true WHERE "Id"=${Number(first.account.id)};`);
     const createdByAi = await tool("create_list", createInput);
     expect((await tool("create_list", createInput)).replayed).toBe(true);
     await tool("set_current_list", { requestId: randomUUID(), listId: createdByAi.listId, expectedSelectionVersion: String(selected.selectionVersion) });

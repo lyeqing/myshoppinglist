@@ -69,6 +69,7 @@ for (const path of paths) {
     await expect(header.getByRole("button", { name: "Sign out", exact: true })).toHaveCount(0);
     if (path === "/" || path === "/in-store") {
       await expect(page.getByRole("button", { name: "Sign in", exact: true })).toBeVisible();
+      if (path === "/") await expect(header.getByText("Guest · Not signed in", { exact: true })).toBeVisible();
     } else {
       await expect(header.getByRole("link", { name: "Sign in", exact: true })).toBeVisible();
     }

@@ -10,7 +10,7 @@ import {
   type ShoppingListPlan,
 } from "@/lib/api-types";
 import ComparisonStoreContextPanel from "./comparison-store-context";
-import ExtensionRefreshControl from "./extension-refresh-control";
+import Link from "next/link";
 import ComparisonPreferences from "./comparison-preferences";
 import ShoppingListItemCard from "./shopping-list-item-card";
 import PackDiscoveryControls from "./pack-discovery-controls";
@@ -205,9 +205,8 @@ export default function ShoppingListItems({
           )}
         </div>
         <div className="flex flex-wrap gap-4">
-          <ExtensionRefreshControl key={`${store.getState().session?.account.id}-${listId}`}
-            accountId={store.getState().session?.account.id} listId={listId}
-            disabled={loading || saving} onReload={load} />
+          <Link href="/research" className="inline-flex min-h-11 items-center font-semibold text-primary-700 underline">Research products</Link>
+          <button type="button" disabled={loading || saving} onClick={() => void load().catch(() => {})} className="min-h-11 font-semibold text-primary-700 underline disabled:opacity-50">Reload list</button>
         </div>
       </div>
       {plan?.storeContext && (
@@ -262,7 +261,7 @@ export default function ShoppingListItems({
       )}
       {!loading && plan?.items.length === 0 && (
         <p className="rounded-xl border border-dashed border-slate-300 p-5 text-sm text-slate-500">
-          Products you save with the Chrome extension will appear here. Use Refresh items after saving.
+          Research products with your connected AI app, review the suggestions and choose what to save. You can also add an item without a price.
         </p>
       )}
     </section>

@@ -284,7 +284,7 @@ export default function ResearchWorkspace() {
         <h1 className="text-3xl font-semibold">Research products</h1>
         <p className="text-slate-600">
           Use your own AI app to find products, then review and save your
-          choice. The Chrome extension is optional. AI access and web research
+          choice. AI access and web research
           depend on your plan and the retailer.
         </p>
         <p>

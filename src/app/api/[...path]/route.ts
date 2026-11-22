@@ -103,7 +103,7 @@ async function forward(
       : edit ||
         remove ||
         (request.method === "POST" &&
-          /^(auth\/(trial|logout|register|login|reset-expired)|shopping-lists\/[1-9]\d{0,18}\/(products\/url|refresh-prices))$/.test(
+          /^(auth\/(logout|register|login|reset-expired)|shopping-lists\/[1-9]\d{0,18}\/(products\/url|refresh-prices))$/.test(
             route,
           )));
   if (!allowed) return reply(404, "This route is unavailable.");

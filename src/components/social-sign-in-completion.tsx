@@ -11,6 +11,7 @@ export default function SocialSignInCompletion() {
     [done, setDone] = useState("");
   const [trialSwitch, setTrialSwitch] = useState(false),
     [verification, setVerification] = useState("");
+  const [aiReturn, setAiReturn] = useState<string | null>(null);
   const [session, setSession] = useState<Session | null>(null),
     [password, setPassword] = useState(""),
     [confirmation, setConfirmation] = useState("");
@@ -110,6 +111,16 @@ export default function SocialSignInCompletion() {
         setTrialSwitch(true);
         return;
       }
+      try {
+        const key = "myshoppinglist-pending-ai-connection";
+        const pending = JSON.parse(sessionStorage.getItem(key) || "null");
+        if (pending && typeof pending.path === "string" && pending.path.length <= 4096 && pending.expiresAt > Date.now()) {
+          const target = new URL(pending.path, window.location.origin);
+          if (target.origin === window.location.origin && target.pathname === "/ai/connect" && target.searchParams.has("request_uri") && target.searchParams.has("client_id"))
+            setAiReturn(target.pathname + target.search);
+        }
+        sessionStorage.removeItem(key);
+      } catch { /* An unavailable or invalid return path never blocks sign-in. */ }
       setDone(
         result.outcome === "connected"
           ? "Provider connected to your existing account."
@@ -272,8 +283,8 @@ export default function SocialSignInCompletion() {
         </Link>
       </p>
       <p>
-        <Link href="/" className="underline">
-          {trialSwitch && !done ? "Return to my trial" : "Open MyShoppingList"}
+        <Link href={done && aiReturn ? aiReturn : "/"} className="underline">
+          {done && aiReturn ? "Continue to AI permission review" : trialSwitch && !done ? "Return to my trial" : "Open MyShoppingList"}
         </Link>
       </p>
     </main>

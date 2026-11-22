@@ -61,8 +61,9 @@ export default function AnalyticsPreferences() {
     setPreference(value); setEditing(false);
     if (!allowed) { sessionStorage.removeItem("myshoppinglist-analytics-session"); sessionStorage.removeItem("myshoppinglist-analytics-source"); await forget(previous?.visitorId); }
   }
-  if (!ready) return null;
-  return <aside aria-label="Analytics privacy" className="border-t border-slate-200 bg-white px-5 py-4 text-sm text-slate-600"><div className="mx-auto max-w-5xl">
+  if (!ready || pathname !== "/privacy") return null;
+  return <aside id="analytics-preferences" aria-label="Analytics privacy" className="mx-auto max-w-5xl px-5 py-6 text-sm text-slate-600">
+    <h2 className="mb-3 text-xl font-semibold text-slate-900">Analytics preferences</h2>
     {!preference || editing ? <><p>Optional analytics helps us understand visits and signup. We record fixed page and action names, random visitor/session identifiers and a limited campaign source; no list contents, product URLs or unrelated browsing. While signed in, consented events may be associated with your account for activation measurements. Raw events expire after 30 days and anonymous daily totals after 12 months.</p><div className="mt-3 flex flex-wrap gap-5"><button onClick={() => void choose(false)} className="min-h-11 rounded-lg border px-4 font-semibold">Decline analytics</button><button onClick={() => void choose(true)} className="min-h-11 rounded-lg border px-4 font-semibold">Allow optional analytics</button></div></> : <button onClick={() => setEditing(true)} className="min-h-11 underline">Analytics preferences · {preference.allowed ? "allowed" : "declined"}</button>}
-  </div></aside>;
+  </aside>;
 }

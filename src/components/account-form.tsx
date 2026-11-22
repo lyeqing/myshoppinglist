@@ -5,8 +5,8 @@ import type { Session } from "@/lib/api-types";
 import Link from "next/link";
 import SocialSignInButtons from "./social-sign-in-buttons";
 
-export default function AccountForm({ mode, trial, accountId, onSuccess, onBusy, onClose }: {
-  mode: "register" | "login"; trial: boolean; accountId?: number; onSuccess: (session: Session) => void;
+export default function AccountForm({ mode, accountId, onSuccess, onBusy, onClose }: {
+  mode: "register" | "login"; accountId?: number; onSuccess: (session: Session) => void;
   onBusy: (busy: boolean) => void; onClose: () => void;
 }) {
   const [email, setEmail] = useState(""); const [password, setPassword] = useState("");
@@ -28,7 +28,11 @@ export default function AccountForm({ mode, trial, accountId, onSuccess, onBusy,
         body: JSON.stringify(register ? { email: email.trim(), password, displayName: name.trim() } : { email: email.trim(), password }) });
       if (!request.signal.aborted) { setPassword(""); if (register) window.dispatchEvent(new Event("myshoppinglist-signup-completed")); onSuccess(session); }
     } catch (e) {
-      if (!request.signal.aborted) { setError(e instanceof Error ? e.message : "Please try again."); if (register && e instanceof ApiError && e.status === 401) setExpired(true); }
+      if (!request.signal.aborted) {
+        if (e instanceof ApiError && (e.status === 0 || e.status >= 500)) setPassword("");
+        setError(e instanceof Error ? e.message : "Please try again.");
+        if (register && e instanceof ApiError && e.status === 401) setExpired(true);
+      }
     } finally { posting.current = false; if (!request.signal.aborted) { setPending(false); onBusy(false); } }
   }
   async function resetExpired() {
@@ -42,8 +46,8 @@ export default function AccountForm({ mode, trial, accountId, onSuccess, onBusy,
   }
   const input = "mt-2 w-full rounded-xl border border-slate-300 px-3 py-3 text-sm";
   return <section aria-labelledby="account-title" className="mb-7 rounded-2xl border border-primary-300 bg-white p-6 shadow-sm sm:p-8">
-    <div className="flex items-start justify-between gap-4"><div><h2 id="account-title" className="text-xl font-semibold">{register ? trial ? "Keep my list" : "Create an account" : "Sign in"}</h2>
-      <p className="mt-2 max-w-xl text-sm leading-6 text-slate-500">{register ? trial ? "Create an account before your trial ends to keep your list and saved edits." : "Create your account and start a permanent shopping list." : trial ? "Sign in to open your existing account. This trial list will not be merged, and unsaved edits will be discarded." : "Welcome back. Sign in to open your saved shopping list."}</p></div>
+    <div className="flex items-start justify-between gap-4"><div><h2 id="account-title" className="text-xl font-semibold">{register ? "Create an account" : "Sign in"}</h2>
+      <p className="mt-2 max-w-xl text-sm leading-6 text-slate-500">{register ? "Create a free account to save your shopping lists and connect your AI app. No payment details needed." : "Welcome back. Sign in to open your saved shopping list."}</p></div>
       <button type="button" disabled={pending} onClick={onClose} className="text-sm font-semibold text-slate-600">Cancel</button></div>
     <div className="mt-5 max-w-md"><SocialSignInButtons key={accountId ?? "new"} accountId={accountId} disabled={pending || expired} /></div>
     <p className="mt-5 text-sm font-medium text-slate-600">Or continue with email and password</p>
@@ -55,7 +59,7 @@ export default function AccountForm({ mode, trial, accountId, onSuccess, onBusy,
         {register && <p id="password-help" className="text-xs text-slate-500">Use at least 8 characters, including a number (0–9), a lowercase letter (a–z), an uppercase letter (A–Z), and a special character such as !, @ or #. Spaces do not count as special characters.</p>}
       </fieldset>
       {error && <p role="alert" className="text-sm text-amber-800">{error}</p>}
-      {expired && <div className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900"><p>An expired trial cannot be recovered. You can explicitly clear its session and create a new, empty list.</p><button type="button" disabled={pending} onClick={resetExpired} className="mt-2 font-semibold underline">Clear expired session for a new account</button></div>}
+      {expired && <div className="rounded-xl bg-amber-50 p-3 text-sm text-amber-900"><p>Your saved session is no longer valid. Clear it before creating a new account, or sign in to your existing account.</p><button type="button" disabled={pending} onClick={resetExpired} className="mt-2 font-semibold underline">Clear expired session for a new account</button></div>}
       <button disabled={pending || expired} className="rounded-xl bg-primary-700 hover:bg-primary-800 active:bg-primary-800 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50">{pending ? "Please wait…" : register ? "Create account" : "Sign in to my account"}</button>
       {!register && <Link href="/account/recovery" className="inline-flex min-h-11 items-center px-3 text-sm font-semibold text-primary-700 underline">Forgot password?</Link>}
     </form>

@@ -21,6 +21,7 @@ for (const paid of [false, true]) {
               isPaid: paid,
             },
             shoppingListId: 1,
+            sessionExpiresDate: "2099-01-01T00:00:00Z",
           },
         });
       if (path.endsWith("/manage"))
@@ -105,7 +106,7 @@ import type {
 import { bestKnownPrices, freshness } from "../src/lib/price-comparison";
 import { createShoppingStore } from "../src/stores/shopping-store";
 
-test("root navigation offers in-store shopping before sign in", async ({
+test("root navigation hides shopping controls before sign in", async ({
   page,
 }) => {
   await page.goto("/");
@@ -113,22 +114,20 @@ test("root navigation offers in-store shopping before sign in", async ({
     page
       .getByRole("navigation", { name: "Main navigation" })
       .getByRole("link", { name: "Shop in store", exact: true }),
-  ).toHaveAttribute("href", "/in-store");
+  ).toHaveCount(0);
 });
 
-test("root explains current extension access without developer machine paths", async ({
-  page,
-}) => {
+test("signed-out root introduces the product without shopping or settings controls", async ({ page }) => {
   await page.goto("/");
-  await page
-    .getByRole("link", { name: "Optional Chrome extension", exact: true })
-    .click();
-  await expect(page).toHaveURL(/\/extension$/);
-  await expect(
-    page.getByRole("heading", { name: "Current installation options" }),
-  ).toBeVisible();
-  await expect(page.getByRole("main")).toContainText("not published in the Chrome Web Store yet");
-  await expect(page.getByRole("link", { name: "Ask about extension access" })).toHaveAttribute("href", "/support");
+  await expect(page.getByRole("heading", { name: /Less shopping guesswork/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "A little more clarity for every shop." })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Start simple. Make it your own." })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Research products", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Research or add an item", exact: true })).toHaveCount(0);
+  await expect(page.locator('a[href="/settings"]')).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Editable shopping list" })).toHaveCount(0);
+  await expect(page.getByRole("group", { name: "Account access", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: /extension/i })).toHaveCount(0);
   await expect(page.getByRole("main")).not.toContainText("D:\\pra\\");
 });
 
@@ -374,36 +373,12 @@ test.beforeAll(async () => {
       send(register ? 201 : 200, session);
       return;
     }
-    if (path.pathname === "/api/auth/trial") {
-      if (current) {
-        send(200, current);
-        return;
-      }
-      const token = randomBytes(32).toString("hex");
-      const id = sessions.size + 1;
-      const session: Session = {
-        account: {
-          id,
-          displayName: "Trial shopper",
-          isTrial: true,
-          expiresDate: sessionExpiry(),
-        },
-        shoppingListId: id,
-        sessionExpiresDate: sessionExpiry(),
-      };
-      sessions.set(token, session);
-      expire = false;
-      response.setHeader(
-        "Set-Cookie",
-        `myshoppinglist_session=${token}; Path=/; HttpOnly; SameSite=Lax`,
-      );
-      send(201, session);
-      return;
-    }
+    if (path.pathname === "/api/auth/trial") { send(410); return; }
     if (!current) {
       send(401, { title: "A valid session is required." });
       return;
     }
+    if (path.pathname === "/api/shopping-lists/manage") { send(200, { isPaid: false, limit: 2, lists: [{ id: current.shoppingListId, name: "Weekly shop", createdDate: new Date().toISOString(), updatedDate: new Date().toISOString() }] }); return; }
     if (path.pathname === "/api/auth/me") {
       send(200, current);
       return;
@@ -694,8 +669,10 @@ test.afterAll(async () => {
 });
 async function start(page: Page) {
   await page.goto("/");
-  await page.getByRole("button", { name: "Start my shopping list" }).click();
-  await expect(page.getByText("Your trial is active")).toBeVisible();
+  await page.getByRole("button", { name: "Create an account", exact: true }).click();
+  await fillAccount(page);
+  await page.getByRole("button", { name: "Create account", exact: true }).click();
+  await expect(page.getByText("Your list is saved", { exact: true })).toBeVisible();
 }
 const accountPassword = "Abcdef1!";
 test("shopping stores isolate sessions and clear account data while preserving same-list conversion", () => {
@@ -762,15 +739,15 @@ test("stalled session restoration times out and retries without losing the sessi
   await expect(page.getByText("Restoring your shopping list…")).toBeVisible();
   await page.clock.fastForward(21000);
   await expect(
-    page.getByRole("alert").filter({ hasText: "took too long" }),
+    page.getByRole("heading", { name: "Temporarily unavailable" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Start my shopping list", exact: true }),
+    page.getByRole("button", { name: "Create a free account", exact: true }),
   ).toBeHidden();
   stall = false;
-  await page.getByRole("button", { name: "Retry restoring my list" }).click();
-  await expect(page.getByText("Your trial is active")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Extension setup and instructions" })).toBeVisible();
+  await page.getByRole("button", { name: "Try again", exact: true }).click();
+  await expect(page.getByText("Your list is saved")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Extension setup and instructions" })).toHaveCount(0);
   expect(sessions.size).toBe(1);
 });
 
@@ -881,142 +858,37 @@ test("account registration, login failures, rate limits and refresh recovery", a
   ).toBe(true);
 });
 
-test("account trial conversion preserves saved edits and unsaved drafts", async ({
-  page,
-}, info) => {
-  await start(page);
-  await add(page);
+test("registered list preserves saved notes across reload and sign-in", async ({ page }) => {
+  await start(page); await add(page);
   await page.getByRole("button", { name: "Add note", exact: true }).click();
-  await expect(page.getByLabel("Notes", { exact: true })).toBeVisible();
   await page.getByLabel("Notes", { exact: true }).fill("Saved note");
   await page.getByRole("button", { name: "Save note", exact: true }).click();
   await expect.poll(() => [...listItems.values()][0]?.notes).toBe("Saved note");
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await expect(page.getByRole("region", { name: "Editable shopping list" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await fillAccount(page, false);
+  await page.getByRole("button", { name: "Sign in to my account", exact: true }).click();
   await page.getByRole("button", { name: "Edit note", exact: true }).click();
-  await page.getByLabel("Notes", { exact: true }).fill("Unsaved draft");
-  const old = [...sessions.values()][0];
-  await page.getByRole("button", { name: "Keep my list", exact: true }).click();
-  await fillAccount(page);
-  await page
-    .getByRole("button", { name: "Create account", exact: true })
-    .click();
-  await expect(
-    page.getByRole("group", { name: "Signed in as Test shopper", exact: true }),
-  ).toBeVisible();
-  await expect(page.getByLabel("Notes", { exact: true })).toHaveValue(
-    "Unsaved draft",
-  );
-  expect(accounts.get("shopper@example.test")!.session.shoppingListId).toBe(
-    old.shoppingListId,
-  );
-  await page.screenshot({
-    path: `test-results/${info.project.name}-registered-list.png`,
-    fullPage: true,
-  });
+  await expect(page.getByLabel("Notes", { exact: true })).toHaveValue("Saved note");
   await page.reload();
   await page.getByRole("button", { name: "Edit note", exact: true }).click();
-  await expect(page.getByLabel("Notes", { exact: true })).toHaveValue(
-    "Saved note",
-  );
+  await expect(page.getByLabel("Notes", { exact: true })).toHaveValue("Saved note");
 });
 
-test("account login replaces trial view without merging trial items", async ({
-  page,
-}) => {
-  await page.goto("/");
-  await page
-    .getByRole("button", { name: "Create an account", exact: true })
-    .click();
-  await fillAccount(page);
-  await page
-    .getByRole("button", { name: "Create account", exact: true })
-    .click();
-  await expect(
-    page.getByRole("group", { name: "Signed in as Test shopper", exact: true }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Sign out", exact: true }).click();
-  await start(page);
-  await add(page);
-  await page.getByRole("button", { name: "Add note", exact: true }).click();
-  await expect(page.getByLabel("Notes", { exact: true })).toBeVisible();
-  const trialItem = [...listItems.values()][0];
-  let releaseRead!: () => void;
-  const pendingRead = new Promise<void>((resolve) => {
-    releaseRead = resolve;
-  });
-  let readReady!: () => void;
-  const capturedRead = new Promise<void>((resolve) => {
-    readReady = resolve;
-  });
-  await page.route(
-    `**/shopping-lists/${trialItem.shoppingListId}/plan`,
-    async (route) => {
-      const response = await route.fetch();
-      readReady();
-      await pendingRead;
-      await route.fulfill({ response }).catch(() => {});
-    },
-  );
-  await page
-    .getByRole("button", { name: "Refresh items", exact: true })
-    .click();
-  await capturedRead;
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(
-    page.getByText(/This trial list will not be merged/),
-  ).toBeVisible();
-  await fillAccount(page, false);
-  await page.getByRole("button", { name: "Sign in to my account" }).click();
-  await expect(
-    page.getByRole("group", { name: "Signed in as Test shopper", exact: true }),
-  ).toBeVisible();
-  await expect(page.getByLabel("Notes", { exact: true })).toHaveCount(0);
-  await expect(
-    page
-      .getByRole("region", { name: "Import history and price comparisons" })
-      .getByRole("article"),
-  ).toHaveCount(0);
-  releaseRead();
-  await page.unrouteAll({ behavior: "wait" });
-  await expect(page.getByLabel("Notes", { exact: true })).toHaveCount(0);
-  await expect(
-    page.getByText(
-      "Products you save with the Chrome extension will appear here. Use Refresh items after saving.",
-    ),
-  ).toBeVisible();
-  expect(listItems.get(trialItem.id)!.shoppingListId).toBe(
-    trialItem.shoppingListId,
-  );
-});
-
-test("account expired trial requires explicit reset before fresh registration", async ({
-  page,
-}) => {
-  await start(page);
-  await page.getByRole("button", { name: "Keep my list", exact: true }).click();
-  await fillAccount(page);
-  expire = true;
-  await page
-    .getByRole("button", { name: "Create account", exact: true })
-    .click();
-  await expect(
-    page.getByRole("button", {
-      name: "Clear expired session for a new account",
-    }),
-  ).toBeVisible();
-  expect(accounts.size).toBe(0);
-  await page
-    .getByRole("button", { name: "Clear expired session for a new account" })
-    .click();
-  await expect(
-    page.getByRole("alert").filter({ hasText: "empty list" }),
-  ).toBeVisible();
-  await page
-    .getByRole("button", { name: "Create account", exact: true })
-    .click();
-  await expect(
-    page.getByRole("group", { name: "Signed in as Test shopper", exact: true }),
-  ).toBeVisible();
+test("expired cookie requires explicit reset before fresh registration", async ({ page }) => {
+  await start(page); expire = true;
+  await page.reload();
+  await page.getByRole("button", { name: "Create an account", exact: true }).click();
+  await fillAccount(page); await page.getByLabel("Email", { exact: true }).fill("new-shopper@example.test");
+  await page.getByRole("button", { name: "Create account", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Clear expired session for a new account" })).toBeVisible();
   expect(accounts.size).toBe(1);
+  await page.getByRole("button", { name: "Clear expired session for a new account" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "empty list" })).toBeVisible();
+  await page.getByRole("button", { name: "Create account", exact: true }).click();
+  await expect(page.getByRole("group", { name: "Signed in as Test shopper", exact: true })).toBeVisible();
+  expect(accounts.size).toBe(2);
 });
 
 test("account session survives timer maximum and expires at its actual deadline", async ({
@@ -1041,7 +913,7 @@ test("account session survives timer maximum and expires at its actual deadline"
   await page.clock.fastForward(7 * 86400000);
   await expect(
     page.getByText(
-      "Your session has ended. Sign in again or start a new trial.",
+      "Your session has ended. Sign in again to continue.",
     ),
   ).toBeVisible();
   await expect(
@@ -1081,7 +953,7 @@ test("account gateway enforces JSON, sizes, methods and safe expired reset", asy
   });
   expect(results).toEqual([403, 404, 415, 400, 413, 409, 404]);
   await page.reload();
-  await expect(page.getByText("Your trial is active")).toBeVisible();
+  await expect(page.getByText("Your list is saved")).toBeVisible();
 });
 async function add(page: Page, code = "test") {
   // Simulate a product already saved by the extension, without a collection request.
@@ -1103,7 +975,7 @@ async function add(page: Page, code = "test") {
     notes: null, isPurchased: false, isHidden: false, purchasedDate: null,
     preferredShopId: null, addedDate: createdDate, updatedDate: createdDate,
   });
-  await page.getByRole("button", { name: "Refresh items", exact: true }).click();
+  await page.getByRole("button", { name: "Reload list", exact: true }).click();
   await expect(page.getByRole("region", { name: "Editable shopping list" }).getByRole("article")).toBeVisible();
 }
 
@@ -1112,7 +984,7 @@ test("gateway rejects unknown routes and cross-origin posts without contacting u
 }) => {
   const before = calls;
   expect((await request.get("/api/admin/secrets")).status()).toBe(404);
-  expect((await request.post("/api/auth/trial")).status()).toBe(403);
+  expect((await request.post("/api/auth/trial")).status()).toBe(404);
   expect(
     (
       await request.post("/api/auth/trial", {
@@ -1122,7 +994,7 @@ test("gateway rejects unknown routes and cross-origin posts without contacting u
         },
       })
     ).status(),
-  ).toBe(403);
+  ).toBe(404);
   expect(
     (
       await request.post("/api/shopping-lists/1/products/url", {
@@ -1390,14 +1262,14 @@ test("planning includes the whole list, highlights missing prices and preserves 
   const card = list.getByRole("article", { name: product.name, exact: true });
   await card.getByRole("button", { name: "Add note" }).click();
   await card.getByLabel("Notes").fill("Keep my draft");
-  await list.getByRole("button", { name: "Refresh items" }).click();
+  await list.getByRole("button", { name: "Reload list" }).click();
   await expect(list.getByText("Loading list items…")).toHaveCount(0);
   await expect(card.getByLabel("Notes")).toHaveValue("Keep my draft");
 
   expire = true;
   await card.getByRole("button", { name: "Save note" }).click();
   await expect(
-    page.getByText("Your trial has ended. Start a new trial to continue."),
+    page.getByText("Your session has ended. Sign in again to continue."),
   ).toBeVisible();
   await expect(list).toHaveCount(0);
 });
@@ -1724,7 +1596,7 @@ test("alternative brands show honest price differences and leave the shopping li
   }
 });
 
-test("extension guidance replaces URL submission and collection activity on desktop and mobile", async ({ page }) => {
+test("AI guidance replaces extension prompts without starting collection on desktop and mobile", async ({ page }) => {
   const collection: string[] = [];
   page.on("request", request => {
     if (/products\/url|product-import-jobs|\/imports|refresh-prices|pack-discovery|brand-discovery|retry-comparison/.test(request.url()))
@@ -1733,7 +1605,7 @@ test("extension guidance replaces URL submission and collection activity on desk
   await start(page);
   await expect(page.getByRole("heading", { name: "Add products your way" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Research or add an item" })).toHaveAttribute("href", "/research");
-  await expect(page.getByRole("link", { name: "Extension setup and instructions" })).toHaveAttribute("href", "/extension");
+  await expect(page.getByRole("link", { name: /extension/i })).toHaveCount(0);
   await expect(page.getByLabel("Product URL")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Add product", exact: true })).toHaveCount(0);
   await expect(page.getByText("Import activity", { exact: true })).toHaveCount(0);
@@ -1750,7 +1622,7 @@ test("saved observation reload preserves note drafts without polling or enqueuin
   await card.getByLabel("Notes").fill("Keep this draft");
   const saved=mockPlan(listItems.get(1)!.shoppingListId).items[0].prices;
   planningPrices.set(1,saved.map(price=>({...price,price:17,includedInTotal:true,status:"Fresh"})));
-  await page.getByRole("button",{name:"Refresh items",exact:true}).click();
+  await page.getByRole("button",{name:"Reload list",exact:true}).click();
   await expect(card).toContainText("$17.00 single-item price");
   await expect(card.getByLabel("Notes")).toHaveValue("Keep this draft");
   await expect(card.getByRole("button",{name:/Refresh price|Retry comparison/})).toHaveCount(0);

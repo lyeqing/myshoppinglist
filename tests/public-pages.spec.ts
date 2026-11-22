@@ -34,8 +34,9 @@ test("document CSP uses fresh server nonces and rejects injected scripts without
   expect(first.headers()["x-frame-options"]).toBe("DENY");
   expect(first.headers()["x-powered-by"]).toBeUndefined();
   expect(first.headers()["cache-control"]).toContain("no-store");
-  await page.goto("/features");
+  await page.goto("/privacy");
   await page.getByRole("button", { name: "Allow optional analytics" }).click();
+  await page.goto("/features");
   await expect.poll(() => events.filter(e => e.name === "page_view").length).toBe(1);
   expect(await page.evaluate(() => (window as typeof window & { cspViolations: string[] }).cspViolations)).toEqual([]);
   // Inject into the network document: DevTools page.evaluate is privileged and bypasses CSP.
@@ -76,6 +77,7 @@ test("public pages fit mobile and private pages remain noindex without private d
     await page.goto(route); await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await expect(page.getByRole("navigation", { name: "About MyShoppingList" })).toBeVisible();
+    await expect(page.getByRole("complementary", { name: "Analytics privacy" })).toHaveCount(route === "/privacy" ? 1 : 0);
   }
   for (const route of ["/settings", "/account/security", "/account/recovery", "/favorites", "/essentials", "/history", "/products/history", "/in-store", "/ai/connections", "/admin", "/superadmin"]) {
     await page.goto(route); await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex/);
@@ -85,18 +87,32 @@ test("public pages fit mobile and private pages remain noindex without private d
 
 test("campaign tracking requires consent, retains only a source slug and stops on withdrawal", async ({ page }) => {
   await page.goto("/features?utm_source=newsletter&unrelated=private-marker");
+  await expect(page.getByRole("complementary", { name: "Analytics privacy" })).toHaveCount(0);
   expect(events).toHaveLength(0);
+  const privacyLink = page.getByRole("link", { name: "Privacy", exact: true });
+  // Use the keyboard: the Next development indicator can cover this footer link on mobile.
+  await privacyLink.focus();
+  await privacyLink.press("Enter");
   await page.getByRole("button", { name: "Allow optional analytics" }).click();
+  await expect(page.getByRole("button", { name: "Analytics preferences · allowed" })).toBeVisible();
+  expect(events).toHaveLength(0);
+  await page.goto("/features?utm_source=newsletter&unrelated=private-marker");
   await expect.poll(() => events.filter(e => e.name === "page_view").length).toBe(1);
+  await expect(page.getByRole("complementary", { name: "Analytics privacy" })).toHaveCount(0);
   await page.goto("/how-it-works");
   await expect.poll(() => events.filter(e => e.name === "page_view").length).toBe(2);
   expect(events.every(e => e.attribution === "newsletter")).toBe(true);
   expect(JSON.stringify(events)).not.toContain("private-marker"); expect(JSON.stringify(events)).not.toContain("https://");
   await page.getByRole("link", { name: "Start a shopping list", exact: true }).click();
   await expect.poll(() => events.some(e => e.name === "cta_click")).toBe(true);
+  await privacyLink.focus();
+  await privacyLink.press("Enter");
   await page.getByRole("button", { name: "Analytics preferences · allowed" }).click(); await page.getByRole("button", { name: "Decline analytics" }).click();
   await expect.poll(() => events.length).toBe(0);
-  await page.goto("/features"); expect(events).toHaveLength(0);
+  await page.goto("/features");
+  await expect(page.getByRole("heading", { name: "Your shopping, kept together", exact: true })).toBeVisible();
+  await expect(page.getByRole("complementary", { name: "Analytics privacy" })).toHaveCount(0);
+  expect(events).toHaveLength(0);
 });
 
 test("the share image is a real PNG with no user-specific input", async ({ request }, info) => {

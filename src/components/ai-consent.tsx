@@ -20,10 +20,11 @@ export default function AiConsent({ requestUri, clientId }: { requestUri: string
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState("");
   const [login, setLogin] = useState(false);
+  const [accountMode, setAccountMode] = useState<"login" | "register">("login");
   const load = useCallback((signal?: AbortSignal) => {
     return api<Session>("/auth/me", { signal }).then(async current => {
       setSession(current); setLogin(false);
-      if (current.account.isTrial) { setError("Sign in with a registered account to connect an AI app."); return; }
+      if (current.account.isTrial) { setSession(null); setLogin(true); return; }
       if (!requestUri || requestUri.length > 2048 || !clientId || clientId.length > 100) throw new Error("Start a new connection from your AI app.");
       const result = await api<Preview>("/ai/oauth/preview", { method: "POST", body: JSON.stringify({ request_uri: requestUri, client_id: clientId }), signal });
       if (result.accountId !== String(current.account.id)) throw new Error("Your account changed. Review the connection again.");
@@ -53,8 +54,14 @@ export default function AiConsent({ requestUri, clientId }: { requestUri: string
     <p className="mt-3 text-slate-600">Only approve an app you recognise. It can access the permissions you choose below.</p>
     {busy && <p role="status" className="mt-6">Please wait…</p>}
     {error && <div role="alert" className="mt-6 rounded-xl bg-amber-50 p-4 text-amber-900">{error}</div>}
-    {login && <div className="mt-6"><AccountForm mode="login" trial={!!session?.account.isTrial} onBusy={setBusy} onClose={() => router.push("/")} onSuccess={refresh} /></div>}
-    {session?.account.isTrial && <button className="mt-4 font-semibold underline" onClick={() => setLogin(true)}>Sign in to a registered account</button>}
+    {login && <div className="mt-6">
+      <p className="mb-4 text-sm text-slate-600">Sign in or create a free account to continue. You will review this app’s permissions before connecting.</p>
+      <div className="mb-4 flex flex-wrap gap-4">
+        <button type="button" disabled={busy} aria-pressed={accountMode === "login"} className="min-h-11 font-semibold underline" onClick={() => setAccountMode("login")}>Sign in</button>
+        <button type="button" disabled={busy} aria-pressed={accountMode === "register"} className="min-h-11 font-semibold underline" onClick={() => setAccountMode("register")}>Create a free account</button>
+      </div>
+      <AccountForm key={accountMode} mode={accountMode} onBusy={setBusy} onClose={() => router.push("/")} onSuccess={refresh} />
+    </div>}
     {preview && session && <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
       <h2 className="text-xl font-semibold">{preview.clientName} wants to connect</h2>
       <p className="mt-2 text-sm text-slate-600">You are signed in as <strong>{session.account.displayName}</strong>. Access applies only to this account.</p>

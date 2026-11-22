@@ -30,9 +30,11 @@ test("private feedback, consent, protected administration and simulated incident
     api = spawn("dotnet", [join(apiRoot, "bin/Debug/net10.0/myshoppinglist-api.dll"), "--urls", apiUrl], { cwd: apiRoot, env, windowsHide: true, stdio: "ignore" });
     await expect.poll(async () => { if (api?.exitCode !== null) throw new Error("Owned API stopped before readiness.");
       try { return (await fetch(apiUrl + "/health/ready", { signal: AbortSignal.timeout(1000) })).status; } catch { return 0; } }, { timeout: 30000 }).toBe(200);
-    await page.goto(frontend); await expect(page.getByRole("button", { name: "Allow optional analytics" })).toBeVisible();
+    await page.goto(frontend); await expect(page.getByRole("complementary", { name: "Analytics privacy" })).toHaveCount(0);
+    await page.goto(frontend + "/privacy"); await expect(page.getByRole("button", { name: "Allow optional analytics" })).toBeVisible();
     expect(sql(`SELECT count(*) FROM "${schema}"."OperationalEvents" WHERE "VisitorId" IS NOT NULL;`)).toBe("0");
     await page.getByRole("button", { name: "Allow optional analytics" }).click();
+    await page.goto(frontend);
     await expect.poll(() => sql(`SELECT count(*) FROM "${schema}"."OperationalEvents" WHERE "VisitorId" IS NOT NULL;`)).toBe("1");
     await register(page, "Customer");
     const customer = await (await context.request.get(frontend + "/api/auth/me")).json(); expect(customer.account.id).toBe(1);
@@ -68,6 +70,7 @@ test("private feedback, consent, protected administration and simulated incident
     await expect.poll(() => sql(`SELECT count(*) FROM "${schema}"."FeedbackTickets";`)).toBe("2");
     expect(sql(`SELECT "IsActive" FROM "${schema}"."UserAccounts" WHERE "Id"=1;`)).toBe("t");
     await page.setViewportSize({ width: 390, height: 844 }); expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.goto(frontend + "/privacy");
     await page.getByRole("button", { name: "Analytics preferences · allowed" }).click(); await page.getByRole("button", { name: "Decline analytics" }).click();
     await expect.poll(() => sql(`SELECT count(*) FROM "${schema}"."OperationalEvents" WHERE "VisitorId" IS NOT NULL;`)).toBe("0");
     await adminPage.goto(frontend + "/superadmin"); await expect(adminPage.getByRole("heading", { name: "Operations overview", exact: true })).toBeVisible();
