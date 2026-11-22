@@ -40,7 +40,7 @@ export default function ShoppingPreferences() {
       <AppHeader session={state.session} active="stores" loading={state.loading} disabled={disabled} />
       <main className="mx-auto max-w-3xl px-5 py-8">
         <h1 className="text-3xl font-semibold">Settings</h1>
-        {state.session && !state.session.account.isTrial && <Link href="/account/security" className="mr-5 inline-flex min-h-11 items-center font-semibold text-primary-700 underline">Password and account security</Link>}
+        {state.session && !state.session.account.isTrial && <Link href="/account/security" className="mr-5 inline-flex min-h-11 items-center font-semibold text-primary-700 underline">Account settings</Link>}
         {state.session && <Link href="/account/billing" className="mr-5 inline-flex min-h-11 items-center font-semibold text-primary-700 underline">Billing and current access</Link>}
         {state.session && !state.session.account.isTrial && <Link href="/ai/connections" className="mt-3 inline-flex min-h-11 items-center font-semibold text-primary-700 underline">Connected AI apps and current list</Link>}
         <Link href="/support" className="ml-5 inline-flex min-h-11 items-center font-semibold text-primary-700 underline">Help and private feedback</Link>

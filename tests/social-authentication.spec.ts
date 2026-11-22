@@ -196,6 +196,7 @@ test("security verifies existing password before linking and explains last-metho
   let verified = false;
   await page.route("**/api/**", (route) => {
     const path = new URL(route.request().url()).pathname;
+    if (path === "/api/account/profile") return route.fulfill({ json: { accountId: 7, displayName: "Social shopper", email: "owner@example.test", updatedDate: "2026-11-22T00:00:00Z", hasPassword: true, emailChangeAvailable: false, pendingEmailId: null, pendingEmail: null, pendingEmailExpiresAt: null } });
     if (path === "/api/auth/me") return route.fulfill({ json: session });
     if (path === "/api/auth/social/methods")
       return route.fulfill({
@@ -261,6 +262,7 @@ test("social-only last provider is protected and password drafts clear on accoun
   let account = 7;
   await page.route("**/api/**", (route) => {
     const path = new URL(route.request().url()).pathname;
+    if (path === "/api/account/profile") return route.fulfill({ json: { accountId: account, displayName: "Social shopper", email: null, updatedDate: "2026-11-22T00:00:00Z", hasPassword: false, emailChangeAvailable: false, pendingEmailId: null, pendingEmail: null, pendingEmailExpiresAt: null } });
     if (path === "/api/auth/me")
       return route.fulfill({
         json: { ...session, account: { ...session.account, id: account } },

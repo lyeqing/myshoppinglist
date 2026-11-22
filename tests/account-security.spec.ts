@@ -39,6 +39,7 @@ test("recovery retries availability without losing the private link and gives us
 
 test("switching accounts clears password drafts and preserves the new account context", async ({ page }) => {
   let account = 1;
+  await page.route("**/api/account/profile", route => route.fulfill({ json: { accountId: account, displayName: "Shopper " + account, email: "owner@example.test", updatedDate: "2026-11-22T00:00:00Z", hasPassword: true, emailChangeAvailable: false, pendingEmailId: null, pendingEmail: null, pendingEmailExpiresAt: null } }));
   await page.route("**/api/auth/me", route => route.fulfill({ json: { account: { id: account, displayName: "Shopper " + account,
     isTrial: false, expiresDate: null, isPaid: false }, shoppingListId: account, sessionExpiresDate: "2099-01-01T00:00:00Z" } }));
   await page.goto("/account/security"); await expect(page.getByRole("group", { name: "Signed in as Shopper 1" })).toBeVisible();
@@ -53,6 +54,7 @@ test("switching accounts clears password drafts and preserves the new account co
 
 test("a stale account submission reloads identity and clears credentials before another attempt", async ({ page }) => {
   let account = 1;
+  await page.route("**/api/account/profile", route => route.fulfill({ json: { accountId: account, displayName: "Shopper " + account, email: "owner@example.test", updatedDate: "2026-11-22T00:00:00Z", hasPassword: true, emailChangeAvailable: false, pendingEmailId: null, pendingEmail: null, pendingEmailExpiresAt: null } }));
   await page.route("**/api/auth/me", route => route.fulfill({ json: { account: { id: account, displayName: "Shopper " + account,
     isTrial: false, expiresDate: null, isPaid: false }, shoppingListId: account, sessionExpiresDate: "2099-01-01T00:00:00Z" } }));
   await page.route("**/api/auth/password", route => {

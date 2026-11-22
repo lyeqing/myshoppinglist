@@ -64,7 +64,7 @@ export default function AppHeader({ session, active, loading = false, disabled =
               <>
                 <div role="group" aria-label={`Signed in as ${name}`} title={name} className="flex min-w-0 items-center gap-2">
                   <span aria-hidden="true" className="hidden size-9 shrink-0 items-center justify-center rounded-full bg-primary-100 text-xs font-semibold text-primary-700 sm:flex">{initials}</span>
-                  <span className="max-w-48 text-sm font-medium text-slate-700 sm:max-w-72"><span className="block text-xs text-slate-500">Signed in as</span><span className="block truncate">{name}</span></span>
+                  <Link href="/account/security" aria-label={`Account settings for ${name}`} className="max-w-48 rounded-sm text-sm font-medium text-slate-700 hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary-600 sm:max-w-72"><span className="block text-xs text-slate-500">Signed in as</span><span className="block truncate">{name}</span></Link>
                 </div>
                 <button type="button" className={button} disabled={disabled || signingOut} onClick={() => void signOut()}>
                   {signingOut ? "Signing out…" : "Sign out"}

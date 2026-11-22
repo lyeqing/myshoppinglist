@@ -27,6 +27,17 @@ export interface Session {
   shoppingListId: number | null;
   sessionExpiresDate: string;
 }
+export interface AccountProfile {
+  accountId: number;
+  displayName: string;
+  email: string | null;
+  updatedDate: string;
+  hasPassword: boolean;
+  emailChangeAvailable: boolean;
+  pendingEmailId: string | null;
+  pendingEmail: string | null;
+  pendingEmailExpiresAt: string | null;
+}
 export interface Accepted {
   jobId: number;
   status: JobState;

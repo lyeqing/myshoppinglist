@@ -19,6 +19,8 @@ async function forward(
   const account = route === "auth/register" || route === "auth/login";
   const credentials = request.method === "POST" && ["auth/recovery/request", "auth/recovery/complete", "auth/password"].includes(route)
     || get && route === "auth/recovery";
+  const profile = route === "account/profile" && (get || request.method === "PUT")
+    || request.method === "POST" && /^account\/email\/(request|complete|cancel)$/.test(route);
   const reset = route === "auth/reset-expired";
   const edit =
     request.method === "PUT" &&
@@ -70,7 +72,7 @@ async function forward(
   const savedProductAdd = request.method === "POST" && /^shopping-lists\/[1-9]\d{0,18}\/products\/[1-9]\d{0,18}$/.test(route);
   const substitution = request.method === "PUT" && /^shopping-lists\/[1-9]\d{0,18}\/items\/[1-9]\d{0,18}\/substitutions\/[1-9]\d{0,18}$/.test(route);
   const allowed =
-    social || research || credentials || billing || currentList || extensionDevices || operations || feedback || screenshot || analytics || oauth || connections ||
+    profile || social || research || credentials || billing || currentList || extensionDevices || operations || feedback || screenshot || analytics || oauth || connections ||
     substitution ||
     productLibrary || productPreferences || productPreferenceWrite || savedProductAdd ||
     branchWrite ||
@@ -235,7 +237,7 @@ async function forward(
     let body: string | undefined;
     if (!get) {
       if (
-        (social || research || account || oauth || currentList || feedback || operations || analytics ||
+        (profile || social || research || account || oauth || currentList || feedback || operations || analytics ||
           productPreferenceWrite || savedProductAdd ||
           preferences ||
           alternativeReview ||
@@ -262,7 +264,7 @@ async function forward(
             size >
             (research && route === "research" ? 65536 : feedback ? 750000 : operations ? 10000 : edit
               ? 32768
-              : alternativeReview || branchWrite || account || credentials || preferences
+              : profile || alternativeReview || branchWrite || account || credentials || preferences
                 ? 16384
                 : 4096)
           ) {

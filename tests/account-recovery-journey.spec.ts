@@ -104,7 +104,7 @@ test("real recovery email, single-use reset and password change preserve lists a
     await page.getByLabel("Password", { exact: true }).fill(replacement); await page.getByRole("button", { name: "Sign in to my account" }).click();
     await expect(page.getByRole("group", { name: "Signed in as Recovery shopper" })).toBeVisible();
     console.log("Recovery journey: replacement password accepted");
-    await page.goto(frontend + "/settings"); await page.getByRole("link", { name: "Password and account security" }).click();
+    await page.goto(frontend + "/settings"); await page.getByRole("link", { name: "Account settings", exact: true }).click();
     await page.getByLabel("Current password", { exact: true }).fill(replacement); await page.getByLabel("New password", { exact: true }).fill(finalPassword);
     await page.getByLabel("Confirm new password", { exact: true }).fill(finalPassword); await page.getByRole("button", { name: "Change password and sign out" }).click();
     await expect(page.getByRole("status").filter({ hasText: "Your password was changed" })).toBeVisible();
