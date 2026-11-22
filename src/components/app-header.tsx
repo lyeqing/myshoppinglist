@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import { api, ApiError } from "@/lib/api-client";
 import type { Session } from "@/lib/api-types";
+import { accountDisplayName } from "@/lib/account-display-name";
 import MainNavigation from "./main-navigation";
 
 type Props = {
@@ -24,7 +25,7 @@ export default function AppHeader({ session, active, loading = false, disabled =
   const [signingOut, setSigningOut] = useState(false);
   const [error, setError] = useState("");
   const pending = useRef(false);
-  const name = session?.account.displayName.trim() || "Shopper";
+  const name = accountDisplayName(session?.account.displayName, session?.account.email);
   const parts = name.split(/\s+/u);
   const initials = [parts[0], ...(parts.length > 1 ? [parts[parts.length - 1]] : [])]
     .map((part) => Array.from(part)[0]).join("").toLocaleUpperCase();

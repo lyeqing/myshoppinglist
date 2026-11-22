@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import AccountForm from "@/components/account-form";
 import { api, ApiError } from "@/lib/api-client";
 import type { Session } from "@/lib/api-types";
+import { accountDisplayName } from "@/lib/account-display-name";
 
 type Preview = { accountId: string; clientName: string; scopes: string[]; offlineAccess: boolean };
 export const scopeLabels: Record<string, string> = { "lists.read": "Read your shopping lists, items and saved prices", "products.read": "Read and search your saved products", "lists.write": "Create and edit your shopping lists", "extension.capture": "Request product captures and small retailer searches from your extension, with your approval" };
@@ -64,7 +65,7 @@ export default function AiConsent({ requestUri, clientId }: { requestUri: string
     </div>}
     {preview && session && <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
       <h2 className="text-xl font-semibold">{preview.clientName} wants to connect</h2>
-      <p className="mt-2 text-sm text-slate-600">You are signed in as <strong>{session.account.displayName}</strong>. Access applies only to this account.</p>
+      <p className="mt-2 text-sm text-slate-600">You are signed in as <strong>{accountDisplayName(session.account.displayName, session.account.email)}</strong>. Access applies only to this account.</p>
       <fieldset disabled={busy} className="mt-5 space-y-4"><legend className="font-semibold">Allow this app to:</legend>
         {preview.scopes.map(scope => <label key={scope} className="flex items-start gap-3"><input type="checkbox" checked={selected.includes(scope)} onChange={e => setSelected(value => e.target.checked ? [...value, scope] : value.filter(s => s !== scope))} className="mt-1 size-5" /><span>{scopeLabels[scope] ?? scope}</span></label>)}
         {preview.offlineAccess && <label className="flex items-start gap-3"><input type="checkbox" checked={offline} onChange={e => setOffline(e.target.checked)} className="mt-1 size-5" /><span>Stay connected until you revoke access or the connection expires</span></label>}

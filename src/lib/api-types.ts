@@ -19,6 +19,7 @@ export interface Session {
   account: {
     id: number;
     displayName: string;
+    email?: string | null;
     isTrial: boolean;
     isPaid?: boolean;
     expiresDate: string | null;

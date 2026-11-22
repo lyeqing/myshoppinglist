@@ -1,22 +1,22 @@
 import { expect, test, type Page } from "@playwright/test";
 
 const session = {
-  account: { id: 7, displayName: "Alex Shopper", isTrial: false, isPaid: false, expiresDate: null },
+  account: { id: 7, displayName: "Alex Shopper", email: "alex@example.test", isTrial: false, isPaid: false, expiresDate: null },
   shoppingListId: 1, sessionExpiresDate: "2099-01-01T00:00:00Z",
 };
 
 async function fixture(page: Page) {
-  const state = { me: 401, malformed: false, network: false, stall: false, submit: 503, submissions: 0, trial: false };
+  const state = { me: 401, malformed: false, network: false, stall: false, submit: 503, submissions: 0, trial: false, displayName: session.account.displayName };
   await page.route("**/api/**", async route => {
     const path = new URL(route.request().url()).pathname;
     if (path === "/api/auth/me") {
       if (state.stall) return;
       if (state.network) return route.abort("failed");
-      return route.fulfill({ status: state.me, json: state.me === 200 ? state.malformed ? {} : { ...session, account: { ...session.account, isTrial: state.trial } } : {} });
+      return route.fulfill({ status: state.me, json: state.me === 200 ? state.malformed ? {} : { ...session, account: { ...session.account, isTrial: state.trial, displayName: state.displayName } } : {} });
     }
     if (path === "/api/auth/login" || path === "/api/auth/register") {
       state.submissions++;
-      return route.fulfill({ status: state.submit, json: state.submit === 200 ? session : { title: "Check your details." } });
+      return route.fulfill({ status: state.submit, json: state.submit === 200 ? { ...session, account: { ...session.account, displayName: state.displayName } } : { title: "Check your details." } });
     }
     if (path === "/api/auth/social/providers") return route.fulfill({ json: [] });
     if (path === "/api/shopping-lists/manage") return route.fulfill({ json: { isPaid: false, limit: 2, lists: [{ id: 1, name: "Weekly" }] } });
@@ -62,6 +62,61 @@ test("signed-out visitors need a free account and registered account state is ex
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
+for (const suppliedName of ["", "   ", "  Taylor  "]) {
+  test(`registration with ${suppliedName.trim() ? "a supplied" : suppliedName ? "a whitespace-only" : "no"} display name shows the right account label`, async ({ page }) => {
+    const state = await fixture(page);
+    await page.goto("/");
+    await page.locator("header").getByRole("button", { name: "Create an account", exact: true }).click();
+    const displayName = page.getByLabel("Display name", { exact: true });
+    await expect(displayName).toHaveJSProperty("required", false);
+    await expect(displayName).toHaveAttribute("maxlength", "200");
+    await expect(displayName).toHaveAccessibleDescription("Leave blank to use your email address.");
+    await displayName.fill(suppliedName);
+    await page.getByLabel("Email", { exact: true }).fill("alex@example.test");
+    await page.getByLabel("Password", { exact: true }).fill("ValidPassword1!");
+    await expect(page.getByRole("button", { name: "Show password", exact: true })).toBeVisible();
+    state.displayName = suppliedName.trim(); state.submit = 200; state.me = 200;
+    const sent = page.waitForRequest(request => new URL(request.url()).pathname === "/api/auth/register" && request.method() === "POST");
+    await page.getByRole("button", { name: "Create account", exact: true }).click();
+    expect((await sent).postDataJSON().displayName).toBe(suppliedName.trim());
+    const expected = suppliedName.trim() || session.account.email;
+    await expect(page.getByRole("group", { name: `Signed in as ${expected}`, exact: true })).toBeVisible();
+    if (suppliedName.trim()) await expect(page.locator("header")).not.toContainText(session.account.email);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.reload();
+    await expect(page.getByRole("group", { name: `Signed in as ${expected}`, exact: true })).toBeVisible();
+  });
+}
+
+for (const { displayName, email, expected } of [
+  { displayName: "", email: session.account.email, expected: session.account.email },
+  { displayName: "   ", email: session.account.email, expected: session.account.email },
+  { displayName: "Taylor", email: session.account.email, expected: "Taylor" },
+  { displayName: "", email: null, expected: "My account" },
+]) {
+  test(`AI permission review uses ${expected} for name ${JSON.stringify(displayName)}`, async ({ page }) => {
+    let approvals = 0;
+    await page.route("**/api/**", route => {
+      const path = new URL(route.request().url()).pathname;
+      if (path === "/api/auth/me") return route.fulfill({ json: { ...session, account: { ...session.account, displayName, email } } });
+      if (path === "/api/ai/oauth/preview") return route.fulfill({ json: { accountId: "7", clientName: "Test AI", scopes: ["lists.read"], offlineAccess: false } });
+      if (path === "/api/ai/oauth/authorize") approvals++;
+      return route.fulfill({ json: [] });
+    });
+    await page.goto("/ai/connect?request_uri=urn%3Apending-test-request&client_id=test-ai");
+    await expect(page.getByRole("heading", { name: "Test AI wants to connect", exact: true })).toBeVisible();
+    await expect(page.getByText("You are signed in as", { exact: false })).toContainText(expected);
+    expect(approvals).toBe(0);
+  });
+}
+
+test("an account without a name or email keeps a useful header label", async ({ page }) => {
+  await fixture(page);
+  await page.route("**/api/auth/me", route => route.fulfill({ json: { ...session, account: { ...session.account, displayName: "", email: null } } }));
+  await page.goto("/");
+  await expect(page.getByRole("group", { name: "Signed in as My account", exact: true })).toBeVisible();
+});
+
 for (const mode of ["register", "login"] as const) {
   test(`landing ${mode} supports keyboard access, cancellation and the shopping workspace`, async ({ page }) => {
     const state = await fixture(page);
@@ -82,6 +137,59 @@ for (const mode of ["register", "login"] as const) {
     await expect(page.getByRole("group", { name: "Signed in as Alex Shopper", exact: true })).toBeVisible();
     await expect(page.getByRole("region", { name: "Editable shopping list" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Shopping should feel less scattered." })).toHaveCount(0);
+  });
+}
+
+for (const mode of ["register", "login"] as const) {
+  test(`${mode} password visibility preserves input, supports the keyboard and resets safely`, async ({ page }) => {
+    await fixture(page);
+    let submissions = 0;
+    let finish!: () => void;
+    const pending = new Promise<void>(resolve => { finish = resolve; });
+    await page.route(`**/api/auth/${mode}`, async route => {
+      submissions++;
+      expect(route.request().postDataJSON().password).toBe("ValidPassword1!");
+      await pending;
+      await route.fulfill({ status: 400, json: { title: "Please check your details." } });
+    });
+    await page.goto("/");
+    const open = page.locator("header").getByRole("button", { name: mode === "register" ? "Create an account" : "Sign in", exact: true });
+    await open.click();
+    const password = page.getByLabel("Password", { exact: true });
+    await expect(password).toHaveCount(1);
+    await expect(password).toHaveAttribute("type", "password");
+    await expect(password).toHaveAttribute("autocomplete", mode === "register" ? "new-password" : "current-password");
+    await password.fill("ValidPassword1!");
+    const show = page.getByRole("button", { name: "Show password", exact: true });
+    await show.focus(); await show.press("Space");
+    await expect(password).toHaveAttribute("type", "text");
+    await expect(password).toHaveValue("ValidPassword1!");
+    const hide = page.getByRole("button", { name: "Hide password", exact: true });
+    await hide.press("Enter");
+    await expect(password).toHaveAttribute("type", "password");
+    await expect(password).toHaveValue("ValidPassword1!");
+    expect(submissions).toBe(0);
+    await show.click(); await password.fill("");
+    await expect(password).toHaveAttribute("type", "password");
+    await password.fill("ValidPassword1!"); await show.click();
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await open.click();
+    await expect(password).toHaveValue("");
+    await expect(password).toHaveAttribute("type", "password");
+    if (mode === "register") await page.getByLabel("Display name", { exact: true }).fill("Alex Shopper");
+    await page.getByLabel("Email", { exact: true }).fill("alex@example.test");
+    await password.fill("ValidPassword1!");
+    await page.locator('section[aria-labelledby="account-title"]').screenshot({ path: test.info().outputPath("password-control.png") });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await show.click();
+    await page.getByRole("button", { name: mode === "register" ? "Create account" : "Sign in to my account", exact: true }).click();
+    await expect.poll(() => submissions).toBe(1);
+    await expect(show).toBeDisabled();
+    await expect(password).toHaveAttribute("type", "password");
+    finish();
+    await expect(show).toBeEnabled();
+    await expect(password).toHaveValue("ValidPassword1!");
+    await expect(password).toHaveAttribute("type", "password");
   });
 }
 
