@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { serverApiOrigin } from "@/lib/server-api-origin";
 const cookieName = "myshoppinglist_session";
 const reply = (status: number, title: string) => {
   const traceId = status >= 500 ? crypto.randomUUID() : undefined;
@@ -108,16 +109,9 @@ async function forward(
           )));
   if (!allowed) return reply(404, "This route is unavailable.");
   try {
-    const upstream = new URL(
-      process.env.MYSHOPPINGLIST_API_URL ?? "http://localhost:5392",
-    );
-    if (
-      !["http:", "https:"].includes(upstream.protocol) ||
-      upstream.username ||
-      upstream.password ||
-      upstream.pathname !== "/"
-    )
-      return reply(503, "The service is not configured correctly.");
+    let upstream: URL;
+    try { upstream = serverApiOrigin(); }
+    catch { return reply(503, "The service is not configured correctly."); }
     const publicOrigin = new URL(
       process.env.MYSHOPPINGLIST_PUBLIC_ORIGIN ?? request.url,
     ).origin;

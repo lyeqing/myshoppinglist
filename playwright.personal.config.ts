@@ -18,7 +18,7 @@ export default defineConfig({
     reuseExistingServer: false,
     timeout: 120000,
     env: {
-      MYSHOPPINGLIST_API_URL: "http://localhost:5392",
+      MYSHOPPINGLIST_INTERNAL_API_URL: "", MYSHOPPINGLIST_API_URL: "http://localhost:5392",
       MYSHOPPINGLIST_PUBLIC_ORIGIN: "http://localhost:3001",
       // Already included in tsconfig.json; Next must not rewrite that file.
       MYSHOPPINGLIST_NEXT_DIST_DIR: ".next-playwright",

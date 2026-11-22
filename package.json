@@ -8,7 +8,7 @@
     "start": "next start -p 3001",
     "lint": "eslint",
     "test:e2e": "playwright test",
-    "test:regression": "node --test extensions/coles-worker/tests/extraction.test.mjs extensions/coles-worker/tests/regression.test.mjs extensions/shopping-list/tests/extension.test.mjs extensions/shopping-list/tests/ai-bridge.test.mjs tests/seo.test.mjs tests/api-client-security.test.mjs"
+    "test:regression": "node --test extensions/coles-worker/tests/extraction.test.mjs extensions/coles-worker/tests/regression.test.mjs extensions/shopping-list/tests/extension.test.mjs extensions/shopping-list/tests/ai-bridge.test.mjs tests/seo.test.mjs tests/api-client-security.test.mjs tests/server-api-origin.test.mjs"
   },
   "dependencies": {
     "next": "16.4.6",

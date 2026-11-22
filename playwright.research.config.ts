@@ -21,7 +21,7 @@ export default defineConfig({
     reuseExistingServer: false,
     timeout: 120000,
     env: {
-      MYSHOPPINGLIST_API_URL: "http://127.0.0.1:5499",
+      MYSHOPPINGLIST_INTERNAL_API_URL: "", MYSHOPPINGLIST_API_URL: "http://127.0.0.1:5499",
       MYSHOPPINGLIST_PUBLIC_ORIGIN: "http://127.0.0.1:3001",
       MYSHOPPINGLIST_NEXT_DIST_DIR: ".next-playwright",
     },
